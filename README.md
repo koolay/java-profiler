@@ -8,7 +8,7 @@ The target problem is narrower than a general observability platform:
 - use node-local collection
 - control enablement through Kubernetes metadata
 - store results in ClickHouse
-- present a small, service-centric UI for trend to flamegraph investigation
+- present a small, service-centric UI for profile and thread-diagnosis investigation
 
 ## Current State
 
@@ -35,6 +35,7 @@ The current design assumes:
 - async-profiler for CPU, allocation, and lock profiling
 - bounded retention with no collected data older than 7 days
 - ClickHouse as the primary query and storage layer
+- metrics exposed through collector/backend exporters only, with Prometheus-series services owning metric storage and dashboards
 - a lightweight, self-owned UI rather than a broad observability workspace
 
 ## Explicit Scope Boundaries
@@ -47,6 +48,7 @@ The first version does not include:
 - distributed ClickHouse
 - heap dump analysis or retained-heap dominator analysis
 - general-purpose tracing, log analysis, or service map features
+- Prometheus metrics storage or dashboard replacement
 
 ## Repository Layout
 

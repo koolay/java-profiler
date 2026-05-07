@@ -12,7 +12,7 @@ Build a Java-only Kubernetes performance profiling system with four deployable p
 
 - Node collector: DaemonSet running on every Kubernetes node.
 - Backend API: receives agent uploads and serves query APIs.
-- ClickHouse storage: stores normalized profiles, JVM metrics, thread snapshots, deadlock events, and status history.
+- ClickHouse storage: stores normalized profiles, thread snapshots, deadlock events, target status, and ingestion health.
 - Web UI: service-centric Java diagnosis interface.
 
 The system is intentionally narrower than Coroot and Pyroscope. It does not own logs, tracing, service maps, or non-Java profiling. It answers these first-version questions:
@@ -22,12 +22,25 @@ The system is intentionally narrower than Coroot and Pyroscope. It does not own 
 - Which threads are slow or blocked?
 - Which threads or Java stacks are busy?
 
+### V1 Delivery Slice
+
+The first implementation should ship as a vertical slice, not as all conceptual components at once.
+
+```text
+Slice 1: target status + ingestion health + profile ingestion + ClickHouse TTL
+Slice 2: async-profiler lifecycle + CPU/allocation/lock flamegraph queries
+Slice 3: ThreadMXBean snapshots + deadlock events + slow/busy thread summaries
+Slice 4: minimal service-centric UI + packaging
+```
+
+This keeps the first usable system small while preserving the final architecture. The conceptual boundaries below are still valid, but they are not a mandate to create one class or service per bullet on day one.
+
 ---
 
 ## Architectural Principles
 
 - Keep profiling domain logic independent of Kubernetes, ClickHouse, HTTP, and UI frameworks.
-- Treat async-profiler profiles, JVM metrics, thread snapshots, and deadlock events as separate domain concepts.
+- Treat async-profiler profiles, thread snapshots, deadlock events, target status, and ingestion health as separate domain concepts.
 - Keep the collector node-local because JVM attach, `/proc` inspection, and container rootfs access are node-local operations.
 - Store query-ready structured data in ClickHouse; raw JFR, pprof, or thread dumps are optional short-lived debug artifacts only.
 - Prefer proven libraries where license and footprint are acceptable; self-own narrow components when external tools are too heavy or license-incompatible.
@@ -52,7 +65,7 @@ flowchart LR
   responder -->|temporary profiling controls| k8s
   collector -->|watch pod metadata| k8s
   collector -->|attach / profile / snapshot| java
-  collector -->|profiles, metrics, snapshots, status| backend
+  collector -->|profiles, snapshots, status, ingestion health| backend
   backend -->|insert / query| ch
   ui -->|query diagnosis data| backend
   responder --> ui
@@ -87,12 +100,13 @@ Non-responsibilities:
 
 Responsibilities:
 
-- Authenticate or authorize collector uploads if the deployment requires it.
+- Authenticate collector uploads.
+- Authorize UI queries by namespace and service scope.
 - Validate upload payloads.
 - Convert incoming data into storage records.
 - Write normalized records to ClickHouse.
-- Serve query APIs for service summary, time series, flamegraphs, thread snapshots, deadlocks, and target status.
-- Expose storage cleanup and ingestion health.
+- Serve query APIs for service summary, flamegraphs, thread snapshots, deadlocks, target status, and ingestion health.
+- Expose storage cleanup state through exporter metrics and bounded status APIs.
 
 Non-responsibilities:
 
@@ -107,7 +121,7 @@ Responsibilities:
 - Store seven-day-or-less profile and diagnosis data.
 - Support fast time-range queries by service, Pod, JVM, profile type, and stack.
 - Enforce retention with TTL.
-- Expose storage and cleanup health through system tables or backend health checks.
+- Expose storage and cleanup health through backend exporter metrics derived from ClickHouse system tables.
 
 Non-responsibilities:
 
@@ -119,7 +133,7 @@ Non-responsibilities:
 Responsibilities:
 
 - Provide a Java-service-centric workflow.
-- Show status, JVM trends, memory analysis, CPU busy analysis, lock/slow-thread analysis, deadlock details, and flamegraphs.
+- Show status, memory allocation profiles, CPU busy analysis, lock/slow-thread analysis, deadlock details, and flamegraphs.
 - Render flamegraphs from backend-provided stack-tree JSON.
 - Explain unsupported questions clearly, especially retained heap analysis.
 
@@ -128,6 +142,20 @@ Non-responsibilities:
 - No general dashboard builder.
 - No log viewer.
 - No tracing or topology UI.
+
+---
+
+## Metrics Boundary
+
+Metrics are exporter-only in this project.
+
+- Collector and backend expose Prometheus-compatible scrape endpoints.
+- Prometheus-series services own metric storage, dashboards, alerting, and retention.
+- This project does not store Prometheus-style time series in ClickHouse.
+- This project does not render JVM or service metric dashboards.
+- The UI may link to existing Prometheus dashboards with matching namespace, service, Pod, and time-range context.
+
+ClickHouse stores profile and diagnosis data only: profiles, stacks, thread snapshots, deadlock events, target status, ingestion batches, and optional short-lived artifact indexes.
 
 ---
 
@@ -187,18 +215,20 @@ Key fields:
 - line when available
 - frame kind: Java, native, JVM, kernel, unknown
 
-### JVM Metric Point
+### Exported Metric
 
-A time-series metric that helps interpret profiles.
+A Prometheus-scraped metric exposed by the collector or backend exporter.
 
-Initial metric groups:
+Metrics are not stored in ClickHouse by this system and are not rendered as dashboards in this UI. Prometheus-series services own metric storage, query, dashboards, and alerting.
 
-- heap usage
-- GC time
-- safepoint time
-- allocation rate
-- lock wait rate
-- profiling status
+Initial exporter metric groups:
+
+- target discovery and status counters
+- profiler active/disabled/failed status
+- attach and profiler failure counters
+- upload success, retry, and dropped-batch counters
+- backend ingestion success and failure counters
+- ClickHouse insert/query health counters and latency summaries
 
 ### Thread Snapshot
 
@@ -217,6 +247,18 @@ Key fields:
 - blocked lock
 - waited lock
 - deadlock cycle id when detected
+- per-thread CPU time when available
+- per-thread user CPU time when available
+- blocked time and waited time when contention monitoring is available and explicitly enabled
+
+V1 mechanism:
+
+- Use a small dynamically attached JVM helper that reads `java.lang.management.ThreadMXBean`.
+- Use `dumpAllThreads(lockedMonitors=true, lockedSynchronizers=true)` or equivalent bounded-depth APIs for structured stack and lock data.
+- Use `findDeadlockedThreads()` for monitor and ownable-synchronizer deadlock detection.
+- Use per-thread CPU time deltas for busy-thread ranking when supported by the JVM.
+- Do not parse text thread dumps as the primary source. Text dumps are a fallback/debug path only.
+- Do not enable thread contention monitoring by default. It can be enabled only for temporary profiling windows because some JVMs may treat it as expensive.
 
 ### Deadlock Event
 
@@ -230,6 +272,25 @@ Key fields:
 - involved threads
 - locks
 - blocking stack frames
+
+### Busy Thread Summary
+
+A derived result that ranks threads by observed CPU delta and stack evidence.
+
+Key fields:
+
+- target identity
+- time range
+- thread id
+- native thread id when available
+- thread name
+- CPU delta nanoseconds when available
+- RUNNABLE snapshot count
+- representative stack ids
+- related CPU profile stack ids when correlation is possible
+- confidence: exact thread CPU, sampled RUNNABLE state, or profile-only hotspot
+
+The UI must distinguish thread-level CPU evidence from profile-level stack hotspots. If async-profiler samples do not carry stable thread identity, the UI must not claim that a specific thread owns a CPU hotspot.
 
 ---
 
@@ -265,18 +326,21 @@ Outputs:
 - ClickHouse profile rows
 - ingestion health
 
-### JVM Metrics
+### Exporter Metrics
 
-Owns JVM trend data used by diagnosis pages.
+Owns metric exposure only.
 
 Inputs:
 
-- collector metric batches
+- collector status
+- profiler lifecycle events
+- upload and ingestion health
+- backend storage/query health
 
 Outputs:
 
-- time-series query results
-- profile-adjacent trend charts
+- Prometheus scrape endpoints
+- metric labels aligned with service, namespace, Pod, container, JVM, node, and status reason
 
 ### Thread Diagnostics
 
@@ -387,9 +451,36 @@ sequenceDiagram
 - AsyncProfilerController: deploys, starts, stops, and restarts async-profiler.
 - JfrProfileParser: converts async-profiler JFR output into normalized profiles.
 - ThreadSnapshotCollector: captures bounded thread snapshots and deadlock data.
-- JvmMetricCollector: collects JVM metrics needed by trend views.
+- MetricsExporter: exposes collector status, profiler status, upload health, and failure counters for Prometheus scraping.
 - UploadScheduler: batches and sends payloads to the backend.
 - LocalStatusStore: keeps short-lived state needed for retries and status reporting.
+
+These are conceptual components. Initial implementation may group them into fewer files or packages as long as the dependency direction and tests stay clear.
+
+### Collector Reference Strategy
+
+Use Coroot node-agent as the primary implementation reference for node-local Java profiling mechanics:
+
+- Kubernetes Pod discovery
+- local JVM process discovery
+- HotSpot detection
+- Attach API usage
+- async-profiler lifecycle
+- async-profiler conflict detection
+- bounded local buffering
+- upload behavior
+
+Use OpenTelemetry Collector only as an architectural reference for internal collector boundaries:
+
+- receiver-like discovery
+- processor-like normalization
+- exporter-like upload
+- batching and retry
+- queue limits and backpressure
+- health and metrics endpoints
+- pipeline lifecycle
+
+Do not depend on OpenTelemetry Collector as the v1 runtime collector framework. The product collects Java profiles and thread diagnostics, not generic OTLP telemetry, and a custom lightweight collector keeps permissions, footprint, and failure behavior easier to control.
 
 ### Collector Loop
 
@@ -398,7 +489,7 @@ sequenceDiagram
 3. Skip disabled, unsupported, conflicted, or warming targets.
 4. Ensure async-profiler state matches desired target state.
 5. Collect profile interval output.
-6. Collect JVM metrics and configured thread snapshots.
+6. Collect configured thread snapshots and update exporter metrics.
 7. Upload data with retry and bounded local buffering.
 8. Report status for every target.
 
@@ -409,12 +500,44 @@ sequenceDiagram
 - Explicit disable wins over broader enablement.
 - Collector skips JVMs with another async-profiler already loaded.
 - Upload retry buffer is bounded.
+- Upload retry buffer records dropped batch counts and oldest dropped timestamp when full.
 - Thread snapshot frequency is lower for continuous mode than temporary mode.
 - Raw artifacts are deleted after parsing unless short-lived debug capture is explicitly enabled.
 
 ---
 
 ## Backend Architecture
+
+### Backend Technology Selection
+
+The backend and collector runtime language is Go.
+
+Required stack:
+
+- Language/runtime: Go 1.23 or newer.
+- HTTP server: Go standard `net/http`.
+- Routing: standard `net/http` `ServeMux` first; use `go-chi/chi` only if route grouping, middleware composition, or path variables become awkward with the standard router.
+- ClickHouse driver: official `github.com/ClickHouse/clickhouse-go/v2`.
+- Kubernetes client: `k8s.io/client-go` for collector Pod metadata watches.
+- Metrics exporter: `github.com/prometheus/client_golang`.
+- JFR parsing: prefer `github.com/grafana/jfr-parser` after license and compatibility checks.
+- Configuration: typed Go config loaded from environment variables and optional config file; avoid dynamic runtime scripting.
+
+Do not use in v1:
+
+- OpenTelemetry Collector as the runtime collector framework.
+- Gin, Echo, Fiber, or other full web frameworks unless a concrete implementation blocker appears.
+- ORM layers for ClickHouse.
+- Generic `utils`, `helpers`, or `common` packages as dumping grounds.
+
+Backend and collector code must follow Clean Architecture boundaries:
+
+- `domain`: target identity, profile types, status reasons, stack model, retention rules, query result models.
+- `app`: use cases such as ingest profile batch, query flamegraph, query thread diagnosis, and report target status.
+- `ports`: repository, clock, auth, exporter, and backend-client interfaces.
+- `infrastructure`: ClickHouse, HTTP transport, Kubernetes, JVM attach, filesystem, async-profiler, JFR parser, and Prometheus adapters.
+
+The HTTP layer should remain thin: parse, authenticate, authorize, validate coarse request shape, call a use case, and map results to responses. It must not own ClickHouse SQL, JVM attach behavior, stack aggregation, or profiling policy.
 
 Use a layered shape:
 
@@ -442,15 +565,15 @@ It should not contain ClickHouse SQL, stack aggregation, or profiling rules.
 Initial use cases:
 
 - IngestProfileBatch
-- IngestJvmMetricBatch
 - IngestThreadSnapshotBatch
 - IngestTargetStatusBatch
+- IngestCollectorHeartbeat
 - QueryServiceSummary
-- QueryJvmTrends
 - QueryFlamegraph
 - QueryThreadDiagnosis
 - QueryDeadlockDetails
-- QueryStorageHealth
+- QueryIngestionHealth
+- QueryRetentionStatus
 
 ### Domain Services
 
@@ -463,17 +586,18 @@ Initial domain services:
 - BusyThreadAnalyzer: correlates RUNNABLE snapshots with CPU profile evidence.
 - DeadlockDetectorResultMapper: normalizes JVM deadlock output.
 - RetentionPolicy: defines maximum retention windows and raw artifact limits.
+- BatchIdempotencyPolicy: rejects invalid duplicate batches and safely accepts retry duplicates.
 
 ### Ports
 
 Use explicit interfaces for infrastructure:
 
 - ProfileRepository
-- JvmMetricRepository
 - ThreadSnapshotRepository
 - DeadlockEventRepository
 - TargetStatusRepository
-- StorageHealthRepository
+- RetentionStatusRepository
+- IngestionBatchRepository
 
 This prevents ClickHouse query details from leaking into controllers or UI code.
 
@@ -484,6 +608,24 @@ This prevents ClickHouse query details from leaking into controllers or UI code.
 This is a logical schema direction, not a final migration script.
 
 ### Tables
+
+#### ingestion_batches
+
+Purpose: make collector uploads idempotent and observable.
+
+Important dimensions:
+
+- batch id
+- collector id
+- target identity
+- batch type
+- first seen timestamp
+- last seen timestamp
+- status
+- row counts
+- error reason
+
+Retention: 7 days.
 
 #### profile_samples
 
@@ -506,6 +648,21 @@ Important dimensions:
 
 Retention: 7 days.
 
+#### profile_rollups
+
+Purpose: pre-aggregate common flamegraph and top-stack query ranges.
+
+Important dimensions:
+
+- time bucket
+- target identity
+- profile type
+- stack id
+- summed value
+- sample count
+
+Retention: 7 days.
+
 #### profile_stacks
 
 Purpose: map stack id to ordered frames.
@@ -521,20 +678,6 @@ Important dimensions:
 - frame kind
 
 Retention: 7 days or reference-compatible TTL with profile samples.
-
-#### jvm_metric_points
-
-Purpose: store trend data used by service and JVM views.
-
-Important dimensions:
-
-- timestamp
-- target identity
-- metric name
-- metric value
-- unit
-
-Retention: 7 days.
 
 #### thread_snapshots
 
@@ -607,10 +750,23 @@ Retention: disabled by default; 24 hours maximum when enabled.
 ### Partitioning and TTL Direction
 
 - Partition by day.
+- Do not partition by namespace, service, Pod, JVM, profile type, stack id, or tenant-like labels.
 - Order by target identity, profile type, timestamp, and stack id for profile samples.
 - Order by target identity, timestamp, and thread state for thread snapshots.
 - Use ClickHouse TTL for every table containing collected data.
-- Query storage health through table size, part count, oldest row timestamp, and TTL lag.
+- Export storage health metrics through the backend exporter using table size, part count, oldest row timestamp, and TTL lag.
+- Use stable stack hashing so repeated stacks reuse the same stack id within the retention window.
+- Enforce maximum frames per stack, maximum stacks per query, and maximum samples scanned per user-facing request.
+- Use materialized views or scheduled rollup jobs for common flamegraph ranges if raw sample queries exceed the query budget.
+
+### Query Budgets
+
+Initial user-facing budgets:
+
+- Flamegraph query: p95 under 3 seconds for one service, one profile type, one hour.
+- Thread diagnosis query: p95 under 2 seconds for one service and one hour.
+
+If a query exceeds its budget, the backend should return a bounded partial result with an explicit warning instead of letting the UI spin indefinitely.
 
 ---
 
@@ -620,15 +776,17 @@ Initial API capabilities:
 
 - List Java services with profiling status.
 - Get service summary for a time range.
-- Get JVM trend series.
 - Get flamegraph for profile type and target filter.
 - Get top stacks for profile type and target filter.
 - Get thread diagnosis summary.
 - Get deadlock details.
 - Get target status history.
-- Get storage cleanup health.
+- Get ingestion and target status.
+- Get retention status for collected profile and diagnosis data.
 
 API responses should return product-shaped data, not raw ClickHouse rows. For example, flamegraph responses should return a tree with values and frame labels, while thread diagnosis should return classified deadlock, slow-thread, and busy-thread sections.
+
+Every list or tree query must accept explicit limits. Every response that is truncated, sampled, partially failed, or missing a data source must say so in machine-readable metadata and user-facing copy.
 
 ---
 
@@ -636,22 +794,110 @@ API responses should return product-shaped data, not raw ClickHouse rows. For ex
 
 ### Pages
 
-- Service Overview: status, enabled targets, JVM trend summary, recent anomalies.
-- Memory: heap and GC charts, allocation rate, allocation flamegraphs, top allocators.
+- Service Overview: status, enabled targets, recent profile availability, and links to existing Prometheus dashboards when configured.
+- Memory: allocation flamegraphs and top allocators.
 - CPU / Busy Threads: CPU flamegraph, busy thread table, current stack samples.
 - Locks / Slow Threads: lock delay flamegraph, blocked/waiting thread table, blocking stacks.
 - Deadlocks: deadlock events, cycle details, involved locks and stack frames.
 - Target Status: per-Pod/JVM profiler and snapshot status with failure reasons.
-- Storage Health: retention, oldest row, table size, TTL lag.
 
 ### Component Boundaries
 
 - API client: owns HTTP calls and response decoding.
-- Feature modules: memory, CPU, locks, threads, status, storage health.
-- Chart components: trend chart, flamegraph, stack trace panel.
+- Feature modules: memory, CPU, locks, threads, status, and ingestion health.
+- Visualization components: flamegraph and stack trace panel.
 - View state: selectors for namespace, service, Pod, container, JVM, profile type, and time range.
 
 UI components should not know ClickHouse schema or collector internals.
+
+### Frontend Technology Selection
+
+Use a small SPA for v1. The selection is based on the product's actual UI needs, not on a preselected chart library.
+
+#### Frontend Requirements
+
+The UI must support:
+
+- Profile flamegraphs for a selected service, target, profile type, and time range.
+- Optional links to existing Prometheus dashboards for metric context, without rendering metric charts in this UI.
+- Flamegraph rendering with zoom, search, stack reversal, top table, and partial-result warnings.
+- Thread diagnosis tables for deadlocks, slow threads, busy threads, and stack trace panels.
+- URL-shareable filters: namespace, service, Pod, container, JVM, profile type, and time range.
+- Clear loading, empty, error, partial-result, truncated-result, and unauthorized states.
+- Commercial-friendly distribution with no AGPL or source-available runtime dependency.
+- Static asset packaging inside Kubernetes.
+
+#### Candidate Evaluation
+
+```text
+Need                         Better fit                          Not default
+---------------------------  ----------------------------------  ------------------------------
+SPA shell                    React + TypeScript + Vite           Next.js, SSR frameworks
+URL state                    React Router search params          Custom global router state
+Backend server state         TanStack Query                      Hand-written fetch cache
+Flamegraph                   Self-owned SVG/Canvas renderer      Generic charting libraries
+Dialogs/tabs/popovers        Radix UI primitives                 Large admin templates
+Tables                       Native table first                  Heavy data-grid dependency
+Local UI state               React local state                   Redux
+Tests                        Vitest + Playwright                 Browser-only manual QA
+```
+
+#### Recommended V1 Stack
+
+- Language: TypeScript.
+- Runtime UI: React.
+- Build tool: Vite.
+- Routing: React Router, using URL search params as the source of truth for namespace, service, Pod, JVM, profile type, and time range.
+- Server state: TanStack Query for backend API fetching, caching, retries, request cancellation, and loading/error states.
+- Local UI state: React local state first. Do not add Redux. Add Zustand only if cross-page client state becomes real.
+- Flamegraph: self-owned SVG or Canvas renderer over backend-provided flamegraph-tree JSON.
+- Tables and primitives: native semantic HTML first; Radix UI primitives for accessible dialogs, popovers, tabs, menus, and tooltips.
+- Styling: plain CSS or CSS Modules with CSS variables. Keep the visual system self-owned.
+- Testing: Vitest for unit/component tests and Playwright for browser flows.
+- Packaging: static assets served by the backend or a small nginx container.
+
+#### Metrics Dashboard Decision
+
+Do not add a time-series chart library in v1.
+
+Reason:
+
+- JVM and service metrics already have dashboards in the Prometheus ecosystem.
+- This product owns profiling and thread diagnosis, not metric storage or metric visualization.
+- Collector and backend metrics are exposed through exporter endpoints and observed by Prometheus-series services.
+- The UI may provide links into existing dashboards, but must not duplicate those charts.
+
+If the scope changes later and this product must render metric charts itself, evaluate a chart library at that time from the new requirements. Do not carry a time-series charting package as a v1 runtime dependency.
+
+#### Flamegraph Decision
+
+Do not use generic charting libraries for flamegraphs.
+
+The flamegraph renderer should be self-owned because the required behavior is profiling-specific:
+
+- stack-tree layout
+- frame search
+- zoom into frame
+- stack reversal
+- compare/diff coloring later
+- partial-result and truncated-result warnings
+- profile-type-specific units and colors
+
+Existing flamegraph packages can be studied or used in a prototype, but v1 should not bind the product to a third-party profile viewer's data model.
+
+#### Do Not Use In V1
+
+- Next.js or other SSR framework: the product is an authenticated internal console, not SEO content.
+- Grafana panels or Pyroscope UI embedding: this violates the self-owned viewing-layer direction.
+- Direct ClickHouse access from the browser: all queries go through the backend authorization and query-budget layer.
+- Redux: there is no complex client-side domain state yet.
+- Large admin templates: they add surface area before the UI proves its shape.
+
+#### License Posture
+
+- Prefer MIT, ISC, BSD, or Apache-2.0 dependencies.
+- Reject AGPL or source-available-only UI dependencies for required runtime paths.
+- Generate and publish bundled frontend dependency notices as part of the release artifact.
 
 ---
 
@@ -696,6 +942,10 @@ Backend health:
 - oldest retained row per table
 - TTL lag per table
 - table size and part count
+- upload batches dropped by collectors
+- duplicate upload batches accepted or rejected
+
+These are exporter metrics only. Prometheus-series services own retention, dashboards, and alerting for them.
 
 ### Failure Handling
 
@@ -705,6 +955,35 @@ Backend health:
 - Backend unavailable: buffer locally within a fixed size and drop oldest data when full.
 - ClickHouse insert failure: reject batch with retryable status when safe.
 - Query timeout: return partial availability metadata rather than hanging UI requests.
+- Busy-thread correlation unavailable: show CPU flamegraph and RUNNABLE snapshot evidence separately, with confidence marked as profile-only or snapshot-only.
+
+### Failure Mode Matrix
+
+| Component | Failure mode | Detection | Required behavior |
+|-----------|--------------|-----------|-------------------|
+| Collector discovery | Pod metadata is stale or container pid mapping fails | target status reason, discovery error counter | mark target unknown or skipped; do not attach |
+| Collector attach | JVM attach socket unavailable, permission denied, or process exits mid-attach | attach failure counter, target status reason | retry with backoff; do not loop aggressively |
+| AsyncProfiler lifecycle | profiler start succeeds but stop or JFR finalization fails | profiler command failure counter, missing interval marker | report partial interval; restart profiler only after cooldown |
+| AsyncProfiler conflict | another profiler is already loaded | maps scan result, conflict status | skip target until process identity changes or conflict disappears |
+| JFR parsing | parser rejects incomplete or incompatible JFR | parse failure counter, batch error reason | discard artifact, mark interval failed, keep target eligible |
+| Thread snapshots | helper attach works but `ThreadMXBean` call is slow or unavailable | snapshot timeout, unsupported capability flag | skip snapshot path; keep async-profiler profiles running |
+| Local buffering | backend unavailable and buffer fills | buffer byte usage, dropped batch counter | drop oldest data; expose oldest dropped timestamp |
+| Upload | backend rejects duplicate or malformed batch | upload response status, ingestion batch status | retry only retryable errors; do not retry invalid batches |
+| Backend ingestion | ClickHouse insert timeout or schema validation failure | ingestion failure counter, batch status | reject retryable inserts safely; preserve idempotency |
+| Rollups | materialized view or rollup job lags raw samples | rollup freshness metric | query raw data within scan budget or return partial result |
+| Query API | flamegraph or thread query exceeds budget | timeout, scan limit, node limit metadata | return partial response with explicit reason |
+| UI rendering | flamegraph tree too large for browser | response node count, truncated flag | render bounded tree and show omitted-node warning |
+| Retention | TTL does not remove old rows | oldest retained row metric, TTL lag metric | alert through Prometheus; keep UI status factual |
+| Authorization | user queries namespace without access | authz decision log, 403 response | return no stack data |
+
+### Degraded Operation Rules
+
+- A failure in thread snapshots must not stop async-profiler profile collection.
+- A failure in one profile type must not hide other available profile types.
+- A failed target must keep its last known reason until the process identity changes or a later successful collection clears it.
+- Collector retry loops must use bounded exponential backoff with jitter.
+- Backend must distinguish invalid data, duplicate data, retryable storage failure, and authorization failure.
+- UI must distinguish no target, disabled target, unsupported JVM, collection failure, ingestion failure, query timeout, and retention-expired data.
 
 ---
 
@@ -725,6 +1004,14 @@ Security boundaries:
 - Raw artifacts are disabled by default.
 - Upload payloads should not include heap dumps or arbitrary application memory.
 - Backend should treat stack traces as sensitive production data and avoid exposing cross-namespace data without authorization.
+
+V1 authentication and authorization baseline:
+
+- Collector-to-backend upload authentication is required.
+- A scoped shared token is the minimum acceptable deployment mode.
+- mTLS is preferred when the Kubernetes platform already provides certificate automation.
+- UI queries must be scoped by namespace/service authorization before returning stack traces.
+- All upload and query APIs must reject unauthenticated requests by default.
 
 ---
 
@@ -771,6 +1058,12 @@ Decision: use async-profiler for sampled CPU, allocation, and lock profiles; use
 
 Reason: profiles answer cost over time, while thread snapshots answer current blocking relationships and deadlock cycles. Neither source alone answers all required questions.
 
+### ADR-003A: Use ThreadMXBean Helper for V1 Snapshots
+
+Decision: capture v1 thread snapshots through a small dynamically attached JVM helper that calls `ThreadMXBean`.
+
+Reason: `ThreadMXBean` provides structured thread info, stack traces, lock owner data, monitor/synchronizer deadlock detection, and per-thread CPU time when supported. This is safer than building the product around text thread-dump parsing.
+
 ### ADR-004: Self-Owned Viewing Layer
 
 Decision: build a narrow Java profiling UI and self-owned flamegraph renderer unless a small permissively licensed dependency passes review.
@@ -783,19 +1076,60 @@ Decision: no collected data type may be retained for more than 7 days.
 
 Reason: the ClickHouse deployment is single-node and shared with logs, so storage growth must be bounded from v1.
 
+### ADR-006: Require Auth for Production Uploads and Queries
+
+Decision: collector uploads and UI queries require authentication in v1.
+
+Reason: stack traces expose production code structure and sometimes business-sensitive method names. Treat them as sensitive observability data, not public metrics.
+
+### ADR-007: Ship Deployable Artifacts from the Start
+
+Decision: v1 must define container images and Kubernetes install artifacts before implementation is considered complete.
+
+Reason: this product is only useful inside Kubernetes. Code without a collector image, backend image, UI image, and install manifests is not shippable.
+
+### ADR-008: Reference Coroot and OpenTelemetry Collector Differently
+
+Decision: use Coroot node-agent as the primary implementation reference for Java profiling mechanics, and use OpenTelemetry Collector only as a design reference for internal pipeline boundaries. Do not build v1 on OpenTelemetry Collector as the runtime framework.
+
+Reason: Coroot's collector problem is closest to this product: node-local Java discovery, JVM attach, async-profiler lifecycle, and bounded upload from a DaemonSet. OpenTelemetry Collector is useful for receiver/processor/exporter separation, batching, retry, queues, and health semantics, but this product collects Java profiles and thread diagnostics rather than generic OTLP telemetry. A custom collector keeps the v1 footprint, permissions, and failure behavior easier to control.
+
+### ADR-009: Use Go for Backend and Collector
+
+Decision: implement both backend and collector in Go 1.23 or newer, using standard `net/http` first, official or widely used infrastructure libraries, and Clean Architecture package boundaries.
+
+Reason: the collector and backend need low-footprint binaries, Kubernetes client integration, process/filesystem control, HTTP APIs, Prometheus exporters, ClickHouse access, and JFR parsing. Go fits those operational needs and aligns with Coroot node-agent and OpenTelemetry Collector reference architectures without requiring either project as a runtime dependency.
+
 ---
 
 ## Implementation Sequence
 
-1. Define collector/backend payload contracts and ClickHouse logical schema.
-2. Build backend ingestion for target status, JVM metrics, and profile samples.
-3. Build ClickHouse TTL, storage health checks, and query repositories.
-4. Build collector target discovery and enablement policy without profiling.
-5. Add async-profiler control and JFR parsing.
-6. Add thread snapshot capture and deadlock event normalization.
-7. Add backend query APIs for trends, flamegraphs, thread diagnosis, and status.
-8. Build the minimal service-centric Web UI.
-9. Add production safeguards, retry limits, and operational dashboards.
+1. Define collector/backend payload contracts, auth model, batch idempotency, and ClickHouse logical schema.
+2. Build backend ingestion for target status, profile samples, and ingestion batches; expose backend exporter metrics for those paths.
+3. Build ClickHouse TTL, stack hashing, query limits, rollup path, and query repositories.
+4. Build collector target discovery, enablement policy, status reporting, and bounded upload buffering without profiling.
+5. Add async-profiler control, JFR parsing, and profile upload.
+6. Add query APIs for CPU/allocation/lock flamegraphs, top stacks, and target status.
+7. Add ThreadMXBean helper snapshots, deadlock event normalization, slow-thread summaries, and busy-thread CPU delta summaries.
+8. Build minimal service-centric Web UI for status, memory allocation profiles, CPU/busy threads, locks/slow threads, deadlocks, and ingestion health.
+9. Add container image builds, multi-arch packaging, Kubernetes manifests or Helm chart, and CI publish flow.
+10. Add production safeguards, retry limits, query budgets, and exporter metrics for operational dashboards outside this product.
+
+### Failure Mode Test Requirements
+
+Before production rollout, tests must cover:
+
+- attach permission denied
+- target JVM exits during attach
+- async-profiler conflict
+- incomplete JFR file
+- JFR parser failure
+- backend unavailable with local buffer overflow
+- duplicate upload batch
+- ClickHouse insert timeout
+- query timeout with partial response
+- unauthorized UI query
+- TTL and retention status reporting
 
 ---
 
@@ -807,23 +1141,78 @@ Reason: the ClickHouse deployment is single-node and shared with logs, so storag
 - Flamegraph query latency can become high without pre-aggregation or careful ordering.
 - Stack traces may expose sensitive package names or business logic.
 - async-profiler behavior can differ across JDK versions and container configurations.
+- Per-thread CPU time or contention monitoring may be unavailable or expensive on some JVMs.
+- Query rollups may drift from raw data if batch retries are not idempotent.
+- Collector upload synchronization can create periodic backend and ClickHouse write spikes.
+- Flamegraph payloads can become too large for browser rendering even when backend queries finish.
+- Rollup lag can make recent profiles look missing unless surfaced explicitly.
 
 Mitigations:
 
 - Keep profiling opt-in and temporary profiling bounded.
 - Record unsupported and failed states explicitly.
-- Use short TTLs and storage health from the start.
+- Use short TTLs and expose storage health through exporter metrics from the start.
 - Normalize stacks and avoid storing raw artifacts by default.
 - Add query limits and timeouts to every user-facing query.
+- Mark busy-thread and slow-thread confidence based on the available data source.
+- Make ingestion batches idempotent before adding collector retries.
+- Add jitter to collector upload intervals and expose buffer/drop metrics.
+- Bound flamegraph response node counts and show omitted-node warnings.
+- Export rollup freshness and fall back to raw data only within explicit scan limits.
 
 ---
 
 ## Planning Follow-Ups
 
 - Define exact Kubernetes annotation names and precedence rules.
-- Choose thread snapshot implementation path.
 - Define concrete ClickHouse DDL and indexes/order keys.
 - Define upload payload schemas and API endpoints.
 - Define flamegraph JSON format.
 - Define UI wireframes for memory, CPU, lock, deadlock, and status views.
 - Define collector Kubernetes permissions and security posture.
+- Define exact ThreadMXBean helper packaging and attach lifecycle.
+- Define container image build matrix, Helm chart or raw manifest ownership, and CI publish target.
+
+---
+
+## Research Evidence Policy
+
+Architecture decisions in this document must be backed by English-language international sources by default.
+
+Allowed sources:
+
+- official documentation
+- official GitHub repositories
+- standards documents
+- release notes
+- license files
+- reputable international engineering writeups
+
+Disallowed as default evidence:
+
+- Chinese-language community sources
+- Chinese blogs and forums
+- Zhihu
+- Juejin
+- CSDN
+- SegmentFault
+- WeChat articles
+- Gitee mirrors
+- translated summaries
+
+Chinese-community context may be collected only when explicitly requested, and it must be separated from primary evidence.
+
+---
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | - | - |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | - | - |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | addressed_in_doc | 9 findings incorporated, implementation verification still required |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | - | UI exists in scope, design review not run |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | - | - |
+
+- **RESOLVED IN DOC:** v1 delivery slice, ThreadMXBean helper path, busy-thread confidence model, ClickHouse aggregation controls, auth baseline, and distribution pipeline requirement.
+- **VERDICT:** Architecture is ready for implementation planning. Implementation is not complete until tests prove the failure modes and query budgets described above.
