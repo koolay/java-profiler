@@ -1,0 +1,71 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.iml
+*.suo
+*.user
+*.userossc
+*.sln.docstates
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Go
+bin/
+*.test
+coverage.out
+coverage*.txt
+*.cover
+
+# Java / JVM
+target/
+build/
+out/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.jfr
+hs_err_pid*
+replay_pid*
+
+# Maven / Gradle
+.gradle/
+
+# Kubernetes / local cluster tooling
+.kube/
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+.kind/
+.minikube/
+.skaffold/
+.tilt-settings/
+.devspace/
+
+# Terraform / infra tooling
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Misc generated artifacts
+dist/
+tmp/
+temp/
+cache/
