@@ -1,4 +1,4 @@
-# Claude Instructions for `ebpf-java`
+# Claude Instructions for `java-profiler`
 
 ## What this repository is
 
@@ -6,7 +6,7 @@ This repository is a documentation-first workspace for a Java performance profil
 
 Treat the requirements document as the source of truth:
 
-- `docs/brainstorms/java-k8s-performance-profiling-requirements.md`
+- `docs/brainstorms/java-profiler-requirements.md`
 
 Use the research note for implementation context:
 
@@ -45,5 +45,5 @@ Use the research note for implementation context:
 ## Useful Shortcuts
 
 - Read `README.md` first for the project summary.
-- Read `docs/brainstorms/java-k8s-performance-profiling-requirements.md` before making product decisions.
+- Read `docs/brainstorms/java-profiler-requirements.md` before making product decisions.
 - Read `docs/research/coroot-node-agent-java-agent.md` when reasoning about Coroot or async-profiler behavior.

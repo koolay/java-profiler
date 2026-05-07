@@ -3,10 +3,10 @@ title: "feat: Build Java Kubernetes profiling system"
 type: feat
 status: active
 date: 2026-05-08
-origin: docs/brainstorms/java-k8s-performance-profiling-requirements.md
+origin: docs/brainstorms/java-profiler-requirements.md
 ---
 
-# feat: Build Java Kubernetes profiling system
+# feat: Build Java Profiler system
 
 ## Summary
 
@@ -37,7 +37,7 @@ The requirements define a production-safe Java performance diagnosis system for 
 
 **Origin flows:** F1 whitelist continuous profiling, F2 temporary incident profiling, F3 profile investigation, F4 profiling shutdown, F5 thread diagnosis snapshot, F6 memory pressure investigation.
 
-**Origin acceptance examples:** AE1-AE17 from `docs/brainstorms/java-k8s-performance-profiling-requirements.md` are carried into implementation unit test scenarios where they affect behavior.
+**Origin acceptance examples:** AE1-AE17 from `docs/brainstorms/java-profiler-requirements.md` are carried into implementation unit test scenarios where they affect behavior.
 
 ---
 
@@ -57,7 +57,6 @@ The requirements define a production-safe Java performance diagnosis system for 
 ### Deferred to Follow-Up Work
 
 - Compare/diff flamegraph coloring beyond single-profile visualization: future UI iteration after v1 data path is stable.
-- Optional raw artifact replay tooling: separate debug feature after normalized profile ingestion is proven.
 - OpenJ9 or non-HotSpot support: separate compatibility track.
 - Retained-heap or heap-dump analysis: separate product scope requiring new requirements.
 
@@ -67,8 +66,8 @@ The requirements define a production-safe Java performance diagnosis system for 
 
 ### Relevant Code and Patterns
 
-- `docs/brainstorms/java-k8s-performance-profiling-requirements.md` is the product source of truth.
-- `docs/architecture/java-k8s-performance-profiling-architecture.md` defines the implementation architecture, failure modes, ADRs, storage model, frontend selection, and metrics boundary.
+- `docs/brainstorms/java-profiler-requirements.md` is the product source of truth.
+- `docs/architecture/java-profiler-architecture.md` defines the implementation architecture, failure modes, ADRs, storage model, frontend selection, and metrics boundary.
 - `docs/research/coroot-node-agent-java-agent.md` captures Coroot research, including the distinction between Coroot's TLS Java agent and its async-profiler path.
 - `AGENTS.md` requires English-language international research sources by default and preserves the metrics exporter-only boundary.
 - The repository is documentation-first; there is no existing production code, package layout, or test framework to extend.
@@ -115,7 +114,7 @@ The requirements define a production-safe Java performance diagnosis system for 
 - Metrics storage: metrics are exporter-only and owned by Prometheus-series services.
 - Thread snapshot source: use a small ThreadMXBean helper rather than text thread dumps as the primary source.
 - Frontend stack: use React + TypeScript + Vite and a self-owned flamegraph renderer.
-- Raw artifacts: disabled by default; optional artifact index has a maximum 24-hour debug retention.
+- Raw artifacts: disabled by default; optional artifact index has a maximum 24-hour debug retention and no replay surface.
 
 ### Deferred to Implementation
 
@@ -222,7 +221,7 @@ sequenceDiagram
 
 **Goal:** Establish the repo's implementation skeleton, shared data contracts, configuration vocabulary, and test harness conventions.
 
-**Requirements:** R1, R2, R5, R6, R8, R9, R10; origin F1-F4; AE1, AE3, AE14, AE17.
+**Requirements:** R1, R2, R5, R6, R8, R9, R10; origin F1-F4; AE1, AE3.
 
 **Dependencies:** None.
 
@@ -241,8 +240,10 @@ sequenceDiagram
 
 **Approach:**
 - Pin Go 1.23 or newer in `go.mod`.
+- Use `ghcr.io/koolay/library/golang:1.26.0` as the base image for the collector and backend Dockerfiles so the Go toolchain is pinned consistently across local builds and CI.
 - Add only the baseline dependencies needed by the first implementation units: ClickHouse driver, Kubernetes client, Prometheus client, and JFR parser after license review.
 - Define the canonical target identity, profile type catalog, enablement modes, batch metadata, status reasons, and retention constants.
+- Make JVM start time part of the canonical target identity so restarted processes do not collide when PID values are reused.
 - Define the Kubernetes annotation or label vocabulary once and reference it from collector policy, docs, and deployment artifacts.
 - Keep configuration defaults aligned with requirements: profiling disabled by default, temporary profiling bounded, explicit disable wins, metrics exporter-only.
 - Establish package boundaries for collector, backend, contracts, Java helper, UI, ClickHouse DDL, and deployment assets.
@@ -251,13 +252,14 @@ sequenceDiagram
 **Execution note:** Start with contract and policy tests before adding collector/backend runtime behavior.
 
 **Patterns to follow:**
-- `docs/brainstorms/java-k8s-performance-profiling-requirements.md`
-- `docs/architecture/java-k8s-performance-profiling-architecture.md`
+- `docs/brainstorms/java-profiler-requirements.md`
+- `docs/architecture/java-profiler-architecture.md`
 - `AGENTS.md`
 
 **Test scenarios:**
 - Covers AE1. Happy path: workload without profiling metadata is evaluated -> target desired state is disabled.
 - Covers AE3. Happy path: temporary profiling metadata with an expired duration is evaluated -> desired state is disabled.
+- Contract scenario: a restarted JVM with the same PID but a different start time resolves to a distinct target identity.
 - Edge case: explicit disable and continuous enablement are both present -> explicit disable wins.
 - Edge case: temporary and continuous enablement are both present -> active temporary mode wins until expiry.
 - Error path: invalid duration metadata is present -> target status includes a validation failure and no profiling is started.
@@ -329,7 +331,7 @@ sequenceDiagram
 - Create: `backend/internal/httpapi/auth.go`
 - Create: `backend/internal/httpapi/ingest_handlers.go`
 - Create: `backend/internal/app/ingest_profile_batch.go`
-- Create: `backend/internal/app/ingest_thread_snapshot_batch.go`
+- Modify: `backend/internal/app/ingest_thread_snapshot_batch.go`
 - Create: `backend/internal/app/ingest_target_status_batch.go`
 - Create: `backend/internal/app/ingest_collector_heartbeat.go`
 - Create: `backend/internal/metrics/exporter.go`
@@ -342,6 +344,8 @@ sequenceDiagram
 - Use `net/http` as the default HTTP server surface. Keep handlers thin and route all business behavior into `backend/internal/app`.
 - Use explicit middleware for authentication, request size limits, and request timeouts.
 - Implement scoped collector authentication before any upload endpoint accepts stack data.
+- Issue collector credentials as short-lived Kubernetes secrets or projected service-account tokens, define rotation/expiry in chart values, and fail closed when credentials are missing or expired.
+- Require TLS in transit for collector/backend and UI/backend traffic; prefer mTLS where certificate automation is available and document trust-root rotation.
 - Validate payload shape and target identity before writing to ClickHouse.
 - Use `ingestion_batches` to distinguish duplicate, malformed, retryable, and accepted uploads.
 - Expose ingestion, duplicate, storage failure, ClickHouse latency, TTL lag, and table-size metrics through exporter endpoints.
@@ -354,6 +358,7 @@ sequenceDiagram
 
 **Test scenarios:**
 - Covers AE14. Error path: unauthenticated collector upload -> backend rejects request and writes no stack data.
+- Error path: missing or expired collector credentials -> backend rejects request before any stack data is accepted.
 - Covers AE5. Happy path: valid profile batch upload -> profile rows, stack rows, target status, and ingestion batch status are persisted.
 - Covers AE15. Error path: malformed non-retryable batch -> backend records rejected batch status and returns no retry instruction.
 - Error path: retryable ClickHouse failure -> backend preserves idempotency and indicates the collector may retry.
@@ -362,6 +367,7 @@ sequenceDiagram
 
 **Verification:**
 - Backend rejects unauthenticated upload and query paths by default.
+- Backend enforces encrypted transport and credential expiry for ingest/query paths.
 - Ingestion tests prove duplicate uploads cannot inflate stored profile values.
 
 ---
@@ -441,10 +447,11 @@ sequenceDiagram
 - Modify: `contracts/profiling/payloads.md`
 
 **Approach:**
-- Package async-profiler assets for supported Linux architectures and deploy them into eligible target container filesystems.
+- Package async-profiler assets for supported Linux architectures and stage them through an init-container-populated writable volume or equivalent ephemeral mount instead of assuming the target root filesystem is writable.
 - Attach to HotSpot JVMs, start a bounded async-profiler session, stop intervals to finalize JFR, parse JFR, upload normalized samples, and restart with minimal gap.
 - Parse or transform async-profiler JFR events into the five profile types required by the contract.
 - Prefer `github.com/grafana/jfr-parser` as the initial parser dependency after license review; keep parser usage behind `collector/internal/jfr` so it can be replaced if compatibility fails.
+- Verify async-profiler and helper artifacts by pinned digest or checksum during build and fail the pipeline if the provenance check does not match.
 - Preserve target status when attach, start, stop, finalization, parse, or upload fails.
 - Delete raw JFR artifacts after parsing unless debug artifact capture is explicitly enabled.
 
@@ -459,6 +466,7 @@ sequenceDiagram
 - Covers AE4. Error path: async-profiler conflict detected before start -> collector skips and reports conflict.
 - Covers AE5. Happy path: parsed profile upload -> backend can later render flamegraph without JVM access.
 - Covers AE6 and AE8. Happy path: allocation profile samples for selected Pod/time range -> allocation flamegraph data exists for UI drilldown.
+- Deployment path: async-profiler assets are staged through a writable mount on a read-only target filesystem and attach still succeeds when the security context allows it.
 - Error path: JVM exits during attach -> target status records attach failure and retry uses backoff.
 - Error path: stop succeeds but JFR file is incomplete or parser rejects it -> interval is marked failed, artifact is discarded, target remains eligible.
 - Edge case: one profile type has no samples in an interval -> available profile types still upload and missing type is represented as unavailable, not as total target failure.
@@ -496,6 +504,7 @@ sequenceDiagram
 
 **Approach:**
 - Build a minimal Java helper that uses `ThreadMXBean` for thread info, lock ownership, deadlock detection, and per-thread CPU data when available.
+- Package the Java helper as a verified artifact and stage it through the same mounted asset path model used for async-profiler.
 - Keep contention monitoring disabled by default; allow it only in temporary profiling windows when explicitly configured.
 - Bound snapshot depth, frequency, duration, payload size, and helper runtime.
 - Model confidence explicitly: exact thread CPU, sampled RUNNABLE evidence, or profile-only hotspot.
@@ -549,6 +558,7 @@ sequenceDiagram
 - Build flamegraph trees from stack rollups or bounded raw scans.
 - Include machine-readable metadata for timeout, scan limit, stack limit, node limit, rollup lag, missing data source, and truncation.
 - Enforce namespace/service authorization before returning stack traces.
+- Require TLS in transit for all query endpoints and reuse the same certificate trust model as ingestion.
 - Keep Prometheus dashboard integration as optional links or context only; do not render or query metrics dashboards from this API.
 
 **Execution note:** Start with failing tests for unauthorized query and partial-result metadata.
@@ -605,6 +615,8 @@ sequenceDiagram
 - Use React + TypeScript + Vite with URL search params as the source of truth for namespace, service, Pod, container, JVM, profile type, and time range.
 - Use backend API responses as typed server state and keep local UI state minimal.
 - Build a self-owned SVG or Canvas flamegraph renderer over backend-provided tree JSON.
+- Define the flamegraph interaction contract for v1: search, zoom, reset, stack selection, top-table drilldown, and partial-result warning behavior.
+- Define responsive and accessibility behavior for the UI: narrow-screen layout changes, keyboard navigation, focus management, and minimum screen-reader labels for tables and flamegraphs.
 - Display partial/truncated result warnings prominently and preserve machine-readable reason details for support.
 - Show unsupported-question copy for retained heap and historical execution gaps.
 - Provide optional external Prometheus dashboard links using configured templates; do not render metric charts.
@@ -625,6 +637,7 @@ sequenceDiagram
 - Covers AE14. Error path: unauthorized response -> UI shows unauthorized state and no stack trace.
 - Edge case: flamegraph is truncated -> UI shows omitted-node warning and does not imply complete evidence.
 - Error path: backend returns query timeout partial result -> UI renders bounded result with explicit warning.
+- Accessibility scenario: keyboard-only navigation can search and drill into a flamegraph on the narrow layout without losing focus.
 
 **Verification:**
 - UI stays service-centric and does not become a general observability dashboard.
@@ -636,7 +649,7 @@ sequenceDiagram
 
 **Goal:** Make the system installable in Kubernetes with collector/backend/UI images, Helm or manifest deployment, exporter metrics, security configuration, and release documentation.
 
-**Requirements:** R1, R2, R6, R8, R9, R10; origin R1-R7, R27-R29, R37-R43; AE1-AE4, AE13-AE17.
+**Requirements:** R1, R2, R6, R8, R9, R10; origin R1-R7, R27-R29, R37-R43; AE1-AE3, AE13-AE17.
 
 **Dependencies:** U1-U8.
 
@@ -661,6 +674,9 @@ sequenceDiagram
 **Approach:**
 - Package collector, backend, UI, async-profiler assets, and Java helper artifacts into deployable images.
 - Define minimum RBAC and security context needed for node-local process visibility and JVM attach.
+- Pin async-profiler and Java-helper image contents by digest, verify checksums in CI, and document the source of truth for each executable artifact.
+- Carry the same credential and certificate provisioning needed for TLS-enabled collector/backend and UI/backend traffic into the deployment chart and manifests.
+- Stage runtime assets using the writable-volume model established in U5 so hardened pods and read-only root filesystems remain supported.
 - Keep profiling opt-in by default in chart values.
 - Expose collector/backend metrics endpoints for Prometheus scraping.
 - Add CI validation for Go tests, Java helper tests, UI tests, DDL lint/validation, and Helm/template checks.
@@ -679,6 +695,8 @@ sequenceDiagram
 - Covers AE14. Error path: backend upload/query without credentials is rejected in deployed configuration.
 - Covers AE15. Error path: backend outage with collector buffer overflow exposes dropped-batch metrics.
 - Covers AE17. Delivery: collector, backend, UI images and Kubernetes install artifacts exist and are referenced by docs.
+- Security scenario: deployed manifests include the TLS credential material and artifact digests required by the runtime policy.
+- Security scenario: CI fails if async-profiler or Java-helper digests/checksums do not match the pinned source of truth.
 - Security scenario: RBAC grants only the permissions needed for Pod metadata and node-local collection behavior.
 
 **Verification:**
@@ -774,8 +792,8 @@ sequenceDiagram
 
 ## Sources & References
 
-- Origin document: `docs/brainstorms/java-k8s-performance-profiling-requirements.md`
-- Architecture document: `docs/architecture/java-k8s-performance-profiling-architecture.md`
+- Origin document: `docs/brainstorms/java-profiler-requirements.md`
+- Architecture document: `docs/architecture/java-profiler-architecture.md`
 - Coroot research: `docs/research/coroot-node-agent-java-agent.md`
 - Repository guidance: `AGENTS.md`
 - Kubernetes DaemonSet documentation: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/

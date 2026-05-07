@@ -1,4 +1,4 @@
-# ebpf-java
+# java-profiler
 
 This repository currently captures the product and technical direction for a focused Java performance profiling system on Kubernetes.
 
@@ -16,10 +16,10 @@ There is no production code in the repository yet. The source of truth is the do
 
 ## Core Documents
 
-- `docs/brainstorms/java-k8s-performance-profiling-requirements.md`
+- `docs/brainstorms/java-profiler-requirements.md`
   - primary requirements draft
   - problem frame, actors, flows, acceptance examples, scope boundaries
-- `docs/architecture/java-k8s-performance-profiling-architecture.md`
+- `docs/architecture/java-profiler-architecture.md`
   - software architecture
   - collector, backend, ClickHouse, query, and UI boundaries
 - `docs/research/coroot-node-agent-java-agent.md`
@@ -37,6 +37,7 @@ The current design assumes:
 - ClickHouse as the primary query and storage layer
 - metrics exposed through collector/backend exporters only, with Prometheus-series services owning metric storage and dashboards
 - a lightweight, self-owned UI rather than a broad observability workspace
+- collector and backend Go container images built from `ghcr.io/koolay/library/golang:1.26.0`
 
 ## Explicit Scope Boundaries
 

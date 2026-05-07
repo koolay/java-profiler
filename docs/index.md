@@ -8,15 +8,15 @@
 
 ### architecture/
 
-- **[java-k8s-performance-profiling-architecture.md](./architecture/java-k8s-performance-profiling-architecture.md)** - Java profiling system architecture
+- **[java-profiler-architecture.md](./architecture/java-profiler-architecture.md)** - Java profiling system architecture
 
 ### brainstorms/
 
-- **[java-k8s-performance-profiling-requirements.md](./brainstorms/java-k8s-performance-profiling-requirements.md)** - Java profiling product requirements
+- **[java-profiler-requirements.md](./brainstorms/java-profiler-requirements.md)** - Java profiling product requirements
 
 ### plans/
 
-- **[2026-05-08-001-feat-java-k8s-profiling-implementation-plan.md](./plans/2026-05-08-001-feat-java-k8s-profiling-implementation-plan.md)** - Java profiling implementation plan
+- **[2026-05-08-001-feat-java-profiler-implementation-plan.md](./plans/2026-05-08-001-feat-java-profiler-implementation-plan.md)** - Java profiling implementation plan
 
 ### research/
 

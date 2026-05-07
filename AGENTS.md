@@ -1,4 +1,4 @@
-# AGENTS.md for `ebpf-java`
+# AGENTS.md for `java-profiler`
 
 ## Purpose
 
@@ -6,7 +6,7 @@ This repository documents the intended design of a Java performance profiling sy
 
 ## Source of Truth
 
-1. `docs/brainstorms/java-k8s-performance-profiling-requirements.md`
+1. `docs/brainstorms/java-profiler-requirements.md`
 2. `docs/research/coroot-node-agent-java-agent.md`
 3. `README.md`
 

@@ -1,10 +1,10 @@
 ---
 date: 2026-05-08
-topic: java-k8s-performance-profiling-architecture
-source_requirements: docs/brainstorms/java-k8s-performance-profiling-requirements.md
+topic: java-profiler-architecture
+source_requirements: docs/brainstorms/java-profiler-requirements.md
 ---
 
-# Java Kubernetes Performance Profiling Architecture
+# Java Profiler Architecture
 
 ## Architecture Summary
 
@@ -1099,6 +1099,8 @@ Reason: Coroot's collector problem is closest to this product: node-local Java d
 Decision: implement both backend and collector in Go 1.23 or newer, using standard `net/http` first, official or widely used infrastructure libraries, and Clean Architecture package boundaries.
 
 Reason: the collector and backend need low-footprint binaries, Kubernetes client integration, process/filesystem control, HTTP APIs, Prometheus exporters, ClickHouse access, and JFR parsing. Go fits those operational needs and aligns with Coroot node-agent and OpenTelemetry Collector reference architectures without requiring either project as a runtime dependency.
+
+Implementation note: when building the collector and backend container images, start from `ghcr.io/koolay/library/golang:1.26.0` as the Go base image so the runtime and build environment stay pinned to the same toolchain family.
 
 ---
 

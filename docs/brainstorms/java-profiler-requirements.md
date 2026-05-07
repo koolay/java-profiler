@@ -1,9 +1,9 @@
 ---
 date: 2026-05-08
-topic: java-k8s-performance-profiling
+topic: java-profiler
 ---
 
-# Java Kubernetes Performance Profiling
+# Java Profiler
 
 ## Summary
 
