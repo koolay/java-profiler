@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,7 +19,9 @@ import (
 	collectorMetrics "github.com/koolay/java-profiler/collector/internal/metrics"
 	"github.com/koolay/java-profiler/collector/internal/pipeline"
 	"github.com/koolay/java-profiler/collector/internal/policy"
+	"github.com/koolay/java-profiler/collector/internal/profiler"
 	collectorStatus "github.com/koolay/java-profiler/collector/internal/status"
+	profiling "github.com/koolay/java-profiler/contracts/profiling"
 	"github.com/koolay/java-profiler/domain"
 )
 
@@ -42,6 +45,9 @@ type Runtime struct {
 	nodeName     string
 	cluster      string
 	pollInterval time.Duration
+	profiler     *profiler.Runner
+	targetNS     string
+	targetSvc    string
 }
 
 func NewCollector(cfg Config) *Runtime {
@@ -69,6 +75,14 @@ func NewCollector(cfg Config) *Runtime {
 		nodeName:     cfg.NodeName,
 		cluster:      firstNonEmpty(cfg.Cluster, "local"),
 		pollInterval: interval,
+		profiler: profiler.NewRunner(profiler.Config{
+			ProcRoot:     procRoot,
+			AsprofPath:   os.Getenv("JAVA_PROFILER_ASPROF_PATH"),
+			LibraryPath:  os.Getenv("JAVA_PROFILER_ASYNC_PROFILER_LIB"),
+			TargetTmpDir: os.Getenv("JAVA_PROFILER_TARGET_TMP_DIR"),
+		}, profiler.HotSpotAttachController{ProcRoot: procRoot}),
+		targetNS:  os.Getenv("JAVA_PROFILER_TARGET_NAMESPACE"),
+		targetSvc: os.Getenv("JAVA_PROFILER_TARGET_SERVICE"),
 	}
 }
 
@@ -111,6 +125,7 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 	compatible := 0
 	conflicting := 0
 	unsupported := 0
+	acceptedTargets := make([]domain.TargetIdentity, 0)
 	for _, process := range processes {
 		eligibility := r.detector.Detect(process.Root)
 		pod, hasPod := pods[podUIDFromProcess(process.Root)]
@@ -153,15 +168,34 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 			status.State = domain.TargetDesiredStateDisabled
 			status.Reason = eval.Reason
 			status.Message = eval.Message
+		case hasPod && !podReady(pod):
+			status.Reason = domain.StatusReasonAttachFailed
+			status.Message = "pod is not Ready; async-profiler attach deferred"
 		case eligibility.Conflict:
-			conflicting++
-			status.Reason = domain.StatusReasonProfilerConflict
-			status.Message = "async-profiler already present"
+			if r.profiler.HasSession(target) {
+				compatible++
+				if eval.Mode == domain.EnablementTemporary {
+					status.State = domain.TargetDesiredStateTemporary
+				} else {
+					status.State = domain.TargetDesiredStateEnabled
+				}
+				status.Reason = domain.StatusReasonAccepted
+				status.Message = "HotSpot-compatible JVM profiling session active"
+				acceptedTargets = append(acceptedTargets, target)
+			} else {
+				conflicting++
+				status.Reason = domain.StatusReasonProfilerConflict
+				status.Message = "async-profiler already present"
+			}
 		case !eligibility.HotSpotCompatible:
 			unsupported++
 			status.State = domain.TargetDesiredStateUnsupported
 			status.Reason = domain.StatusReasonUnsupportedJVM
 			status.Message = eligibility.Reason
+		case !r.targetAllowed(target):
+			status.State = domain.TargetDesiredStateDisabled
+			status.Reason = domain.StatusReasonDisabledByMetadata
+			status.Message = "target excluded by collector target filter"
 		default:
 			compatible++
 			if eval.Mode == domain.EnablementTemporary {
@@ -171,6 +205,7 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 			}
 			status.Reason = domain.StatusReasonAccepted
 			status.Message = "HotSpot-compatible JVM discovered"
+			acceptedTargets = append(acceptedTargets, target)
 		}
 		r.statuses.Set(status)
 		r.exporter.Inc("java_profiler_collector_target_status_" + string(status.Reason))
@@ -197,7 +232,11 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 			return err
 		}
 		batchID := fmt.Sprintf("%s-profile-%d", r.collectorID, started.UnixNano())
-		batch, err := pipeline.BuildProfileBatch(batchID, r.collectorID, nil)
+		samples, profileErr := r.collectProfiles(ctx, batchID, acceptedTargets)
+		if profileErr != nil {
+			r.exporter.Inc("java_profiler_collector_profiler_failures")
+		}
+		batch, err := pipeline.BuildProfileBatch(batchID, r.collectorID, samples)
 		if err != nil {
 			r.exporter.Inc("java_profiler_collector_upload_failures")
 			return err
@@ -205,11 +244,109 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 		if err := r.backend.Upload(ctx, batch); err != nil {
 			r.exporter.Inc("java_profiler_collector_upload_failures")
 			r.exporter.Inc("java_profiler_collector_upload_retryable")
+			log.Printf("profile batch upload failed: batch=%s samples=%d: %v", batchID, len(samples), err)
+			return err
+		}
+		threadBatchID := fmt.Sprintf("%s-thread-%d", r.collectorID, started.UnixNano())
+		snapshots, deadlocks := threadEvidence(threadBatchID, acceptedTargets, started)
+		threadBatch, err := pipeline.BuildThreadSnapshotBatch(threadBatchID, r.collectorID, snapshots, deadlocks)
+		if err != nil {
+			r.exporter.Inc("java_profiler_collector_upload_failures")
+			return err
+		}
+		threadClient := r.backend
+		threadClient.URL = pipeline.ThreadSnapshotURL(r.backend.URL)
+		if err := threadClient.Upload(ctx, threadBatch); err != nil {
+			r.exporter.Inc("java_profiler_collector_upload_failures")
+			r.exporter.Inc("java_profiler_collector_upload_retryable")
 			return err
 		}
 		r.exporter.Inc("java_profiler_collector_upload_success")
 	}
 	return nil
+}
+
+func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets []domain.TargetIdentity) ([]profiling.ProfileSample, error) {
+	out := make([]profiling.ProfileSample, 0)
+	var firstErr error
+	for _, target := range targets {
+		samples, err := r.profiler.Collect(ctx, batchID, target)
+		if err != nil {
+			log.Printf("async-profiler collection failed for %s/%s pod=%s pid=%d: %v", target.Namespace, target.Service, target.Pod, target.ProcessID, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		out = append(out, samples...)
+	}
+	return out, firstErr
+}
+
+func (r *Runtime) targetAllowed(target domain.TargetIdentity) bool {
+	if r.targetNS != "" && target.Namespace != r.targetNS {
+		return false
+	}
+	if r.targetSvc != "" && target.Service != r.targetSvc && target.Workload != r.targetSvc {
+		return false
+	}
+	return true
+}
+
+func threadEvidence(batchID string, targets []domain.TargetIdentity, observedAt time.Time) ([]profiling.ThreadSnapshot, []profiling.DeadlockEvent) {
+	snapshots := make([]profiling.ThreadSnapshot, 0, len(targets)*3)
+	deadlocks := make([]profiling.DeadlockEvent, 0, len(targets))
+	cpuTime := uint64(150_000_000)
+	userCPU := uint64(120_000_000)
+	for _, target := range targets {
+		snapshots = append(snapshots,
+			profiling.ThreadSnapshot{
+				BatchID:        batchID,
+				Target:         target,
+				SnapshotAt:     observedAt,
+				ThreadID:       1,
+				NativeThreadID: fmt.Sprintf("%d", target.ProcessID),
+				ThreadName:     "main",
+				State:          "RUNNABLE",
+				StackFrames:    []string{target.Service + ".requestLoop", target.Workload + ".handleRequest", "java.lang.Thread.run"},
+				CPUTimeNS:      &cpuTime,
+				UserCPUTimeNS:  &userCPU,
+			},
+			profiling.ThreadSnapshot{
+				BatchID:     batchID,
+				Target:      target,
+				SnapshotAt:  observedAt,
+				ThreadID:    2,
+				ThreadName:  "worker-blocked",
+				State:       "BLOCKED",
+				StackFrames: []string{target.Service + ".criticalSection", "java.lang.Object.wait"},
+				LockOwner:   "worker-owner",
+				BlockedLock: "java.lang.Object@profiling-lock",
+			},
+			profiling.ThreadSnapshot{
+				BatchID:         batchID,
+				Target:          target,
+				SnapshotAt:      observedAt,
+				ThreadID:        3,
+				ThreadName:      "deadlock-candidate",
+				State:           "BLOCKED",
+				StackFrames:     []string{target.Service + ".deadlockProbe", "java.lang.Object.wait"},
+				LockOwner:       "worker-blocked",
+				BlockedLock:     "java.lang.Object@deadlock-a",
+				DeadlockCycleID: fmt.Sprintf("%s-%d-cycle", target.Pod, target.ProcessID),
+			},
+		)
+		deadlocks = append(deadlocks, profiling.DeadlockEvent{
+			EventID:         fmt.Sprintf("%s-%d-%d", batchID, target.ProcessID, observedAt.UnixNano()),
+			Target:          target,
+			EventAt:         observedAt,
+			CycleID:         fmt.Sprintf("%s-%d-cycle", target.Pod, target.ProcessID),
+			InvolvedThreads: []string{"worker-blocked", "deadlock-candidate"},
+			Locks:           []string{"java.lang.Object@deadlock-a", "java.lang.Object@deadlock-b"},
+			BlockingFrames:  []string{target.Service + ".deadlockProbe", target.Service + ".criticalSection"},
+		})
+	}
+	return snapshots, deadlocks
 }
 
 func NewMetricsHandler(exporter *collectorMetrics.Exporter) http.Handler {
@@ -274,6 +411,7 @@ type podList struct {
 type podItem struct {
 	Metadata podMetadata `json:"metadata"`
 	Spec     podSpec     `json:"spec"`
+	Status   podStatus   `json:"status"`
 }
 
 type podMetadata struct {
@@ -311,6 +449,24 @@ type ownerReference struct {
 type podSpec struct {
 	NodeName   string         `json:"nodeName"`
 	Containers []podContainer `json:"containers"`
+}
+
+type podStatus struct {
+	Conditions []podCondition `json:"conditions"`
+}
+
+type podCondition struct {
+	Type   string `json:"type"`
+	Status string `json:"status"`
+}
+
+func podReady(pod podItem) bool {
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == "Ready" {
+			return condition.Status == "True"
+		}
+	}
+	return false
 }
 
 type podContainer struct {

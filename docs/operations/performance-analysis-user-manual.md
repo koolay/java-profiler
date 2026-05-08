@@ -30,13 +30,15 @@
 
 Profiling 默认关闭。你需要在目标 Pod 或 workload Pod template 上添加 annotation 或 label。annotation 与 label 使用相同键名；如果两者都存在，以 annotation 为准。
 
+只有在你拥有该 workload 的变更权限且已获得生产采集批准时，才应直接修改 profiling metadata。否则请通过平台管理员或既有 GitOps/变更流程申请临时 profiling；申请信息见本手册“无法自行启用 profiling 时”。
+
 ### 选择模式
 
 | 模式 | 适用情境 | 建议 |
 | --- | --- | --- |
 | `temporary` | 线上事件、临时复现、单次排查 | 默认优先选择，必须设置 `profile-duration`。 |
 | `continuous` | 核心服务、长期高流量服务、需要 7 天内随时回溯 | 需要服务 owner 同意长期采集和访问控制。 |
-| `profile-disabled` | 事件结束、止血、明确不采集 | 显式禁用优先级最高。 |
+| `profile-disabled` / `disabled` | 事件结束、止血、明确不采集 | 优先使用 `profile-disabled: "true"` 止血；合同也允许 `profile-mode: disabled`。 |
 
 ### 模式选择决策表
 
@@ -62,7 +64,13 @@ metadata:
     java-profiler.io/snapshot-interval: 10s
 ```
 
+当前临时窗口按目标 Pod/JVM 的生命周期判断。对已经运行很久的 Pod 直接添加 `10m` temporary metadata，可能立即显示 `temporary_expired`；更稳妥的做法是在 workload Pod template 上添加 metadata 后滚动重启，或按管理员确认的方式重开目标 Pod。
+
 临时模式可以短时间提高线程快照频率，但不要长期运行高频快照。
+
+### 真实 workload smoke test
+
+对线上或准线上 workload 第一次启用真实 async-profiler attach 时，先做短窗口 smoke test。平台管理员应把 collector/backend/UI 指向单个 namespace/service，保存 UI 截图、Playwright 视频、ClickHouse 计数、collector/backend 日志，以及目标 Pod 的前后 restart count。若目标服务在窗口内出现新重启，应先停止 profiling 并排查 attach 安全性，不要继续扩大采集范围。
 
 ### 持续 profiling
 
@@ -92,15 +100,32 @@ metadata:
 
 | 字段 | 示例 | 说明 |
 | --- | --- | --- |
-| `java-profiler.io/profile-mode` | `temporary`, `continuous` | 开启临时或持续 profiling。 |
-| `java-profiler.io/profile-disabled` | `"true"` | 强制禁用。truthy 值包括 `1`, `true`, `yes`, `enabled`, `on`。 |
+| `java-profiler.io/profile-mode` | `temporary`, `continuous`, `disabled` | 开启临时、持续或禁用 profiling。 |
+| `java-profiler.io/profile-disabled` | `"true"` | 强制禁用，优先级高于 `profile-mode`。truthy 值包括 `1`, `true`, `yes`, `enabled`, `on`。 |
 | `java-profiler.io/profile-duration` | `10m`, `1h` | 临时 profiling 持续时间。临时模式必填。 |
 | `java-profiler.io/startup-delay` | `0s`, `30s` | 新发现 JVM 启动后等待多久再开始 profiling。 |
 | `java-profiler.io/snapshot-interval` | `10s`, `5m` | 线程快照间隔。临时排障可短时间缩短。 |
 
 时间字段使用 Go duration 格式，例如 `30s`、`10m`、`1h`。
 
-控制字段和 status reason 的稳定合同由平台维护；本手册只解释服务 owner 如何使用这些字段。
+控制字段和 status reason 的稳定合同由平台维护，见 [profiling contracts](../../contracts/profiling/)；本手册只解释服务 owner 如何使用这些字段。
+
+## 无法自行启用 profiling 时
+
+如果你没有权限修改 workload metadata，或目标服务属于敏感生产范围，请向平台管理员提交一次性申请：
+
+```text
+Namespace:
+Service:
+Pod / workload:
+Incident window:
+Requested mode and duration:
+Reason:
+Urgency:
+Owner / approver:
+```
+
+管理员应通过受控变更路径添加 `java-profiler.io/*` metadata。不要通过临时手工 patch 绕过团队的生产变更规则。
 
 ## 按症状选择入口
 
@@ -398,7 +423,7 @@ RUNNABLE 是线程状态，不是 CPU 百分比。UI 若标记为 sampled 或 pr
 
 1. 检查 namespace、service、Pod、JVM 和时间范围。
 2. 打开 `status`。
-3. 如果是 `disabled_by_metadata`，添加 profiling metadata。
+3. 如果是 `disabled_by_metadata`，在有权限且获批时通过受控变更路径添加 profiling metadata；否则按“无法自行启用 profiling 时”申请。
 4. 如果是 `temporary_expired`，重新开启临时窗口。
 5. 如果是 `unsupported_jvm`、`profiler_conflict` 或 `attach_failed`，按 reason 处理。
 6. 打开 `ingestion`，检查 retry、dropped、rejected。
@@ -578,7 +603,7 @@ RUNNABLE 是线程状态，不是 CPU 百分比。UI 若标记为 sampled 或 pr
 - 不要把完整 flamegraph、thread dump、stack payload、profile payload、thread snapshot 或 token 粘贴到公开 issue、聊天群或截图中。
 - 对外共享时，只保留必要方法名；按组织安全策略脱敏包名、服务名、namespace、Pod 名和业务路径。
 - profile 数据不是日志，但仍可能暴露业务流程、内部类名、接口路径或客户相关处理逻辑。
-- token、cookie、内部域名和 ClickHouse 连接信息不得出现在截图、PR、issue 或聊天记录中。
+- token、cookie、内部域名、内部 backend/storage 凭据或连接信息不得出现在截图、PR、issue 或聊天记录中。
 - 发现 profiler 冲突时，不要同时运行多个 async-profiler 工具采同一个 JVM。
 - 采集失败不应被忽略；先读 `status` 和 `ingestion`。
 
@@ -647,7 +672,7 @@ UI view: status / cpu / memory / locks / deadlocks / ingestion
 Status reason:
 Ingestion state:
 What you expected:
-Screenshot or sanitized evidence:
+Screenshot or sanitized evidence: redact tokens/cookies/DSN/internal domains/customer identifiers; prefer stack summaries over raw payloads.
 ```
 
 ## 事件记录模板
@@ -666,4 +691,5 @@ Ingestion health:
 Conclusion:
 Follow-up:
 Profiling stopped at:
+Redaction check: no tokens/cookies/DSN/internal domains/customer identifiers/raw payloads.
 ```

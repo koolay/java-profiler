@@ -8,6 +8,9 @@ clusterName: local
 profiling:
   enabledByDefault: false
   startupDelay: 30s
+  collectorInterval: 60s
+  targetNamespace: ""
+  targetService: ""
   temporaryMaxDuration: 1h
   snapshotInterval: 5m
 

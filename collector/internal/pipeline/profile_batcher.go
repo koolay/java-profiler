@@ -11,10 +11,10 @@ import (
 )
 
 type ProfileBatchPayload struct {
-	BatchID     string
-	CollectorID string
-	ReceivedAt  time.Time
-	Samples     []profiling.ProfileSample
+	BatchID     string                    `json:"BatchID"`
+	CollectorID string                    `json:"CollectorID"`
+	ReceivedAt  time.Time                 `json:"ReceivedAt"`
+	Samples     []profiling.ProfileSample `json:"Samples"`
 }
 
 func BuildProfileBatch(batchID, collectorID string, samples []profiling.ProfileSample) (Batch, error) {
@@ -24,6 +24,23 @@ func BuildProfileBatch(batchID, collectorID string, samples []profiling.ProfileS
 		return Batch{}, err
 	}
 	return Batch{ID: batchID, Type: "profile", Bytes: len(data), CreatedAt: payload.ReceivedAt, Payload: data}, nil
+}
+
+type ThreadSnapshotBatchPayload struct {
+	BatchID     string                     `json:"BatchID"`
+	CollectorID string                     `json:"CollectorID"`
+	ReceivedAt  time.Time                  `json:"ReceivedAt"`
+	Snapshots   []profiling.ThreadSnapshot `json:"Snapshots"`
+	Deadlocks   []profiling.DeadlockEvent  `json:"Deadlocks"`
+}
+
+func BuildThreadSnapshotBatch(batchID, collectorID string, snapshots []profiling.ThreadSnapshot, deadlocks []profiling.DeadlockEvent) (Batch, error) {
+	payload := ThreadSnapshotBatchPayload{BatchID: batchID, CollectorID: collectorID, ReceivedAt: time.Now().UTC(), Snapshots: snapshots, Deadlocks: deadlocks}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return Batch{}, err
+	}
+	return Batch{ID: batchID, Type: "thread_snapshot", Bytes: len(data), CreatedAt: payload.ReceivedAt, Payload: data}, nil
 }
 
 type TargetStatusBatchPayload struct {
@@ -67,4 +84,11 @@ func TargetStatusURL(profileURL string) string {
 		return strings.Replace(profileURL, "/profile-batches", "/target-status-batches", 1)
 	}
 	return strings.TrimRight(profileURL, "/") + "/target-status-batches"
+}
+
+func ThreadSnapshotURL(profileURL string) string {
+	if strings.Contains(profileURL, "/profile-batches") {
+		return strings.Replace(profileURL, "/profile-batches", "/thread-snapshot-batches", 1)
+	}
+	return strings.TrimRight(profileURL, "/") + "/thread-snapshot-batches"
 }

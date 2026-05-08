@@ -1,4 +1,4 @@
-import type { DeadlockEvent, FlamegraphResponse, TargetStatus, ThreadDiagnosis } from "./types";
+import type { DeadlockEvent, FlamegraphResponse, IngestionHealth, TargetStatus, ThreadDiagnosis } from "./types";
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 
@@ -24,4 +24,8 @@ export function getDeadlocks(params: URLSearchParams) {
 
 export function getTargetStatus(params: URLSearchParams) {
   return getJSON<TargetStatus[]>(`/api/ui/v1/target-status?${params}`);
+}
+
+export function getIngestionHealth() {
+  return getJSON<IngestionHealth>("/api/ui/v1/ingestion");
 }

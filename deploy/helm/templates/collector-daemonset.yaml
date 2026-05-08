@@ -16,14 +16,18 @@ spec:
     spec:
       serviceAccountName: {{ .Release.Name }}-collector
       hostPID: true
+      securityContext:
+        seccompProfile:
+          type: Unconfined
       containers:
         - name: collector
           image: {{ .Values.image.collector }}
           securityContext:
+            privileged: true
             readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
+            allowPrivilegeEscalation: true
             capabilities:
-              add: ["SYS_PTRACE"]
+              add: ["SYS_PTRACE", "SYS_ADMIN"]
           env:
             - name: JAVA_PROFILER_BACKEND_URL
               value: http://{{ .Release.Name }}-backend:{{ .Values.service.port }}/api/collector/v1/profile-batches
@@ -34,21 +38,37 @@ spec:
                   key: {{ .Values.auth.collectorTokenKey }}
             - name: JAVA_PROFILER_STARTUP_DELAY
               value: {{ .Values.profiling.startupDelay | quote }}
+            - name: JAVA_PROFILER_COLLECTOR_INTERVAL
+              value: {{ .Values.profiling.collectorInterval | default "60s" | quote }}
             - name: JAVA_PROFILER_NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: JAVA_PROFILER_CLUSTER
               value: {{ .Values.clusterName | default "local" | quote }}
+            - name: JAVA_PROFILER_ASPROF_PATH
+              value: /var/lib/java-profiler/assets/asprof
+            - name: JAVA_PROFILER_ASYNC_PROFILER_LIB
+              value: /var/lib/java-profiler/assets/libasyncProfiler.so
+            - name: JAVA_PROFILER_TARGET_TMP_DIR
+              value: /tmp/java-profiler
+            {{- if .Values.profiling.targetNamespace }}
+            - name: JAVA_PROFILER_TARGET_NAMESPACE
+              value: {{ .Values.profiling.targetNamespace | quote }}
+            {{- end }}
+            {{- if .Values.profiling.targetService }}
+            - name: JAVA_PROFILER_TARGET_SERVICE
+              value: {{ .Values.profiling.targetService | quote }}
+            {{- end }}
           volumeMounts:
             - name: proc
               mountPath: /host/proc
-              readOnly: true
-            - name: assets
-              mountPath: /var/lib/java-profiler/assets
+              readOnly: false
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: proc
           hostPath:
             path: /proc
-        - name: assets
+        - name: tmp
           emptyDir: {}

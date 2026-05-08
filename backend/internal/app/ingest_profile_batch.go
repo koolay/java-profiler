@@ -43,6 +43,11 @@ type IngestionStore interface {
 	Record(context.Context, clickhouse.IngestionBatch) (clickhouse.IngestionStatus, error)
 }
 
+type IngestionQueryStore interface {
+	IngestionStore
+	ListIngestionBatches(context.Context, clickhouse.IngestionQuery) ([]clickhouse.IngestionBatch, error)
+}
+
 func (i ProfileBatchIngestor) Ingest(ctx context.Context, req ProfileBatchRequest) (IngestResult, error) {
 	if req.BatchID == "" || req.CollectorID == "" {
 		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch_id and collector_id are required"}, nil

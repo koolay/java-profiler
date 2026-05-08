@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -32,7 +33,8 @@ func (c BackendClient) Upload(ctx context.Context, batch Batch) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("backend upload failed: %s", resp.Status)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("backend upload failed: %s: %s", resp.Status, string(body))
 	}
 	return nil
 }

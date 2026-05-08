@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"github.com/koolay/java-profiler/backend/internal/app"
-	"github.com/koolay/java-profiler/backend/internal/clickhouse"
 	"github.com/koolay/java-profiler/domain"
 )
 
 type QueryHandlers struct {
-	Profiles app.ProfileQueryStore
-	Threads  *clickhouse.ThreadRepository
-	Statuses app.TargetStatusQueryStore
+	Profiles       app.ProfileQueryStore
+	Threads        app.ThreadStore
+	Statuses       app.TargetStatusQueryStore
+	IngestionStore app.IngestionQueryStore
 }
 
 func (h QueryHandlers) Flamegraph(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +62,15 @@ func (h QueryHandlers) TargetStatus(w http.ResponseWriter, r *http.Request) {
 		parseQueryTime(r.URL.Query().Get("start")),
 		parseQueryTime(r.URL.Query().Get("end")),
 	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, result)
+}
+
+func (h QueryHandlers) Ingestion(w http.ResponseWriter, r *http.Request) {
+	result, err := app.QueryIngestionHealth(r.Context(), h.IngestionStore)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return

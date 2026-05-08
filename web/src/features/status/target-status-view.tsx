@@ -25,8 +25,8 @@ export function TargetStatusView({ params, statuses }: { params: URLSearchParams
                 <td className="seen-at" title={formatSeenTitle(status.status_at)}>{formatSeen(status.status_at)}</td>
                 <td><span className={`state-pill ${stateClass(status.desired_state)}`}>{status.desired_state}</span></td>
                 <td><span className="reason-code">{status.reason}</span></td>
-                <td>{status.message}</td>
-                <td>{actionFor(status.reason)}</td>
+                <td><span className="status-message" title={status.message}>{status.message}</span></td>
+                <td><span className="status-action">{actionFor(status.reason)}</span></td>
               </tr>
             ))}
           </tbody>

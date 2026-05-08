@@ -109,6 +109,12 @@ scripts/verify-chdb-local.sh
 
 The script skips cleanly when `libchdb` is not installed. Use `CHDB_REQUIRED=1` to make missing chDB fail automation.
 
+Real Kubernetes acceptance, including screenshots/video and target restart-count evidence, is handled by:
+
+```bash
+scripts/real-acceptance.sh --help
+```
+
 ## Working Rule
 
 When adding implementation or additional docs, keep them aligned with the requirements document. If a new assumption changes the product shape, update the docs first or in the same change.

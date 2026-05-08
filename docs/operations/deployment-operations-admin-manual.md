@@ -111,13 +111,15 @@ auth:
   uiTokenKey: ui-token
 
 clickhouse:
-  dsn: tcp://default:password@clickhouse:9000/java_profiler
+  dsn: tcp://clickhouse:9000/java_profiler
 
 service:
   port: 8080
 ```
 
 `clusterName` 会进入 target identity。多集群环境必须使用稳定且可区分的集群名，避免不同集群的 namespace/service/Pod 混在一起。
+
+示例 DSN 不包含密码。Helm values、PR、issue 和验收截图中不应出现 ClickHouse 密码；如果生产 ClickHouse 需要认证，应通过组织批准的 Secret 管理路径注入，直到 chart 提供 secret-backed DSN 配置前不要把明文凭据写入 values 文件。
 
 ## Secret 管理
 
@@ -141,6 +143,8 @@ collector 至少需要：
 建议按最小权限配置：
 
 - collector 只拿到发现和 attach 所需权限。
+- collector 不应使用 `cluster-admin`，也不应获得读取 Secret、跨 namespace patch Pod 或修改 workload metadata 的权限，除非实现明确需要并经过安全评审。
+- backend、collector 和 Web 使用独立 ServiceAccount。
 - Web/UI 查询按 namespace、service 或 owner 授权。
 - 修改 `java-profiler.io/*` metadata 的权限只授予服务 owner、平台管理员或事件响应人员。
 - ClickHouse profile、thread、deadlock 和 raw artifact 访问权限按敏感生产数据处理。
@@ -168,8 +172,11 @@ curl -i http://127.0.0.1:18081/api/ui/v1/target-status
 预期：
 
 - 返回 backend API 响应，而不是静态服务器 404。
-- 缺少 UI token 时按认证策略拒绝。
-- 带正确 UI token 或 cookie 时返回 JSON。
+- 通过 Web 代理请求时，如 nginx 已注入 UI token，应返回 backend JSON。
+- 直接请求 backend Service 且缺少 UI token 时，应按认证策略拒绝。
+- 带正确 UI token 或符合安全策略的 cookie 时返回 JSON。
+
+如果使用 cookie 认证，cookie 必须设置 `HttpOnly`、`Secure`、合适的 `SameSite`、短过期时间和受限 path/domain；不要把 UI token 存入 `localStorage`。任何未来的 mutating API 都必须明确 CSRF 防护策略。
 
 常见问题：
 
@@ -201,6 +208,8 @@ curl -i http://127.0.0.1:18081/api/ui/v1/target-status
 | target status | 7 天 |
 | ingestion health | 7 天 |
 | raw artifact index | 24 小时 |
+
+任何包含 profile、thread、deadlock、target status、ingestion 或 raw artifact 数据的 ClickHouse backup/snapshot，也必须遵守同样的 retention 上限；如果平台备份周期无法满足该上限，应把这些表排除在长期备份之外。
 
 管理员应监控：
 
@@ -307,7 +316,6 @@ metadata:
 - 确认 schema 变化是否向后兼容。
 - 确认 payload contract 是否变化。
 - 确认 Web `/api/*` 代理配置仍然存在。
-- 记录当前 image tag、chart version 和 values。
 - 保存当前 chart version。
 - 保存当前 image tags。
 - 保存当前 Helm values。
@@ -573,6 +581,10 @@ Java Profiler 已在 <cluster>/<namespace> 可用。
 
 Web UI:
 可用范围:
+首次打开视图:
+必选筛选项: namespace / service / time range
+可用视图: status / cpu / memory / locks / threads / deadlocks / ingestion
+示例时间范围:
 启用 temporary profiling 示例:
 启用 continuous profiling 申请方式:
 默认 retention: profile/thread/deadlock/status/ingestion 数据不超过 7 天
@@ -602,4 +614,5 @@ ClickHouse evidence:
 Root cause:
 Fix:
 Follow-up:
+Redaction check: no tokens/cookies/DSN/internal domains/customer identifiers/raw payloads.
 ```

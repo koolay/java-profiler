@@ -25,12 +25,12 @@ export function Flamegraph({ root, metadata }: Props) {
           <button
             key={row.path}
             className="flame-row"
-            style={{ marginLeft: row.depth * 16, width: `${Math.max(8, (row.value / max) * 100)}%` }}
+            style={{ paddingLeft: 10 + row.depth * 14, width: `${Math.max(8, (row.value / max) * 100)}%` }}
             onClick={() => setZoomPath(row.path)}
             title={`${row.name}: ${row.value}`}
           >
-            <span>{row.name}</span>
-            <b>{row.value.toLocaleString()}</b>
+            <span className="flame-frame">{row.name}</span>
+            <b className="flame-value">{row.value.toLocaleString()}</b>
           </button>
         ))}
       </div>

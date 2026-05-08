@@ -57,3 +57,21 @@ export type ThreadDiagnosis = {
   slow_threads: Array<{ thread_id: number; thread_name: string; state: string; lock: string; stacks: string[] }>;
   partial: boolean;
 };
+
+export type IngestionHealth = {
+  totals: {
+    accepted: number;
+    duplicate: number;
+    retryable: number;
+    rejected: number;
+  };
+  batches: Array<{
+    batch_type: string;
+    status: string;
+    retryable: boolean;
+    count: number;
+    latest_at: string;
+    last_message?: string;
+  }>;
+  partial: boolean;
+};

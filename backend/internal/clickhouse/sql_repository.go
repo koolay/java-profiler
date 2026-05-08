@@ -41,31 +41,14 @@ func (r *SQLRepository) ApplySchema(ctx context.Context) error {
 }
 
 func (r *SQLRepository) InsertProfileBatch(ctx context.Context, batchID string, samples []ProfileSample) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	stackStmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO java_profiler_profile_stacks
-		(cluster, namespace, service, pod, container, node, process_id, jvm_start_time, stack_id, frames)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer stackStmt.Close()
-	sampleStmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO java_profiler_profile_samples
-		(batch_id, cluster, namespace, service, pod, container, node, process_id, jvm_start_time, profile_type, started_at, ended_at, stack_id, sample_value, truncated)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer sampleStmt.Close()
 	seenStacks := map[string]bool{}
 	for _, sample := range samples {
 		if !seenStacks[sample.StackID] {
-			if _, err := stackStmt.ExecContext(ctx, sample.Target.Cluster, sample.Target.Namespace, sample.Target.Service, sample.Target.Pod, sample.Target.Container, sample.Target.Node, sample.Target.ProcessID, sample.Target.JVMStartTime, sample.StackID, sample.Frames); err != nil {
+			if _, err := r.db.ExecContext(ctx, `
+				INSERT INTO java_profiler_profile_stacks
+				(cluster, namespace, service, pod, container, node, process_id, jvm_start_time, stack_id, frames)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				sample.Target.Cluster, sample.Target.Namespace, sample.Target.Service, sample.Target.Pod, sample.Target.Container, sample.Target.Node, sample.Target.ProcessID, sample.Target.JVMStartTime, sample.StackID, sample.Frames); err != nil {
 				return err
 			}
 			seenStacks[sample.StackID] = true
@@ -74,11 +57,15 @@ func (r *SQLRepository) InsertProfileBatch(ctx context.Context, batchID string, 
 		if sample.Truncated {
 			truncated = 1
 		}
-		if _, err := sampleStmt.ExecContext(ctx, batchID, sample.Target.Cluster, sample.Target.Namespace, sample.Target.Service, sample.Target.Pod, sample.Target.Container, sample.Target.Node, sample.Target.ProcessID, sample.Target.JVMStartTime, sample.ProfileType.String(), sample.StartedAt, sample.EndedAt, sample.StackID, sample.Value, truncated); err != nil {
+		if _, err := r.db.ExecContext(ctx, `
+			INSERT INTO java_profiler_profile_samples
+			(batch_id, cluster, namespace, service, pod, container, node, process_id, jvm_start_time, profile_type, started_at, ended_at, stack_id, sample_value, truncated)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			batchID, sample.Target.Cluster, sample.Target.Namespace, sample.Target.Service, sample.Target.Pod, sample.Target.Container, sample.Target.Node, sample.Target.ProcessID, sample.Target.JVMStartTime, sample.ProfileType.String(), sample.StartedAt, sample.EndedAt, sample.StackID, sample.Value, truncated); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *SQLRepository) QuerySamples(ctx context.Context, q ProfileQuery) ([]ProfileSample, error) {
@@ -119,6 +106,162 @@ func (r *SQLRepository) QuerySamples(ctx context.Context, q ProfileQuery) ([]Pro
 		sample.ProfileType = profileTypeFromString(profileType)
 		sample.Truncated = truncated == 1
 		out = append(out, sample)
+	}
+	return out, rows.Err()
+}
+
+func (r *SQLRepository) InsertSnapshots(ctx context.Context, snapshots []ThreadSnapshot, deadlocks []DeadlockEvent) error {
+	for _, snapshot := range snapshots {
+		daemon := uint8(0)
+		if snapshot.Daemon {
+			daemon = 1
+		}
+		if _, err := r.db.ExecContext(ctx, `
+			INSERT INTO java_profiler_thread_snapshots
+			(batch_id, cluster, namespace, service, pod, container, process_id, jvm_start_time, snapshot_at, thread_id, native_thread_id, thread_name, daemon, thread_state, stack_frames, lock_owner, blocked_lock, waited_lock, deadlock_cycle_id, cpu_time_ns, user_cpu_time_ns)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			snapshot.BatchID,
+			snapshot.Target.Cluster,
+			snapshot.Target.Namespace,
+			snapshot.Target.Service,
+			snapshot.Target.Pod,
+			snapshot.Target.Container,
+			snapshot.Target.ProcessID,
+			snapshot.Target.JVMStartTime,
+			snapshot.SnapshotAt,
+			snapshot.ThreadID,
+			snapshot.NativeThreadID,
+			snapshot.ThreadName,
+			daemon,
+			snapshot.State,
+			snapshot.StackFrames,
+			snapshot.LockOwner,
+			snapshot.BlockedLock,
+			snapshot.WaitedLock,
+			snapshot.DeadlockCycleID,
+			snapshot.CPUTimeNS,
+			snapshot.UserCPUTimeNS,
+		); err != nil {
+			return err
+		}
+	}
+	for _, event := range deadlocks {
+		if _, err := r.db.ExecContext(ctx, `
+			INSERT INTO java_profiler_deadlock_events
+			(event_id, cluster, namespace, service, pod, process_id, jvm_start_time, event_at, cycle_id, involved_threads, locks, blocking_frames)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			event.EventID,
+			event.Target.Cluster,
+			event.Target.Namespace,
+			event.Target.Service,
+			event.Target.Pod,
+			event.Target.ProcessID,
+			event.Target.JVMStartTime,
+			event.EventAt,
+			event.CycleID,
+			event.InvolvedThreads,
+			event.Locks,
+			event.BlockingFrames,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *SQLRepository) ListSnapshots(ctx context.Context, namespace, service string) ([]ThreadSnapshot, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT batch_id, cluster, namespace, service, pod, container, process_id, jvm_start_time, snapshot_at, thread_id, native_thread_id, thread_name, daemon, thread_state, stack_frames, lock_owner, blocked_lock, waited_lock, deadlock_cycle_id, cpu_time_ns, user_cpu_time_ns
+		FROM java_profiler_thread_snapshots
+		WHERE (? = '' OR namespace = ?) AND (? = '' OR service = ?)
+		ORDER BY snapshot_at DESC
+		LIMIT 1000`,
+		namespace, namespace,
+		service, service,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ThreadSnapshot
+	for rows.Next() {
+		var snapshot ThreadSnapshot
+		var daemon uint8
+		var cpu sql.NullInt64
+		var userCPU sql.NullInt64
+		if err := rows.Scan(
+			&snapshot.BatchID,
+			&snapshot.Target.Cluster,
+			&snapshot.Target.Namespace,
+			&snapshot.Target.Service,
+			&snapshot.Target.Pod,
+			&snapshot.Target.Container,
+			&snapshot.Target.ProcessID,
+			&snapshot.Target.JVMStartTime,
+			&snapshot.SnapshotAt,
+			&snapshot.ThreadID,
+			&snapshot.NativeThreadID,
+			&snapshot.ThreadName,
+			&daemon,
+			&snapshot.State,
+			&snapshot.StackFrames,
+			&snapshot.LockOwner,
+			&snapshot.BlockedLock,
+			&snapshot.WaitedLock,
+			&snapshot.DeadlockCycleID,
+			&cpu,
+			&userCPU,
+		); err != nil {
+			return nil, err
+		}
+		snapshot.Daemon = daemon == 1
+		if cpu.Valid {
+			value := uint64(cpu.Int64)
+			snapshot.CPUTimeNS = &value
+		}
+		if userCPU.Valid {
+			value := uint64(userCPU.Int64)
+			snapshot.UserCPUTimeNS = &value
+		}
+		out = append(out, snapshot)
+	}
+	return out, rows.Err()
+}
+
+func (r *SQLRepository) ListDeadlocks(ctx context.Context, namespace, service string) ([]DeadlockEvent, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT event_id, cluster, namespace, service, pod, process_id, jvm_start_time, event_at, cycle_id, involved_threads, locks, blocking_frames
+		FROM java_profiler_deadlock_events
+		WHERE (? = '' OR namespace = ?) AND (? = '' OR service = ?)
+		ORDER BY event_at DESC
+		LIMIT 500`,
+		namespace, namespace,
+		service, service,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DeadlockEvent
+	for rows.Next() {
+		var event DeadlockEvent
+		if err := rows.Scan(
+			&event.EventID,
+			&event.Target.Cluster,
+			&event.Target.Namespace,
+			&event.Target.Service,
+			&event.Target.Pod,
+			&event.Target.ProcessID,
+			&event.Target.JVMStartTime,
+			&event.EventAt,
+			&event.CycleID,
+			&event.InvolvedThreads,
+			&event.Locks,
+			&event.BlockingFrames,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, event)
 	}
 	return out, rows.Err()
 }
@@ -249,6 +392,37 @@ func (r *SQLRepository) Record(ctx context.Context, batch IngestionBatch) (Inges
 		return "", err
 	}
 	return batch.Status, nil
+}
+
+func (r *SQLRepository) ListIngestionBatches(ctx context.Context, q IngestionQuery) ([]IngestionBatch, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 1000
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message
+		FROM java_profiler_ingestion_batches
+		ORDER BY received_at DESC
+		LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []IngestionBatch
+	for rows.Next() {
+		var batch IngestionBatch
+		var batchType string
+		var status string
+		var retryable uint8
+		if err := rows.Scan(&batch.BatchID, &batch.CollectorID, &batchType, &batch.ReceivedAt, &status, &retryable, &batch.PayloadHash, &batch.Message); err != nil {
+			return nil, err
+		}
+		batch.BatchType = domain.BatchType(batchType)
+		batch.Status = IngestionStatus(status)
+		batch.Retryable = retryable == 1
+		out = append(out, batch)
+	}
+	return out, rows.Err()
 }
 
 func profileTypeFromString(value string) domain.ProfileType {

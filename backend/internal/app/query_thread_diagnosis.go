@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 
-	"github.com/koolay/java-profiler/backend/internal/clickhouse"
 	backenddomain "github.com/koolay/java-profiler/backend/internal/domain"
 )
 
@@ -13,7 +12,7 @@ type ThreadDiagnosis struct {
 	Partial     bool                       `json:"partial"`
 }
 
-func QueryThreadDiagnosis(ctx context.Context, repo *clickhouse.ThreadRepository, namespace, service string) (ThreadDiagnosis, error) {
+func QueryThreadDiagnosis(ctx context.Context, repo ThreadStore, namespace, service string) (ThreadDiagnosis, error) {
 	snapshots, err := repo.ListSnapshots(ctx, namespace, service)
 	if err != nil {
 		return ThreadDiagnosis{}, err

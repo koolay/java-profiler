@@ -35,6 +35,23 @@ metadata:
 
 Explicit disable wins over continuous and temporary enablement.
 
+## Validate an Existing Workload
+
+For a production-shaped smoke test, keep the window short and save before/after evidence. The real acceptance script can point the profiler Helm release at an existing workload without creating the synthetic BusyApp:
+
+```bash
+KUBECONFIG=/path/to/kubeconfig \
+JAVA_PROFILER_COLLECTOR_INTERVAL=30s \
+scripts/real-acceptance.sh \
+  --configure-profiler \
+  --namespace kd-cosmic-xk \
+  --service mservice \
+  --artifact-dir /tmp/java-profiler-mservice-$(date +%Y%m%d-%H%M%S) \
+  --require-full-profiling
+```
+
+The script records target Pod state before and after the run and fails if the selected workload's restart count increases. Use `--skip-workload-rollout-check` only when `--service` is a label-level filter rather than a Deployment name.
+
 ## Failure Statuses
 
 - `disabled_by_metadata`: workload has no opt-in metadata or has explicit disable
