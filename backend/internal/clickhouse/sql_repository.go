@@ -91,10 +91,19 @@ func (r *SQLRepository) QuerySamples(ctx context.Context, q ProfileQuery) ([]Pro
 		FROM java_profiler_profile_samples s
 		LEFT JOIN java_profiler_profile_stacks st ON s.stack_id = st.stack_id
 		WHERE (? = '' OR s.namespace = ?) AND (? = '' OR s.service = ?) AND (? = '' OR s.pod = ?) AND (? = '' OR s.profile_type = ?)
+		  AND (? = 1 OR s.ended_at >= ?) AND (? = 1 OR s.started_at <= ?)
 		GROUP BY s.batch_id, s.cluster, s.namespace, s.service, s.pod, s.container, s.node, s.process_id, s.jvm_start_time, s.profile_type, s.started_at, s.ended_at, s.stack_id, s.sample_value, s.truncated
 		ORDER BY s.started_at DESC
 		LIMIT ?`
-	rows, err := r.db.QueryContext(ctx, query, q.Namespace, q.Namespace, q.Service, q.Service, q.Pod, q.Pod, q.ProfileType.String(), q.ProfileType.String(), limit)
+	rows, err := r.db.QueryContext(ctx, query,
+		q.Namespace, q.Namespace,
+		q.Service, q.Service,
+		q.Pod, q.Pod,
+		q.ProfileType.String(), q.ProfileType.String(),
+		zeroTimeFlag(q.Start), q.Start,
+		zeroTimeFlag(q.End), q.End,
+		limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -114,9 +123,16 @@ func (r *SQLRepository) QuerySamples(ctx context.Context, q ProfileQuery) ([]Pro
 	return out, rows.Err()
 }
 
+func zeroTimeFlag(value time.Time) uint8 {
+	if value.IsZero() {
+		return 1
+	}
+	return 0
+}
+
 func (r *SQLRepository) Record(ctx context.Context, batch IngestionBatch) (IngestionStatus, error) {
 	var existingHash string
-	err := r.db.QueryRowContext(ctx, `SELECT payload_hash FROM java_profiler_ingestion_batches WHERE batch_id = ? LIMIT 1`, batch.BatchID).Scan(&existingHash)
+	err := r.db.QueryRowContext(ctx, `SELECT payload_hash FROM java_profiler_ingestion_batches WHERE batch_id = ? AND batch_type = ? LIMIT 1`, batch.BatchID, batch.BatchType).Scan(&existingHash)
 	if err == nil {
 		if existingHash == batch.PayloadHash {
 			return IngestionDuplicate, nil

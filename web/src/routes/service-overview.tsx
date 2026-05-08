@@ -14,10 +14,13 @@ export function ServiceOverview() {
   const [tab, setTab] = useState<Tab>("memory");
   const [namespace, setNamespace] = useState("prod");
   const [service, setService] = useState("checkout");
+  const [rangeMinutes, setRangeMinutes] = useState(30);
   const params = useMemo(() => {
-    const value = new URLSearchParams({ namespace, service, profile_type: profileTypeFor(tab) });
+    const end = new Date();
+    const start = new Date(end.getTime() - rangeMinutes * 60_000);
+    const value = new URLSearchParams({ namespace, service, profile_type: profileTypeFor(tab), start: start.toISOString(), end: end.toISOString() });
     return value;
-  }, [namespace, service, tab]);
+  }, [namespace, service, tab, rangeMinutes]);
 
   return (
     <div className="service-layout">
@@ -31,7 +34,15 @@ export function ServiceOverview() {
           <input value={service} onChange={(event) => setService(event.target.value)} />
         </label>
         <div className="time-grid">
-          <span>Last 30m</span>
+          <label>
+            Range
+            <select value={rangeMinutes} onChange={(event) => setRangeMinutes(Number(event.target.value))}>
+              <option value={15}>Last 15m</option>
+              <option value={30}>Last 30m</option>
+              <option value={60}>Last 1h</option>
+              <option value={360}>Last 6h</option>
+            </select>
+          </label>
           <span>UTC</span>
         </div>
         <p className="scope-note">Metric charts stay in Prometheus. This console shows profiles, thread evidence, target state, and ingestion health.</p>

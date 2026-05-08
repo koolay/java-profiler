@@ -131,6 +131,7 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 			status.Message = "HotSpot-compatible JVM discovered"
 		}
 		r.statuses.Set(status)
+		r.exporter.Inc("java_profiler_collector_target_status_" + string(status.Reason))
 	}
 	r.exporter.Set("java_profiler_collector_discovered_processes", float64(len(processes)))
 	r.exporter.Set("java_profiler_collector_compatible_processes", float64(compatible))

@@ -47,7 +47,13 @@ func RequireUIAuth(cfg AuthConfig, next http.Handler) http.Handler {
 			http.Error(w, "tls required", http.StatusUpgradeRequired)
 			return
 		}
-		if !tokenMatches(BearerToken(r), cfg.UIToken) {
+		token := BearerToken(r)
+		if token == "" {
+			if cookie, err := r.Cookie("java_profiler_ui_token"); err == nil {
+				token = cookie.Value
+			}
+		}
+		if !tokenMatches(token, cfg.UIToken) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

@@ -80,7 +80,15 @@ func Evaluate(meta Metadata) Evaluation {
 		return eval
 	}
 
-	if duration := strings.TrimSpace(values[AnnotationProfileDuration]); duration != "" {
+	duration := strings.TrimSpace(values[AnnotationProfileDuration])
+	if mode == "temporary" && duration == "" {
+		eval.DesiredState = domain.TargetDesiredStateDisabled
+		eval.Reason = domain.StatusReasonInvalidDuration
+		eval.Message = "temporary profiling requires profile duration"
+		eval.ValidationFailure = true
+		return eval
+	}
+	if duration != "" {
 		parsed, err := time.ParseDuration(duration)
 		if err != nil {
 			eval.DesiredState = domain.TargetDesiredStateDisabled

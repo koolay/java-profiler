@@ -36,7 +36,7 @@ func (s ProcessScanner) Scan() ([]ProcessInfo, error) {
 	if s.Now != nil {
 		now = s.Now
 	}
-	fs, err := procfs.NewFS(root)
+	fs, fsErr := procfs.NewFS(root)
 	var out []ProcessInfo
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -46,13 +46,14 @@ func (s ProcessScanner) Scan() ([]ProcessInfo, error) {
 		if err != nil {
 			continue
 		}
-		cmdline, _ := os.ReadFile(filepath.Join(root, entry.Name(), "cmdline"))
+		processRoot := filepath.Join(root, entry.Name())
+		cmdline, _ := os.ReadFile(filepath.Join(processRoot, "cmdline"))
 		command := strings.ReplaceAll(string(cmdline), "\x00", " ")
 		if strings.TrimSpace(command) == "" {
 			command = entry.Name()
 		}
 		startTime := now()
-		if err == nil {
+		if fsErr == nil {
 			if proc, procErr := fs.Proc(pid); procErr == nil {
 				if stat, statErr := proc.Stat(); statErr == nil {
 					if startedAt, startedErr := stat.StartTime(); startedErr == nil {
@@ -62,7 +63,7 @@ func (s ProcessScanner) Scan() ([]ProcessInfo, error) {
 				}
 			}
 		}
-		out = append(out, ProcessInfo{PID: pid, Command: strings.TrimSpace(command), StartTime: startTime, Root: filepath.Join(root, entry.Name())})
+		out = append(out, ProcessInfo{PID: pid, Command: strings.TrimSpace(command), StartTime: startTime, Root: processRoot})
 	}
 	return out, nil
 }

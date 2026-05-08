@@ -19,11 +19,11 @@ func main() {
 		addr = ":9090"
 	}
 	runtime := collectorruntime.NewCollector(collectorruntime.Config{
-		ProcRoot:     os.Getenv("JAVA_PROFILER_PROC_ROOT"),
+		ProcRoot:     firstNonEmpty(os.Getenv("JAVA_PROFILER_PROC_ROOT"), "/host/proc"),
 		CollectorID:  collectorID(),
-		BackendURL:   os.Getenv("JAVA_PROFILER_COLLECTOR_BACKEND_URL"),
-		BackendToken: os.Getenv("JAVA_PROFILER_COLLECTOR_BACKEND_TOKEN"),
-		PollInterval: parseDuration("JAVA_PROFILER_COLLECTOR_INTERVAL", 30*time.Second),
+		BackendURL:   firstNonEmpty(os.Getenv("JAVA_PROFILER_COLLECTOR_BACKEND_URL"), os.Getenv("JAVA_PROFILER_BACKEND_URL")),
+		BackendToken: firstNonEmpty(os.Getenv("JAVA_PROFILER_COLLECTOR_BACKEND_TOKEN"), os.Getenv("JAVA_PROFILER_BACKEND_TOKEN")),
+		PollInterval: parseDuration("JAVA_PROFILER_COLLECTOR_INTERVAL", time.Minute),
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -62,6 +62,13 @@ func parseDuration(name string, fallback time.Duration) time.Duration {
 		if parsed, err := time.ParseDuration(value); err == nil {
 			return parsed
 		}
+	}
+	return fallback
+}
+
+func firstNonEmpty(value, fallback string) string {
+	if value != "" {
+		return value
 	}
 	return fallback
 }

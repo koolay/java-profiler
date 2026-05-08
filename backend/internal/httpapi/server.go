@@ -2,7 +2,7 @@ package httpapi
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -19,29 +19,28 @@ type ServerConfig struct {
 }
 
 func NewServer(cfg ServerConfig, exporter *metrics.Exporter) (http.Handler, error) {
-	profileRepo := clickhouse.NewProfileRepository()
-	ingestionRepo := clickhouse.NewIngestionRepository()
-	var profiles app.ProfileQueryStore = profileRepo
-	var ingestion app.IngestionStore = ingestionRepo
-	if cfg.ClickHouseDSN == "" {
-		if !cfg.AllowInMemory {
-			return nil, errors.New("clickhouse dsn is required")
-		}
-	} else {
+	var profiles app.ProfileQueryStore
+	var ingestion app.IngestionStore
+	if cfg.ClickHouseDSN != "" {
 		sqlRepo, err := clickhouse.OpenSQLRepository(cfg.ClickHouseDSN)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("open clickhouse repository: %w", err)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := sqlRepo.Ping(ctx); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("ping clickhouse: %w", err)
 		}
 		if err := sqlRepo.ApplySchema(ctx); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("apply clickhouse schema: %w", err)
 		}
 		profiles = sqlRepo
 		ingestion = sqlRepo
+	} else if cfg.AllowInMemory {
+		profiles = clickhouse.NewProfileRepository()
+		ingestion = clickhouse.NewIngestionRepository()
+	} else {
+		return nil, fmt.Errorf("JAVA_PROFILER_CLICKHOUSE_DSN is required unless in-memory mode is explicitly enabled")
 	}
 	threadRepo := clickhouse.NewThreadRepository()
 	statusRepo := clickhouse.NewStatusRepository()

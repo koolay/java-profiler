@@ -11,7 +11,7 @@ import (
 )
 
 func TestCollectorUploadRequiresAuth(t *testing.T) {
-	server, err := NewServer(ServerConfig{Auth: AuthConfig{CollectorToken: "secret"}, AllowInMemory: true}, metrics.NewExporter())
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "secret"}}, metrics.NewExporter())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestCollectorUploadRequiresAuth(t *testing.T) {
 }
 
 func TestCollectorUploadAuthenticated(t *testing.T) {
-	server, err := NewServer(ServerConfig{Auth: AuthConfig{CollectorToken: "secret"}, AllowInMemory: true}, metrics.NewExporter())
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "secret"}}, metrics.NewExporter())
 	if err != nil {
 		t.Fatal(err)
 	}

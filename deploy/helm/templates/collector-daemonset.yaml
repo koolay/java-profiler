@@ -26,7 +26,7 @@ spec:
               add: ["SYS_PTRACE"]
           env:
             - name: JAVA_PROFILER_BACKEND_URL
-              value: https://{{ .Release.Name }}-backend:{{ .Values.service.port }}/api/collector/v1/profile-batches
+              value: http://{{ .Release.Name }}-backend:{{ .Values.service.port }}/api/collector/v1/profile-batches
             - name: JAVA_PROFILER_BACKEND_TOKEN
               valueFrom:
                 secretKeyRef:

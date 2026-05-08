@@ -4,12 +4,17 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"strings"
+	"time"
 
 	profiling "github.com/koolay/java-profiler/contracts/profiling"
 	"github.com/koolay/java-profiler/domain"
 )
 
 func Normalize(batchID string, target domain.TargetIdentity, events []Event) []profiling.ProfileSample {
+	return NormalizeWindow(batchID, target, events, time.Time{}, time.Time{})
+}
+
+func NormalizeWindow(batchID string, target domain.TargetIdentity, events []Event, startedAt, endedAt time.Time) []profiling.ProfileSample {
 	var samples []profiling.ProfileSample
 	for _, event := range events {
 		profileType, ok := profileTypeForEvent(event.Type)
@@ -21,6 +26,8 @@ func Normalize(batchID string, target domain.TargetIdentity, events []Event) []p
 			BatchID:     batchID,
 			Target:      target,
 			ProfileType: profileType,
+			StartedAt:   startedAt,
+			EndedAt:     endedAt,
 			StackID:     stackID(frames),
 			Frames:      frames,
 			Value:       event.Value,

@@ -58,6 +58,7 @@ func TestRuntimeScanOnceUpdatesStatusesAndMetrics(t *testing.T) {
 		"java_profiler_collector_discovered_processes 1",
 		"java_profiler_collector_compatible_processes 1",
 		"java_profiler_collector_status_entries 1",
+		"java_profiler_collector_target_status_accepted 1",
 	} {
 		if !strings.Contains(snapshot, want) {
 			t.Fatalf("expected metrics snapshot to contain %q, got %q", want, snapshot)
