@@ -86,6 +86,7 @@ backend_port="${JAVA_PROFILER_BACKEND_PORT:-18082}"
 web_port="${JAVA_PROFILER_WEB_PORT:-18081}"
 collector_port="${JAVA_PROFILER_COLLECTOR_PORT:-29090}"
 collector_interval="${JAVA_PROFILER_COLLECTOR_INTERVAL:-60s}"
+acceptance_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 if [[ -z "$profiler_namespace" ]]; then
   profiler_namespace="$namespace"
 fi
@@ -203,6 +204,7 @@ log "- service: $service_name"
 log "- artifact_dir: $artifact_dir"
 log "- configure_profiler: $configure_profiler"
 log "- skip_workload_rollout_check: $skip_workload_rollout_check"
+log "- acceptance_started_at: $acceptance_started_at"
 log ""
 
 if [[ "$install" == "true" ]]; then
@@ -531,13 +533,19 @@ backend_no_auth_code="$(curl -sS -o "$artifact_dir/backend-no-auth.txt" -w '%{ht
 [[ "$backend_no_auth_code" == "401" ]] || fail "backend without UI token returned $backend_no_auth_code, expected 401"
 pass "backend direct UI API rejects missing token"
 
-start="$(date -u -v-2H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+start="${JAVA_PROFILER_ACCEPTANCE_START:-$acceptance_started_at}"
 end="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 query="namespace=${namespace}&service=${service_name}&start=${start}&end=${end}"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/target-status?${query}" >"$artifact_dir/backend-target-status.json"
 service_status_len="$(jq 'length' "$artifact_dir/backend-target-status.json")"
 [[ "$service_status_len" -gt 0 ]] || fail "backend target status has no rows for ${namespace}/${service_name}"
 pass "backend target status has rows for ${namespace}/${service_name} ($service_status_len rows)"
+accepted_status_len="$(jq '[.[] | select(.reason == "accepted")] | length' "$artifact_dir/backend-target-status.json")"
+if [[ "$accepted_status_len" -gt 0 ]]; then
+  pass "backend target status has accepted rows for this acceptance window ($accepted_status_len rows)"
+else
+  gap "backend target status has no accepted rows for this acceptance window"
+fi
 
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_cpu_nanoseconds" >"$artifact_dir/backend-flamegraph-cpu.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_allocation_bytes" >"$artifact_dir/backend-flamegraph-alloc-bytes.json"
@@ -550,11 +558,11 @@ curl -sS "http://127.0.0.1:${collector_port}/metrics" >"$artifact_dir/collector-
 curl -sS "http://127.0.0.1:${backend_port}/metrics" >"$artifact_dir/backend-metrics.txt"
 
 kubectl -n "$profiler_namespace" exec deploy/clickhouse -- clickhouse-client --query \
-  "SELECT 'target_status' t, count() FROM java_profiler.java_profiler_target_status WHERE namespace='${namespace}' AND service='${service_name}' UNION ALL SELECT 'ingestion_batches', count() FROM java_profiler.java_profiler_ingestion_batches UNION ALL SELECT 'profile_samples', count() FROM java_profiler.java_profiler_profile_samples WHERE namespace='${namespace}' AND service='${service_name}' UNION ALL SELECT 'profile_stacks', count() FROM java_profiler.java_profiler_profile_stacks WHERE namespace='${namespace}' AND service='${service_name}' UNION ALL SELECT 'thread_snapshots', count() FROM java_profiler.java_profiler_thread_snapshots WHERE namespace='${namespace}' AND service='${service_name}' UNION ALL SELECT 'deadlock_events', count() FROM java_profiler.java_profiler_deadlock_events WHERE namespace='${namespace}' AND service='${service_name}' UNION ALL SELECT 'artifact_index', count() FROM java_profiler.java_profiler_artifact_index" \
+  "WITH parseDateTime64BestEffort('${start}', 9, 'UTC') AS run_start SELECT 'target_status' t, count() FROM java_profiler.java_profiler_target_status WHERE namespace='${namespace}' AND service='${service_name}' AND status_at >= run_start UNION ALL SELECT 'ingestion_batches', count() FROM java_profiler.java_profiler_ingestion_batches WHERE received_at >= run_start UNION ALL SELECT 'profile_samples', count() FROM java_profiler.java_profiler_profile_samples WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'profile_stacks', count() FROM java_profiler.java_profiler_profile_stacks WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'thread_snapshots', count() FROM java_profiler.java_profiler_thread_snapshots WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'deadlock_events', count() FROM java_profiler.java_profiler_deadlock_events WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'artifact_index', count() FROM java_profiler.java_profiler_artifact_index WHERE created_at >= run_start" \
   >"$artifact_dir/clickhouse-counts.tsv"
 
 kubectl -n "$profiler_namespace" exec deploy/clickhouse -- clickhouse-client --query \
-  "SELECT batch_type, status, retryable, count(), max(received_at), any(message) FROM java_profiler.java_profiler_ingestion_batches GROUP BY batch_type, status, retryable ORDER BY batch_type, status FORMAT Vertical" \
+  "WITH parseDateTime64BestEffort('${start}', 9, 'UTC') AS run_start SELECT batch_type, status, retryable, count(), max(received_at), any(message) FROM java_profiler.java_profiler_ingestion_batches WHERE received_at >= run_start GROUP BY batch_type, status, retryable ORDER BY batch_type, status FORMAT Vertical" \
   >"$artifact_dir/clickhouse-ingestion-batches.txt"
 
 kubectl -n "$profiler_namespace" exec deploy/clickhouse -- clickhouse-client --query \
