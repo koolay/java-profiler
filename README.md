@@ -97,6 +97,14 @@ javac --release 11 java-helper/thread-diagnostics/src/main/java/com/ebpfjava/thr
 cd web && npm install && npm test && npm run build
 ```
 
+Optional local ClickHouse-compatible smoke check using chDB:
+
+```bash
+scripts/verify-chdb-local.sh
+```
+
+The script skips cleanly when `libchdb` is not installed. Use `CHDB_REQUIRED=1` to make missing chDB fail automation.
+
 ## Working Rule
 
 When adding implementation or additional docs, keep them aligned with the requirements document. If a new assumption changes the product shape, update the docs first or in the same change.

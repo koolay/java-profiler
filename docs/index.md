@@ -25,6 +25,7 @@
 ### research/
 
 - **[coroot-node-agent-java-agent.md](./research/coroot-node-agent-java-agent.md)** - Coroot Java agent research
+- **[chdb-go.md](./research/chdb-go.md)** - chDB Go binding research for local embedded ClickHouse-compatible validation
 
 ### implementation/
 
@@ -36,3 +37,4 @@
 - `java-helper/thread-diagnostics` - Java helper for thread snapshots and deadlocks
 - `web` - React/Vite UI
 - `deploy` - Helm and manifest packaging
+- `tools/chdb-smoke` - optional local chDB smoke verification for schema and query behavior
