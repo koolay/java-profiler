@@ -12,7 +12,16 @@ The target problem is narrower than a general observability platform:
 
 ## Current State
 
-There is no production code in the repository yet. The source of truth is the documentation under `docs/`.
+The repository is transitioning from documentation-only into implementation. The source of truth remains the documentation under `docs/`, and the first code scaffolding now lives under:
+
+- `cmd/backend`
+- `cmd/collector`
+- `backend/internal`
+- `collector/internal`
+- `contracts/profiling`
+- `java-helper/thread-diagnostics`
+- `web`
+- `deploy`
 
 ## Core Documents
 
@@ -24,6 +33,8 @@ There is no production code in the repository yet. The source of truth is the do
   - collector, backend, ClickHouse, query, and UI boundaries
 - `docs/research/coroot-node-agent-java-agent.md`
   - research notes on Coroot's Java agent and async-profiler-related behavior
+- `docs/operations/java-profiling-runbook.md`
+  - install-time and incident-time operator workflow
 
 ## Product Direction
 
@@ -38,6 +49,7 @@ The current design assumes:
 - metrics exposed through collector/backend exporters only, with Prometheus-series services owning metric storage and dashboards
 - a lightweight, self-owned UI rather than a broad observability workspace
 - collector and backend Go container images built from `ghcr.io/koolay/library/golang:1.26.0`
+- Kubernetes deployment artifacts under `deploy/helm`
 
 ## Explicit Scope Boundaries
 
@@ -54,10 +66,35 @@ The first version does not include:
 ## Repository Layout
 
 ```text
+cmd/
+  backend/
+  collector/
+backend/
+  internal/
+collector/
+  internal/
+contracts/
+  profiling/
+java-helper/
+  thread-diagnostics/
+web/
+  src/
+deploy/
+  helm/
 docs/
   architecture/
   brainstorms/
+  operations/
   research/
+  plans/
+```
+
+## Local Verification
+
+```bash
+go test ./...
+javac --release 11 java-helper/thread-diagnostics/src/main/java/com/ebpfjava/threads/*.java
+cd web && npm install && npm test && npm run build
 ```
 
 ## Working Rule

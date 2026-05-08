@@ -1,0 +1,10 @@
+FROM ghcr.io/koolay/library/golang:1.26.0 AS build
+WORKDIR /src
+COPY go.mod ./
+COPY . .
+RUN go build -o /out/java-profiler-backend ./cmd/backend
+
+FROM gcr.io/distroless/base-debian12:nonroot
+COPY --from=build /out/java-profiler-backend /java-profiler-backend
+USER nonroot:nonroot
+ENTRYPOINT ["/java-profiler-backend"]

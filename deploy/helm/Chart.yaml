@@ -1,0 +1,6 @@
+apiVersion: v2
+name: java-profiler
+description: Java-only Kubernetes profiling system with node collector, backend, UI, and ClickHouse storage.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

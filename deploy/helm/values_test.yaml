@@ -1,0 +1,6 @@
+profiling:
+  enabledByDefault: false
+  startupDelay: 1s
+  temporaryMaxDuration: 10m
+auth:
+  existingSecret: java-profiler-auth

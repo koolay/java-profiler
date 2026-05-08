@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: java-profiler-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: java-profiler-backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+        - name: backend
+          image: {{ .Values.image.backend }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: JAVA_PROFILER_CLICKHOUSE_DSN
+              value: {{ .Values.clickhouse.dsn | quote }}
+            - name: JAVA_PROFILER_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.collectorTokenKey }}
+            - name: JAVA_PROFILER_COLLECTOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.collectorTokenKey }}
+            - name: JAVA_PROFILER_UI_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.uiTokenKey }}

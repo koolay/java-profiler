@@ -18,6 +18,13 @@ Thumbs.db
 *.log
 logs/
 
+# Node / frontend
+node_modules/
+.vite/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
 # Local environment / secrets
 .env
 .env.*

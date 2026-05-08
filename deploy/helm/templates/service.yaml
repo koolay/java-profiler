@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-backend
+spec:
+  selector:
+    app.kubernetes.io/name: java-profiler-backend
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-web
+spec:
+  selector:
+    app.kubernetes.io/name: java-profiler-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Release.Name }}-collector
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: java-profiler-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: java-profiler-collector
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: {{ .Release.Name }}-collector
+      hostPID: true
+      containers:
+        - name: collector
+          image: {{ .Values.image.collector }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              add: ["SYS_PTRACE"]
+          env:
+            - name: JAVA_PROFILER_BACKEND_URL
+              value: https://{{ .Release.Name }}-backend:{{ .Values.service.port }}/api/collector/v1/profile-batches
+            - name: JAVA_PROFILER_BACKEND_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.collectorTokenKey }}
+            - name: JAVA_PROFILER_STARTUP_DELAY
+              value: {{ .Values.profiling.startupDelay | quote }}
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: assets
+              mountPath: /var/lib/java-profiler/assets
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: assets
+          emptyDir: {}

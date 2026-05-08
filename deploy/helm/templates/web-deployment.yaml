@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: java-profiler-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: java-profiler-web
+    spec:
+      containers:
+        - name: web
+          image: {{ .Values.image.web }}
+          ports:
+            - containerPort: 80
