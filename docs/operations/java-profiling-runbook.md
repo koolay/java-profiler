@@ -50,7 +50,7 @@ scripts/real-acceptance.sh \
   --require-full-profiling
 ```
 
-The script records target Pod state before and after the run and fails if the selected workload's restart count increases. Use `--skip-workload-rollout-check` only when `--service` is a label-level filter rather than a Deployment name.
+The script records target Pod state before and after the run and fails if the selected workload's restart count increases. With `--require-full-profiling`, only data created after the acceptance run starts can satisfy the check; historical profile rows from earlier Pods or earlier runs do not count. Use `--skip-workload-rollout-check` only when `--service` is a label-level filter rather than a Deployment name.
 
 ## Failure Statuses
 

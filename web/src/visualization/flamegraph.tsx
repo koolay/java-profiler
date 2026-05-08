@@ -6,13 +6,19 @@ type Props = {
   metadata?: PartialMetadata;
 };
 
-type Row = FlamegraphNode & { depth: number; path: string };
+type Frame = FlamegraphNode & {
+  depth: number;
+  path: string;
+  left: number;
+  width: number;
+  matched: boolean;
+};
 
 export function Flamegraph({ root, metadata }: Props) {
   const [query, setQuery] = useState("");
   const [zoomPath, setZoomPath] = useState("root");
-  const rows = useMemo(() => flatten(root, zoomPath).filter((row) => row.name.toLowerCase().includes(query.toLowerCase())), [root, query, zoomPath]);
-  const max = Math.max(1, ...rows.map((row) => row.value));
+  const frames = useMemo(() => layout(root, zoomPath, query), [root, query, zoomPath]);
+  const depth = Math.max(0, ...frames.map((frame) => frame.depth));
   return (
     <section className="flamegraph" aria-label="Flamegraph">
       <div className="flamegraph-tools">
@@ -20,17 +26,21 @@ export function Flamegraph({ root, metadata }: Props) {
         <button onClick={() => setZoomPath("root")}>Reset</button>
       </div>
       {metadata?.partial && <p className="warning">Partial result: {(metadata.reasons ?? ["query budget"]).join(", ")}.</p>}
-      <div className="flamegraph-stack">
-        {rows.map((row) => (
+      <div className="flamegraph-stack" style={{ height: Math.max(1, depth + 1) * 28 }}>
+        {frames.map((frame) => (
           <button
-            key={row.path}
-            className="flame-row"
-            style={{ paddingLeft: 10 + row.depth * 14, width: `${Math.max(8, (row.value / max) * 100)}%` }}
-            onClick={() => setZoomPath(row.path)}
-            title={`${row.name}: ${row.value}`}
+            key={frame.path}
+            className={`flame-row${frame.matched ? " flame-row-match" : ""}`}
+            style={{
+              left: `${frame.left}%`,
+              top: frame.depth * 28,
+              width: `${frame.width}%`,
+            }}
+            onClick={() => setZoomPath(frame.path)}
+            title={`${frame.name}: ${frame.value}`}
           >
-            <span className="flame-frame">{row.name}</span>
-            <b className="flame-value">{row.value.toLocaleString()}</b>
+            <span className="flame-frame">{frame.name}</span>
+            <b className="flame-value">{frame.value.toLocaleString()}</b>
           </button>
         ))}
       </div>
@@ -38,20 +48,40 @@ export function Flamegraph({ root, metadata }: Props) {
   );
 }
 
-function flatten(root: FlamegraphNode, zoomPath: string): Row[] {
-  const rows: Row[] = [];
-  const visit = (node: FlamegraphNode, depth: number, path: string) => {
-    if (path.startsWith(zoomPath)) {
-      rows.push({ ...node, depth, path });
-      for (const child of node.children ?? []) {
-        visit(child, depth + 1, `${path}/${child.name}`);
-      }
-      return;
-    }
-    for (const child of node.children ?? []) {
-      visit(child, depth + 1, `${path}/${child.name}`);
+function layout(root: FlamegraphNode, zoomPath: string, query: string): Frame[] {
+  const zoomRoot = findByPath(root, zoomPath) ?? root;
+  const normalizedQuery = query.trim().toLowerCase();
+  const frames: Frame[] = [];
+  const visit = (node: FlamegraphNode, depth: number, path: string, left: number, width: number) => {
+    frames.push({
+      ...node,
+      depth,
+      path,
+      left,
+      width,
+      matched: normalizedQuery.length > 0 && node.name.toLowerCase().includes(normalizedQuery),
+    });
+    const children = node.children ?? [];
+    const total = children.reduce((sum, child) => sum + Math.max(0, child.value), 0) || Math.max(1, node.value);
+    let offset = left;
+    for (const [index, child] of children.entries()) {
+      const childWidth = width * (Math.max(0, child.value) / total);
+      visit(child, depth + 1, `${path}/${index}`, offset, childWidth);
+      offset += childWidth;
     }
   };
-  visit(root, 0, "root");
-  return rows;
+  visit(zoomRoot, 0, zoomPath, 0, 100);
+  return frames;
+}
+
+function findByPath(root: FlamegraphNode, path: string): FlamegraphNode | undefined {
+  if (path === "root") return root;
+  const parts = path.split("/").slice(1);
+  let current: FlamegraphNode | undefined = root;
+  for (const part of parts) {
+    const index = Number(part);
+    if (!Number.isInteger(index)) return undefined;
+    current = current?.children?.[index];
+  }
+  return current;
 }

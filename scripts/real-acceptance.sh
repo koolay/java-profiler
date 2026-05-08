@@ -17,7 +17,7 @@ Options:
   --release NAME            Helm release name. Default: java-profiler.
   --service NAME            Java workload service/name filter. Default: checkout-java.
   --artifact-dir DIR        Evidence directory. Default: /tmp/java-profiler-real-acceptance-<timestamp>.
-  --require-full-profiling  Fail if profile/thread/deadlock data is still empty.
+  --require-full-profiling  Fail if current-run accepted status, profile, thread, or deadlock data is empty.
   --skip-browser            Skip Playwright UI screenshots/video.
   -h, --help                Show this help.
 
