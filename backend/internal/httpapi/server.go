@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"time"
@@ -14,23 +15,33 @@ import (
 type ServerConfig struct {
 	Auth          AuthConfig
 	ClickHouseDSN string
+	AllowInMemory bool
 }
 
-func NewServer(cfg ServerConfig, exporter *metrics.Exporter) http.Handler {
+func NewServer(cfg ServerConfig, exporter *metrics.Exporter) (http.Handler, error) {
 	profileRepo := clickhouse.NewProfileRepository()
 	ingestionRepo := clickhouse.NewIngestionRepository()
 	var profiles app.ProfileQueryStore = profileRepo
 	var ingestion app.IngestionStore = ingestionRepo
-	if cfg.ClickHouseDSN != "" {
-		if sqlRepo, err := clickhouse.OpenSQLRepository(cfg.ClickHouseDSN); err == nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			if err := sqlRepo.Ping(ctx); err == nil {
-				_ = sqlRepo.ApplySchema(ctx)
-				profiles = sqlRepo
-				ingestion = sqlRepo
-			}
-			cancel()
+	if cfg.ClickHouseDSN == "" {
+		if !cfg.AllowInMemory {
+			return nil, errors.New("clickhouse dsn is required")
 		}
+	} else {
+		sqlRepo, err := clickhouse.OpenSQLRepository(cfg.ClickHouseDSN)
+		if err != nil {
+			return nil, err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := sqlRepo.Ping(ctx); err != nil {
+			return nil, err
+		}
+		if err := sqlRepo.ApplySchema(ctx); err != nil {
+			return nil, err
+		}
+		profiles = sqlRepo
+		ingestion = sqlRepo
 	}
 	threadRepo := clickhouse.NewThreadRepository()
 	statusRepo := clickhouse.NewStatusRepository()
@@ -48,10 +59,10 @@ func NewServer(cfg ServerConfig, exporter *metrics.Exporter) http.Handler {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = w.Write([]byte(exporter.Snapshot()))
 	})
-	return mux
+	return mux, nil
 }
 
-func NewServerFromEnv(exporter *metrics.Exporter) http.Handler {
+func NewServerFromEnv(exporter *metrics.Exporter) (http.Handler, error) {
 	collectorToken := os.Getenv("JAVA_PROFILER_COLLECTOR_TOKEN")
 	if collectorToken == "" {
 		collectorToken = os.Getenv("JAVA_PROFILER_AUTH_TOKEN")
@@ -67,5 +78,6 @@ func NewServerFromEnv(exporter *metrics.Exporter) http.Handler {
 			RequireTLS:     os.Getenv("JAVA_PROFILER_REQUIRE_TLS") == "true",
 		},
 		ClickHouseDSN: os.Getenv("JAVA_PROFILER_CLICKHOUSE_DSN"),
+		AllowInMemory: os.Getenv("JAVA_PROFILER_ALLOW_IN_MEMORY") == "true",
 	}, exporter)
 }

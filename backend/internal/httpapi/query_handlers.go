@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/koolay/java-profiler/backend/internal/app"
@@ -22,8 +23,8 @@ func (h QueryHandlers) Flamegraph(w http.ResponseWriter, r *http.Request) {
 		Service:     r.URL.Query().Get("service"),
 		Pod:         r.URL.Query().Get("pod"),
 		ProfileType: domain.ProfileType(r.URL.Query().Get("profile_type")),
-		Start:       parseUnix(r.URL.Query().Get("start")),
-		End:         parseUnix(r.URL.Query().Get("end")),
+		Start:       parseQueryTime(r.URL.Query().Get("start")),
+		End:         parseQueryTime(r.URL.Query().Get("end")),
 		Limit:       1000,
 		NodeLimit:   2048,
 	})
@@ -66,9 +67,12 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func parseUnix(value string) time.Time {
+func parseQueryTime(value string) time.Time {
 	if value == "" {
 		return time.Time{}
+	}
+	if unixSeconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return time.Unix(unixSeconds, 0).UTC()
 	}
 	parsed, err := time.Parse(time.RFC3339, value)
 	if err != nil {

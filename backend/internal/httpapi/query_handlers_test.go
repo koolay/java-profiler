@@ -9,7 +9,10 @@ import (
 )
 
 func TestQueryRequiresAuth(t *testing.T) {
-	server := NewServer(ServerConfig{Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
+	server, err := NewServer(ServerConfig{Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}, AllowInMemory: true}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
 	req := httptest.NewRequest(http.MethodGet, "/api/ui/v1/flamegraph?namespace=prod&service=checkout", nil)
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, req)

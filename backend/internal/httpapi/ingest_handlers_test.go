@@ -11,7 +11,10 @@ import (
 )
 
 func TestCollectorUploadRequiresAuth(t *testing.T) {
-	server := NewServer(ServerConfig{Auth: AuthConfig{CollectorToken: "secret"}}, metrics.NewExporter())
+	server, err := NewServer(ServerConfig{Auth: AuthConfig{CollectorToken: "secret"}, AllowInMemory: true}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/api/collector/v1/profile-batches", strings.NewReader(`{}`))
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, req)
@@ -21,7 +24,10 @@ func TestCollectorUploadRequiresAuth(t *testing.T) {
 }
 
 func TestCollectorUploadAuthenticated(t *testing.T) {
-	server := NewServer(ServerConfig{Auth: AuthConfig{CollectorToken: "secret"}}, metrics.NewExporter())
+	server, err := NewServer(ServerConfig{Auth: AuthConfig{CollectorToken: "secret"}, AllowInMemory: true}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
 	body := `{"BatchID":"batch-1","CollectorID":"collector-a","Samples":[]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/collector/v1/profile-batches", bytes.NewBufferString(body))
 	req.Header.Set("Authorization", "Bearer secret")

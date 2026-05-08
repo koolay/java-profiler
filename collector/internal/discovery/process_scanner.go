@@ -1,11 +1,14 @@
 package discovery
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/prometheus/procfs"
 )
 
 type ProcessInfo struct {
@@ -33,6 +36,7 @@ func (s ProcessScanner) Scan() ([]ProcessInfo, error) {
 	if s.Now != nil {
 		now = s.Now
 	}
+	fs, err := procfs.NewFS(root)
 	var out []ProcessInfo
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -47,7 +51,18 @@ func (s ProcessScanner) Scan() ([]ProcessInfo, error) {
 		if strings.TrimSpace(command) == "" {
 			command = entry.Name()
 		}
-		out = append(out, ProcessInfo{PID: pid, Command: strings.TrimSpace(command), StartTime: now(), Root: filepath.Join(root, entry.Name())})
+		startTime := now()
+		if err == nil {
+			if proc, procErr := fs.Proc(pid); procErr == nil {
+				if stat, statErr := proc.Stat(); statErr == nil {
+					if startedAt, startedErr := stat.StartTime(); startedErr == nil {
+						seconds, frac := math.Modf(startedAt)
+						startTime = time.Unix(int64(seconds), int64(frac*float64(time.Second))).UTC()
+					}
+				}
+			}
+		}
+		out = append(out, ProcessInfo{PID: pid, Command: strings.TrimSpace(command), StartTime: startTime, Root: filepath.Join(root, entry.Name())})
 	}
 	return out, nil
 }
