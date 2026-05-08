@@ -34,6 +34,12 @@ spec:
                   key: {{ .Values.auth.collectorTokenKey }}
             - name: JAVA_PROFILER_STARTUP_DELAY
               value: {{ .Values.profiling.startupDelay | quote }}
+            - name: JAVA_PROFILER_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: JAVA_PROFILER_CLUSTER
+              value: {{ .Values.clusterName | default "local" | quote }}
           volumeMounts:
             - name: proc
               mountPath: /host/proc

@@ -23,10 +23,24 @@ export type FlamegraphResponse = {
   metadata: PartialMetadata;
 };
 
+export type TargetStatusReason =
+  | "disabled_by_metadata"
+  | "temporary_expired"
+  | "invalid_duration"
+  | "unsupported_jvm"
+  | "profiler_conflict"
+  | "attach_failed"
+  | "upload_retryable"
+  | "upload_dropped"
+  | "storage_rejected"
+  | "accepted"
+  | string;
+
 export type TargetStatus = {
-  target?: { namespace?: string; service?: string; pod?: string; process_id?: number };
+  target?: { namespace?: string; service?: string; pod?: string; container?: string; process_id?: number };
+  status_at?: string;
   desired_state: string;
-  reason: string;
+  reason: TargetStatusReason;
   message: string;
 };
 

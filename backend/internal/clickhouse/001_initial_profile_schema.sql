@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS java_profiler_profile_stacks
     stack_id String,
     frames Array(String),
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
-    expires_at DateTime64(9, 'UTC') DEFAULT created_at + INTERVAL 7 DAY
+    expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
 )
 ENGINE = MergeTree
 PARTITION BY toDate(created_at)
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS java_profiler_profile_samples
     sample_value UInt64,
     truncated UInt8 DEFAULT 0,
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
-    expires_at DateTime64(9, 'UTC') DEFAULT created_at + INTERVAL 7 DAY
+    expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
 )
 ENGINE = MergeTree
 PARTITION BY toDate(started_at)
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS java_profiler_thread_snapshots
     cpu_time_ns Nullable(UInt64),
     user_cpu_time_ns Nullable(UInt64),
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
-    expires_at DateTime64(9, 'UTC') DEFAULT created_at + INTERVAL 7 DAY
+    expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
 )
 ENGINE = MergeTree
 PARTITION BY toDate(snapshot_at)
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS java_profiler_deadlock_events
     locks Array(String),
     blocking_frames Array(String),
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
-    expires_at DateTime64(9, 'UTC') DEFAULT created_at + INTERVAL 7 DAY
+    expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
 )
 ENGINE = MergeTree
 PARTITION BY toDate(event_at)
@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS java_profiler_target_status
     reason LowCardinality(String),
     message String,
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
-    expires_at DateTime64(9, 'UTC') DEFAULT created_at + INTERVAL 7 DAY
+    expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
 )
 ENGINE = MergeTree
 PARTITION BY toDate(status_at)
@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS java_profiler_ingestion_batches
     payload_hash String,
     message String,
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
-    expires_at DateTime64(9, 'UTC') DEFAULT created_at + INTERVAL 7 DAY
+    expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
 )
 ENGINE = ReplacingMergeTree(received_at)
 PARTITION BY toDate(received_at)
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS java_profiler_artifact_index
     path String,
     checksum String,
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
-    expires_at DateTime64(9, 'UTC') DEFAULT created_at + INTERVAL 24 HOUR
+    expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 24 HOUR
 )
 ENGINE = MergeTree
 PARTITION BY toDate(created_at)

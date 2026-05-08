@@ -123,6 +123,97 @@ func (r *SQLRepository) QuerySamples(ctx context.Context, q ProfileQuery) ([]Pro
 	return out, rows.Err()
 }
 
+func (r *SQLRepository) InsertStatuses(ctx context.Context, statuses []TargetStatus) error {
+	if len(statuses) == 0 {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO java_profiler_target_status
+		(batch_id, cluster, namespace, service, pod, container, process_id, jvm_start_time, status_at, desired_state, reason, message)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, status := range statuses {
+		if _, err := stmt.ExecContext(ctx,
+			status.BatchID,
+			status.Target.Cluster,
+			status.Target.Namespace,
+			status.Target.Service,
+			status.Target.Pod,
+			status.Target.Container,
+			status.Target.ProcessID,
+			status.Target.JVMStartTime,
+			status.StatusAt,
+			string(status.DesiredState),
+			string(status.Reason),
+			status.Message,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (r *SQLRepository) LatestByService(ctx context.Context, q TargetStatusQuery) ([]TargetStatus, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT batch_id, cluster, namespace, service, pod, container, process_id, jvm_start_time, status_at, desired_state, reason, message
+		FROM
+		(
+			SELECT *, row_number() OVER (
+				PARTITION BY cluster, namespace, service, pod, container, process_id, jvm_start_time
+				ORDER BY status_at DESC
+			) AS rn
+			FROM java_profiler_target_status
+			WHERE (? = '' OR namespace = ?) AND (? = '' OR service = ?)
+			  AND (? = 1 OR status_at >= ?) AND (? = 1 OR status_at <= ?)
+		)
+		WHERE rn = 1
+		ORDER BY status_at DESC
+		LIMIT 500`,
+		q.Namespace, q.Namespace,
+		q.Service, q.Service,
+		zeroTimeFlag(q.Start), q.Start,
+		zeroTimeFlag(q.End), q.End,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TargetStatus
+	for rows.Next() {
+		var status TargetStatus
+		var desiredState string
+		var reason string
+		if err := rows.Scan(
+			&status.BatchID,
+			&status.Target.Cluster,
+			&status.Target.Namespace,
+			&status.Target.Service,
+			&status.Target.Pod,
+			&status.Target.Container,
+			&status.Target.ProcessID,
+			&status.Target.JVMStartTime,
+			&status.StatusAt,
+			&desiredState,
+			&reason,
+			&status.Message,
+		); err != nil {
+			return nil, err
+		}
+		status.DesiredState = domain.TargetDesiredState(desiredState)
+		status.Reason = domain.StatusReason(reason)
+		out = append(out, status)
+	}
+	return out, rows.Err()
+}
+
 func zeroTimeFlag(value time.Time) uint8 {
 	if value.IsZero() {
 		return 1

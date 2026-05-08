@@ -56,6 +56,25 @@ pre { overflow: auto; background: #172120; color: #dff4ed; padding: 12px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 10px 8px; }
 th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+.table-scroll { overflow-x: auto; border-bottom: 1px solid var(--line); }
+.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status-table { min-width: 960px; table-layout: fixed; }
+.status-table th:nth-child(1), .status-table td:nth-child(1) { width: 150px; }
+.status-table th:nth-child(2), .status-table td:nth-child(2) { width: 60px; }
+.status-table th:nth-child(3), .status-table td:nth-child(3) { width: 80px; }
+.status-table th:nth-child(4), .status-table td:nth-child(4) { width: 96px; }
+.status-table th:nth-child(5), .status-table td:nth-child(5) { width: 150px; }
+.status-table th:nth-child(6), .status-table td:nth-child(6) { width: 190px; }
+.status-table th:nth-child(7), .status-table td:nth-child(7) { width: 234px; }
+.status-table td { vertical-align: top; }
+.pod-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.numeric, .seen-at { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.state-pill { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 8px; border: 1px solid var(--line); font-size: 13px; font-weight: 700; }
+.state-ok { color: #075d43; background: #dff3ea; border-color: #9acdbb; }
+.state-warn { color: #794800; background: #fff0c9; border-color: #d9b15b; }
+.state-muted { color: var(--muted); background: #edf1ed; }
+.state-neutral { color: var(--ink); background: #fff; }
+.reason-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
 .health-grid div { display: grid; gap: 4px; }
 .health-grid b { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .health-grid span { font-size: 24px; font-weight: 800; }

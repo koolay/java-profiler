@@ -42,8 +42,11 @@ func TestRuntimeScanOnceUpdatesStatusesAndMetrics(t *testing.T) {
 		t.Fatalf("expected one status, got %d", len(statuses))
 	}
 	status := statuses[0]
-	if status.State != domain.TargetDesiredStateEnabled {
-		t.Fatalf("expected enabled state, got %s", status.State)
+	if status.State != domain.TargetDesiredStateDisabled {
+		t.Fatalf("expected disabled state, got %s", status.State)
+	}
+	if status.Reason != domain.StatusReasonDisabledByMetadata {
+		t.Fatalf("expected disabled_by_metadata reason, got %s", status.Reason)
 	}
 	if status.Target.ProcessID != 123 {
 		t.Fatalf("expected pid 123, got %d", status.Target.ProcessID)
@@ -56,9 +59,9 @@ func TestRuntimeScanOnceUpdatesStatusesAndMetrics(t *testing.T) {
 	for _, want := range []string{
 		"java_profiler_collector_up 1",
 		"java_profiler_collector_discovered_processes 1",
-		"java_profiler_collector_compatible_processes 1",
+		"java_profiler_collector_compatible_processes 0",
 		"java_profiler_collector_status_entries 1",
-		"java_profiler_collector_target_status_accepted 1",
+		"java_profiler_collector_target_status_disabled_by_metadata 1",
 	} {
 		if !strings.Contains(snapshot, want) {
 			t.Fatalf("expected metrics snapshot to contain %q, got %q", want, snapshot)

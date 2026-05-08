@@ -9,7 +9,8 @@ import (
 )
 
 type IngestHandlers struct {
-	Profiles app.ProfileBatchIngestor
+	Profiles       app.ProfileBatchIngestor
+	TargetStatuses app.TargetStatusIngestor
 }
 
 func (h IngestHandlers) ProfileBatch(w http.ResponseWriter, r *http.Request) {
@@ -24,6 +25,31 @@ func (h IngestHandlers) ProfileBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.Profiles.Ingest(r.Context(), req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	status := http.StatusAccepted
+	if result.Status == clickhouse.IngestionRejected {
+		status = http.StatusBadRequest
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+func (h IngestHandlers) TargetStatusBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	defer r.Body.Close()
+	var req app.TargetStatusBatchRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	result, err := h.TargetStatuses.Ingest(r.Context(), req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return

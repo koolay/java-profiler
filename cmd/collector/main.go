@@ -23,6 +23,8 @@ func main() {
 		CollectorID:  collectorID(),
 		BackendURL:   firstNonEmpty(os.Getenv("JAVA_PROFILER_COLLECTOR_BACKEND_URL"), os.Getenv("JAVA_PROFILER_BACKEND_URL")),
 		BackendToken: firstNonEmpty(os.Getenv("JAVA_PROFILER_COLLECTOR_BACKEND_TOKEN"), os.Getenv("JAVA_PROFILER_BACKEND_TOKEN")),
+		NodeName:     os.Getenv("JAVA_PROFILER_NODE_NAME"),
+		Cluster:      os.Getenv("JAVA_PROFILER_CLUSTER"),
 		PollInterval: parseDuration("JAVA_PROFILER_COLLECTOR_INTERVAL", time.Minute),
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

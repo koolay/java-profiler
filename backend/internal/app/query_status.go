@@ -2,10 +2,20 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/koolay/java-profiler/backend/internal/clickhouse"
 )
 
-func QueryTargetStatus(ctx context.Context, repo *clickhouse.StatusRepository, namespace, service string) ([]clickhouse.TargetStatus, error) {
-	return repo.LatestByService(ctx, namespace, service)
+type TargetStatusQueryStore interface {
+	LatestByService(context.Context, clickhouse.TargetStatusQuery) ([]clickhouse.TargetStatus, error)
+}
+
+func QueryTargetStatus(ctx context.Context, repo TargetStatusQueryStore, namespace, service string, start, end time.Time) ([]clickhouse.TargetStatus, error) {
+	return repo.LatestByService(ctx, clickhouse.TargetStatusQuery{
+		Namespace: namespace,
+		Service:   service,
+		Start:     start,
+		End:       end,
+	})
 }

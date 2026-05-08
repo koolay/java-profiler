@@ -35,6 +35,10 @@ The repository is transitioning from documentation-only into implementation. The
   - research notes on Coroot's Java agent and async-profiler-related behavior
 - `docs/operations/java-profiling-runbook.md`
   - install-time and incident-time operator workflow
+- `docs/operations/deployment-operations-admin-manual.md`
+  - deployment, operations, security, storage, upgrade, and platform troubleshooting manual
+- `docs/operations/performance-analysis-user-manual.md`
+  - Java service owner workflow for CPU, memory allocation, lock, deadlock, target status, and ingestion-health analysis
 
 ## Product Direction
 

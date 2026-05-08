@@ -17,3 +17,11 @@ spec:
           image: {{ .Values.image.web }}
           ports:
             - containerPort: 80
+          env:
+            - name: JAVA_PROFILER_BACKEND_URL
+              value: http://{{ .Release.Name }}-backend:{{ .Values.service.port }}
+            - name: JAVA_PROFILER_UI_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.uiTokenKey }}

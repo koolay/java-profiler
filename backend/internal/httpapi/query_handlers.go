@@ -14,7 +14,7 @@ import (
 type QueryHandlers struct {
 	Profiles app.ProfileQueryStore
 	Threads  *clickhouse.ThreadRepository
-	Statuses *clickhouse.StatusRepository
+	Statuses app.TargetStatusQueryStore
 }
 
 func (h QueryHandlers) Flamegraph(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +54,14 @@ func (h QueryHandlers) Deadlocks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h QueryHandlers) TargetStatus(w http.ResponseWriter, r *http.Request) {
-	result, err := app.QueryTargetStatus(r.Context(), h.Statuses, r.URL.Query().Get("namespace"), r.URL.Query().Get("service"))
+	result, err := app.QueryTargetStatus(
+		r.Context(),
+		h.Statuses,
+		r.URL.Query().Get("namespace"),
+		r.URL.Query().Get("service"),
+		parseQueryTime(r.URL.Query().Get("start")),
+		parseQueryTime(r.URL.Query().Get("end")),
+	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return

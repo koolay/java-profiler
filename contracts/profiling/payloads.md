@@ -55,6 +55,22 @@ Stable batch types:
 - `retention`
 - `artifact_index`
 
+## Collector batch payloads
+
+Profile batches are sent to `/api/collector/v1/profile-batches`.
+
+- `BatchID`: unique collector-generated batch id
+- `CollectorID`: stable collector instance id
+- `ReceivedAt`: collector-side batch creation time
+- `Samples`: profile samples
+
+Target status batches are sent to `/api/collector/v1/target-status-batches`.
+
+- `BatchID`: unique collector-generated batch id
+- `CollectorID`: stable collector instance id
+- `ReceivedAt`: collector-side batch creation time
+- `Statuses`: target status rows with `batch_id`, `target`, `status_at`, `desired_state`, `reason`, and `message`
+
 ## Status reasons
 
 Stable status reasons used by collector and backend:
