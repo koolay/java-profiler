@@ -13,7 +13,10 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
-	handler := server.NewFromEnv()
+	handler, err := server.NewFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
 	log.Printf("java-profiler backend listening on %s", addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)

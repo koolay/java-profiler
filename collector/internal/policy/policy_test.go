@@ -68,6 +68,22 @@ func TestEvaluateInvalidDurationFailsClosed(t *testing.T) {
 	}
 }
 
+func TestEvaluateTemporaryRequiresDuration(t *testing.T) {
+	got := Evaluate(Metadata{
+		Annotations: map[string]string{
+			AnnotationProfileMode: "temporary",
+		},
+		StartedAt:  time.Unix(0, 0),
+		ObservedAt: time.Unix(10, 0),
+	})
+	if got.Reason != domain.StatusReasonInvalidDuration {
+		t.Fatalf("expected missing temporary duration to be invalid, got %s", got.Reason)
+	}
+	if got.DesiredState != domain.TargetDesiredStateDisabled || !got.ValidationFailure {
+		t.Fatalf("temporary without duration should fail closed: %+v", got)
+	}
+}
+
 func TestEvaluateExpiredTemporaryWindowDisabled(t *testing.T) {
 	got := Evaluate(Metadata{
 		Annotations: map[string]string{

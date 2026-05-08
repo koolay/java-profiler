@@ -1,23 +1,15 @@
 package clickhouse
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
+	_ "embed"
 	"strings"
 )
 
+//go:embed 001_initial_profile_schema.sql
+var initialSchema string
+
 func InitialSchema() (string, error) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", os.ErrNotExist
-	}
-	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "db", "clickhouse", "001_initial_profile_schema.sql")
-	bytes, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
+	return initialSchema, nil
 }
 
 func SplitStatements(schema string) []string {

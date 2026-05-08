@@ -51,29 +51,37 @@ func (i ProfileBatchIngestor) Ingest(ctx context.Context, req ProfileBatchReques
 		if !sample.ProfileType.IsValid() || sample.Target.Key() == "" {
 			return IngestResult{Status: clickhouse.IngestionRejected, Message: "invalid profile sample"}, nil
 		}
+		if sample.StartedAt.IsZero() || sample.EndedAt.IsZero() || sample.EndedAt.Before(sample.StartedAt) {
+			return IngestResult{Status: clickhouse.IngestionRejected, Message: "profile sample time range is required"}, nil
+		}
 	}
-	status, err := i.Ingestion.Record(ctx, clickhouse.IngestionBatch{
+	batch := clickhouse.IngestionBatch{
 		BatchID:     req.BatchID,
 		CollectorID: req.CollectorID,
 		BatchType:   domain.BatchTypeProfile,
 		ReceivedAt:  firstNonZero(req.ReceivedAt, time.Now().UTC()),
 		Status:      clickhouse.IngestionAccepted,
 		PayloadHash: payloadHash(req.Samples),
-	})
-	if err != nil {
-		return IngestResult{}, err
-	}
-	if status == clickhouse.IngestionDuplicate {
-		return IngestResult{Status: clickhouse.IngestionDuplicate, Message: "duplicate batch ignored"}, nil
-	}
-	if status == clickhouse.IngestionRejected {
-		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch id reused with different payload"}, nil
 	}
 	if err := i.Profiles.InsertProfileBatch(ctx, req.BatchID, req.Samples); err != nil {
 		if errors.Is(err, clickhouse.ErrDuplicateBatch) {
-			return IngestResult{Status: clickhouse.IngestionDuplicate, Message: "duplicate profile rows ignored"}, nil
+			status, recordErr := i.Ingestion.Record(ctx, batch)
+			if recordErr != nil {
+				return IngestResult{}, recordErr
+			}
+			if status == clickhouse.IngestionRejected {
+				return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch id reused with different payload"}, nil
+			}
+			return IngestResult{Status: clickhouse.IngestionDuplicate, Message: "duplicate batch ignored"}, nil
 		}
 		return IngestResult{Status: clickhouse.IngestionRetryable, Retryable: true, Message: err.Error()}, nil
+	}
+	status, err := i.Ingestion.Record(ctx, batch)
+	if err != nil {
+		return IngestResult{}, err
+	}
+	if status == clickhouse.IngestionRejected {
+		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch id reused with different payload"}, nil
 	}
 	return IngestResult{Status: clickhouse.IngestionAccepted, Message: "accepted"}, nil
 }

@@ -25,6 +25,9 @@ The feature commit introduces most of the domain model, repositories, and UI sur
 1. the collector binary does not execute the collector pipeline that the rest of the codebase defines
 2. backend startup can fall back to an in-memory repository or continue with a partially initialized SQL repository when ClickHouse setup fails
 3. process identity and UI query expectations do not yet line up with stable JVM start times and explicit time-range selection
+4. ingestion idempotency can mark a failed write as accepted, making a later retry skip missing samples
+5. deployed service wiring is inconsistent: collector uses HTTPS against an HTTP backend, and UI calls need a viable authenticated path
+6. temporary profiling can be enabled without a bounded duration, which violates the v1 safety contract
 
 These issues do not affect the happy-path tests, but they do affect whether the system can operate correctly in a real cluster.
 
@@ -65,6 +68,8 @@ Acceptance criteria:
 - invalid ClickHouse configuration causes a visible startup failure or an explicit degraded state
 - schema application failures are not swallowed
 - the backend does not silently accept data into an ephemeral in-memory repository in production mode
+- schema application works from the compiled container image, not only from a source checkout
+- profile batch idempotency does not convert retryable storage failure into a permanent duplicate skip
 
 ### F3. Stabilize JVM identity and align query/time-range behavior
 
@@ -83,6 +88,38 @@ Acceptance criteria:
 - the UI does not advertise a time range that it is not sending
 - flamegraph and diagnosis queries can be reasoned about using the same window that the UI shows
 
+### F4. Reconcile deployment and auth wiring
+
+Goal: make the shipped Helm slice internally consistent.
+
+Work items:
+
+- align the collector backend URL scheme with the backend listener actually shipped by the chart
+- keep backend stack-data endpoints authenticated by default, while allowing browser calls through a server-set UI token cookie or equivalent proxy/session path
+- document any remaining UI auth proxy requirement as residual work if a full login flow is outside this fix slice
+
+Acceptance criteria:
+
+- collector-to-backend traffic does not fail TLS handshake by default
+- UI API calls have a viable authenticated same-origin/proxy path
+- no static UI bearer token is exposed in browser JavaScript
+
+### F5. Enforce bounded temporary profiling and query windows
+
+Goal: keep production safety and query semantics aligned with requirements.
+
+Work items:
+
+- reject temporary profiling metadata unless it includes a positive duration
+- carry collection windows into normalized profile samples and reject samples missing time bounds at ingest
+- ensure ClickHouse profile queries apply the requested time range, matching in-memory query behavior
+
+Acceptance criteria:
+
+- temporary profiling without duration fails closed
+- stored profile samples have non-zero started/ended timestamps
+- ClickHouse flamegraph queries cannot return samples outside the selected overlap window
+
 ---
 
 ## Verification
@@ -97,4 +134,3 @@ Acceptance criteria:
 
 - If any of the acceptance criteria force a behavior choice, prefer the safer failure mode over silent degradation.
 - Keep the plan narrow: do not expand into new profiling types, new backends, or broader observability features while fixing these review items.
-

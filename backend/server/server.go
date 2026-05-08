@@ -7,6 +7,6 @@ import (
 	"github.com/koolay/java-profiler/backend/internal/metrics"
 )
 
-func NewFromEnv() http.Handler {
+func NewFromEnv() (http.Handler, error) {
 	return httpapi.NewServerFromEnv(metrics.NewExporter())
 }

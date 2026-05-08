@@ -16,8 +16,9 @@ type ProcessInfo struct {
 }
 
 type ProcessScanner struct {
-	ProcRoot string
-	Now      func() time.Time
+	ProcRoot   string
+	Now        func() time.Time
+	ClockTicks int64
 }
 
 func (s ProcessScanner) Scan() ([]ProcessInfo, error) {
@@ -33,6 +34,11 @@ func (s ProcessScanner) Scan() ([]ProcessInfo, error) {
 	if s.Now != nil {
 		now = s.Now
 	}
+	bootTime := readBootTime(root)
+	clockTicks := s.ClockTicks
+	if clockTicks <= 0 {
+		clockTicks = 100
+	}
 	var out []ProcessInfo
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -47,7 +53,53 @@ func (s ProcessScanner) Scan() ([]ProcessInfo, error) {
 		if strings.TrimSpace(command) == "" {
 			command = entry.Name()
 		}
-		out = append(out, ProcessInfo{PID: pid, Command: strings.TrimSpace(command), StartTime: now(), Root: filepath.Join(root, entry.Name())})
+		processRoot := filepath.Join(root, entry.Name())
+		startTime := processStartTime(processRoot, bootTime, clockTicks)
+		if startTime.IsZero() {
+			startTime = now()
+		}
+		out = append(out, ProcessInfo{PID: pid, Command: strings.TrimSpace(command), StartTime: startTime, Root: processRoot})
 	}
 	return out, nil
+}
+
+func readBootTime(procRoot string) time.Time {
+	data, err := os.ReadFile(filepath.Join(procRoot, "stat"))
+	if err != nil {
+		return time.Time{}
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "btime" {
+			seconds, err := strconv.ParseInt(fields[1], 10, 64)
+			if err == nil {
+				return time.Unix(seconds, 0).UTC()
+			}
+		}
+	}
+	return time.Time{}
+}
+
+func processStartTime(processRoot string, bootTime time.Time, clockTicks int64) time.Time {
+	if bootTime.IsZero() || clockTicks <= 0 {
+		return time.Time{}
+	}
+	data, err := os.ReadFile(filepath.Join(processRoot, "stat"))
+	if err != nil {
+		return time.Time{}
+	}
+	text := string(data)
+	closeParen := strings.LastIndex(text, ")")
+	if closeParen < 0 || closeParen+2 >= len(text) {
+		return time.Time{}
+	}
+	fields := strings.Fields(text[closeParen+2:])
+	if len(fields) < 20 {
+		return time.Time{}
+	}
+	startTicks, err := strconv.ParseInt(fields[19], 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	return bootTime.Add(time.Duration(startTicks) * time.Second / time.Duration(clockTicks)).UTC()
 }
