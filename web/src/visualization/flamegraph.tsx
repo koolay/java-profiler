@@ -30,7 +30,7 @@ export function Flamegraph({ root, metadata }: Props) {
         {frames.map((frame) => (
           <button
             key={frame.path}
-            className={`flame-row${frame.matched ? " flame-row-match" : ""}`}
+            className={`flame-row${frame.matched ? " flame-row-match" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
             style={{
               left: `${frame.left}%`,
               top: frame.depth * 28,
@@ -40,7 +40,7 @@ export function Flamegraph({ root, metadata }: Props) {
             title={`${frame.name}: ${frame.value}`}
           >
             <span className="flame-frame">{frame.name}</span>
-            <b className="flame-value">{frame.value.toLocaleString()}</b>
+            {frame.width >= 7 && <b className="flame-value">{frame.value.toLocaleString()}</b>}
           </button>
         ))}
       </div>

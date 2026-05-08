@@ -30,17 +30,20 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
 
   await page.getByRole("button", { name: "cpu", exact: true }).click();
   await expect(page.getByPlaceholder("Search frame")).toBeVisible();
-  await expect(page.getByText("root")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-02-cpu.png`, fullPage: true });
 
   await page.getByRole("button", { name: "deadlocks", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Deadlock cycles" })).toBeVisible();
+  await expect(page.getByText("No deadlock cycles returned for this service and time range.")).toBeHidden();
+  await expect(page.getByText(/-cycle$/).first()).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-03-deadlocks.png`, fullPage: true });
 
   await page.getByRole("button", { name: "ingestion", exact: true }).click();
   const ingestion = page.getByRole("region", { name: "Ingestion health" });
   await expect(ingestion).toBeVisible();
-  await expect(ingestion.getByText("accepted", { exact: true })).toBeVisible();
+  await expect(ingestion.getByText("Loading ingestion evidence.")).toBeHidden();
+  await expect(ingestion.getByText(/accepted x [1-9]\d*/i).first()).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-04-ingestion.png`, fullPage: true });
 
   await test.info().attach("browser-console", {
