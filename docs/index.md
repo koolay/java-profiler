@@ -22,6 +22,7 @@
 ### operations/
 
 - **[deployment-operations-admin-manual.md](./operations/deployment-operations-admin-manual.md)** - Deployment, operations, security, storage, upgrade, and platform troubleshooting manual
+- **[e2e-automation-test-guide.md](./operations/e2e-automation-test-guide.md)** - End-to-end automation test guide aligned with the Java profiling user manual
 - **[java-profiling-runbook.md](./operations/java-profiling-runbook.md)** - Operator enablement, status, retention, and troubleshooting runbook
 - **[performance-analysis-user-manual.md](./operations/performance-analysis-user-manual.md)** - Java service performance analysis manual for service owners and incident responders
 

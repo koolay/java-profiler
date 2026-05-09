@@ -27,11 +27,12 @@ type Executor interface {
 }
 
 type Config struct {
-	ProcRoot     string
-	AsprofPath   string
-	LibraryPath  string
-	TargetTmpDir string
-	Now          func() time.Time
+	ProcRoot             string
+	AsprofPath           string
+	LibraryPath          string
+	TargetTmpDir         string
+	AllocationAndLockJFR bool
+	Now                  func() time.Time
 }
 
 type Runner struct {
@@ -134,23 +135,28 @@ func writeFileIfChanged(path string, data []byte) error {
 func (r *Runner) start(ctx context.Context, key string, pid int, nsPID int, startedAt time.Time) error {
 	jfrPath := r.jfrPath(nsPID)
 	if r.exec != nil && r.cfg.AsprofPath != "" {
-		if _, err := r.exec.Run(ctx, r.cfg.AsprofPath,
+		args := []string{
 			"start",
 			"-e", "itimer",
 			"-i", "10ms",
-			"--alloc", "512k",
-			"--lock", "10us",
 			"-o", "jfr",
 			"-f", jfrPath,
 			"--libpath", r.targetLibraryPath(),
-			strconv.Itoa(pid),
-		); err != nil {
+		}
+		if r.cfg.AllocationAndLockJFR {
+			args = append(args[:5], append([]string{"--alloc", "512k", "--lock", "10us"}, args[5:]...)...)
+		}
+		args = append(args, strconv.Itoa(pid))
+		if _, err := r.exec.Run(ctx, r.cfg.AsprofPath, args...); err != nil {
 			return err
 		}
 		r.sessions[key] = session{pid: pid, startedAt: startedAt, jfrPath: jfrPath}
 		return nil
 	}
-	args := fmt.Sprintf("start,file=%s,jfr,event=itimer,interval=10ms,alloc=512k,lock=10us", jfrPath)
+	args := fmt.Sprintf("start,file=%s,jfr,event=itimer,interval=10ms", jfrPath)
+	if r.cfg.AllocationAndLockJFR {
+		args += ",alloc=512k,lock=10us"
+	}
 	if err := r.attach.LoadNativeAgent(ctx, pid, r.targetLibraryPath(), args); err != nil {
 		return err
 	}

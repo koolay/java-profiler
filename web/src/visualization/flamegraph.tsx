@@ -17,26 +17,45 @@ type Frame = FlamegraphNode & {
 export function Flamegraph({ root, metadata }: Props) {
   const [query, setQuery] = useState("");
   const [zoomPath, setZoomPath] = useState("root");
+  const [selectedPath, setSelectedPath] = useState("root");
   const frames = useMemo(() => layout(root, zoomPath, query), [root, query, zoomPath]);
   const depth = Math.max(0, ...frames.map((frame) => frame.depth));
+  const rowHeight = 32;
+  const selectedFrame = frames.find((frame) => frame.path === selectedPath) ?? frames[0];
+  const currentRootValue = Math.max(1, frames[0]?.value ?? 1);
+  const selectedPercent = selectedFrame ? (selectedFrame.value / currentRootValue) * 100 : 0;
+  const resetZoom = () => {
+    setZoomPath("root");
+    setSelectedPath("root");
+  };
+  const zoomToSelected = () => {
+    if (selectedFrame) {
+      setZoomPath(selectedFrame.path);
+      setSelectedPath(selectedFrame.path);
+    }
+  };
   return (
     <section className="flamegraph" aria-label="Flamegraph">
       <div className="flamegraph-tools">
         <input aria-label="Search flamegraph frames" placeholder="Search frame" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <button onClick={() => setZoomPath("root")}>Reset</button>
+        <button onClick={resetZoom}>Reset</button>
       </div>
       {metadata?.partial && <p className="warning">Partial result: {(metadata.reasons ?? ["query budget"]).join(", ")}.</p>}
-      <div className="flamegraph-stack" style={{ height: Math.max(1, depth + 1) * 28 }}>
+      <div className="flamegraph-stack" style={{ height: Math.max(1, depth + 1) * rowHeight }}>
         {frames.map((frame) => (
           <button
             key={frame.path}
-            className={`flame-row${frame.matched ? " flame-row-match" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
+            className={`flame-row${frame.matched ? " flame-row-match" : ""}${frame.path === selectedFrame?.path ? " flame-row-selected" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
             style={{
               left: `${frame.left}%`,
-              top: frame.depth * 28,
+              top: frame.depth * rowHeight,
               width: `${frame.width}%`,
             }}
-            onClick={() => setZoomPath(frame.path)}
+            onClick={() => setSelectedPath(frame.path)}
+            onDoubleClick={() => {
+              setZoomPath(frame.path);
+              setSelectedPath(frame.path);
+            }}
             title={`${frame.name}: ${frame.value}`}
           >
             <span className="flame-frame">{frame.name}</span>
@@ -44,6 +63,29 @@ export function Flamegraph({ root, metadata }: Props) {
           </button>
         ))}
       </div>
+      {selectedFrame && (
+        <div className="flamegraph-detail" role="region" aria-label="Selected flamegraph frame">
+          <div>
+            <span>Selected frame</span>
+            <code>{selectedFrame.name}</code>
+          </div>
+          <dl>
+            <div>
+              <dt>Samples</dt>
+              <dd>{selectedFrame.value.toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt>Current root</dt>
+              <dd>{selectedPercent.toFixed(1)}%</dd>
+            </div>
+            <div>
+              <dt>Depth</dt>
+              <dd>{selectedFrame.depth}</dd>
+            </div>
+          </dl>
+          <button onClick={zoomToSelected}>Zoom selected</button>
+        </div>
+      )}
     </section>
   );
 }

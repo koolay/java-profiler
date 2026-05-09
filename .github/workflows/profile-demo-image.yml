@@ -1,0 +1,96 @@
+name: profile-demo-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/profile-demo-image.yml"
+      - "examples/jdk17-http-demo/**"
+  pull_request:
+    paths:
+      - ".github/workflows/profile-demo-image.yml"
+      - "examples/jdk17-http-demo/**"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/java-profiler-jdk17-http-demo
+  RUNTIME_IMAGE: ghcr.io/koolay/josepdcs/kubectl-prof:1.5.0-jvm-alpine
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Compile demo jar
+        working-directory: examples/jdk17-http-demo
+        run: |
+          mkdir -p target/classes
+          javac --release 17 -d target/classes $(find src/main/java -name '*.java')
+          jar --create \
+            --file target/jdk17-http-demo.jar \
+            --main-class com.ebpfjava.examples.httpdemo.DemoHttpService \
+            -C target/classes .
+
+      - name: Smoke test demo jar
+        working-directory: examples/jdk17-http-demo
+        run: |
+          PORT=18080 java -jar target/jdk17-http-demo.jar >target/demo.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" >/dev/null 2>&1 || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/health | tee target/health.json | grep -q '"status":"ok"'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat target/demo.log
+          exit 1
+
+      - name: Create runtime Dockerfile
+        working-directory: examples/jdk17-http-demo
+        run: |
+          cat > Dockerfile.ci <<EOF
+          FROM ${RUNTIME_IMAGE}
+          WORKDIR /app
+          COPY target/jdk17-http-demo.jar /app/jdk17-http-demo.jar
+          EXPOSE 8080
+          ENV PORT=8080
+          ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-jar", "/app/jdk17-http-demo.jar"]
+          EOF
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: examples/jdk17-http-demo
+          file: examples/jdk17-http-demo/Dockerfile.ci
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

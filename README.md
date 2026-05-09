@@ -20,6 +20,7 @@ The repository is transitioning from documentation-only into implementation. The
 - `collector/internal`
 - `contracts/profiling`
 - `java-helper/thread-diagnostics`
+- `examples/jdk17-http-demo`
 - `web`
 - `deploy`
 
@@ -81,6 +82,8 @@ contracts/
   profiling/
 java-helper/
   thread-diagnostics/
+examples/
+  jdk17-http-demo/
 web/
   src/
 deploy/
@@ -98,6 +101,7 @@ docs/
 ```bash
 go test ./...
 javac --release 11 java-helper/thread-diagnostics/src/main/java/com/ebpfjava/threads/*.java
+cd examples/jdk17-http-demo && mvn test
 cd web && npm install && npm test && npm run build
 ```
 

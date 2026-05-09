@@ -48,14 +48,25 @@ h1 { font-size: 30px; margin-bottom: 0; }
 .flamegraph-tools input { border: 1px solid var(--line); padding: 8px; background: #fff; }
 .flamegraph-tools button { border: 1px solid var(--line); background: #fff; padding: 8px 10px; }
 .warning { color: var(--warn); background: #fff4d7; padding: 8px 10px; border-left: 3px solid var(--warn); }
-.flamegraph-stack { position: relative; min-width: 0; max-height: 520px; overflow: auto; border: 1px solid var(--line); background: #edf2ed; }
-.flame-row { position: absolute; border: 1px solid rgba(255,255,255,.28); background: #0c7d7d; color: white; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 2px; height: 24px; padding: 3px 6px; transition: filter .14s ease, background .14s ease; }
-.flame-row:hover { filter: brightness(.9); background: #095f5f; z-index: 2; }
-.flame-row-match { background: #b7352d; z-index: 1; }
+.flamegraph-stack { position: relative; min-width: 0; max-height: 560px; overflow: auto; border: 1px solid var(--line); background: #edf2ed; }
+.flame-row { position: absolute; border: 1px solid rgba(8,42,40,.24); background: #d8f3ee; color: #102220; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 2px; height: 28px; padding: 4px 8px; transition: filter .14s ease, background .14s ease, box-shadow .14s ease; }
+.flame-row:nth-child(4n + 1) { background: #c7eadf; }
+.flame-row:nth-child(4n + 2) { background: #dbe8ff; }
+.flame-row:nth-child(4n + 3) { background: #f7e1b7; }
+.flame-row:hover { filter: brightness(.96); box-shadow: inset 0 0 0 2px rgba(12,125,125,.32); z-index: 3; }
+.flame-row-match { background: #ffd3cc; border-color: #b7352d; z-index: 1; }
+.flame-row-selected { box-shadow: inset 0 0 0 2px #102220; z-index: 2; }
 .flame-row-tiny { padding-inline: 0; }
 .flame-row-tiny .flame-frame { opacity: 0; }
-.flame-frame { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-.flame-value { flex: 0 0 auto; font-size: 11px; font-variant-numeric: tabular-nums; }
+.flame-frame { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.flame-value { flex: 0 0 auto; font-size: 11px; font-variant-numeric: tabular-nums; color: #364744; }
+.flamegraph-detail { margin-top: 12px; border: 1px solid var(--line); background: #fff; padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.flamegraph-detail span, .flamegraph-detail dt { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; }
+.flamegraph-detail code { display: block; margin-top: 5px; color: #102220; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.flamegraph-detail dl { display: flex; gap: 10px; flex-wrap: wrap; margin: 0; }
+.flamegraph-detail dl div { min-width: 84px; background: #eef3ef; padding: 8px 10px; }
+.flamegraph-detail dd { margin: 2px 0 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.flamegraph-detail button { border: 1px solid var(--ink); background: var(--ink); color: #fff; padding: 8px 10px; align-self: end; }
 .event-card { border-left: 4px solid var(--risk); background: #fff; padding: 12px; margin-bottom: 10px; }
 pre { overflow: auto; background: #172120; color: #dff4ed; padding: 12px; }
 table { width: 100%; border-collapse: collapse; }
@@ -90,4 +101,6 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
   .rail { flex-direction: row; justify-content: center; }
   .topbar, .service-layout, .view-grid { grid-template-columns: 1fr; display: grid; }
   .workspace { padding: 16px; }
+  .flamegraph-detail { grid-template-columns: 1fr; }
+  .flamegraph-detail button { justify-self: start; }
 }

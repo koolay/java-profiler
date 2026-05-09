@@ -66,7 +66,7 @@ func TestRunnerUsesOfficialAsprofCLIWhenConfigured(t *testing.T) {
 	}, &recordingAttachController{})
 	exec := &recordingExecutor{}
 	runner.exec = exec
-	target := domain.TargetIdentity{Cluster: "c", Namespace: "prod", Service: "mservice", Pod: "mservice-1", ProcessID: 42, JVMStartTime: time.Unix(1, 0)}
+	target := domain.TargetIdentity{Cluster: "c", Namespace: "prod", Service: "jdk17-http-demo", Pod: "jdk17-http-demo-1", ProcessID: 42, JVMStartTime: time.Unix(1, 0)}
 
 	if _, err := runner.Collect(context.Background(), "batch-1", target); err != nil {
 		t.Fatal(err)
@@ -75,9 +75,53 @@ func TestRunnerUsesOfficialAsprofCLIWhenConfigured(t *testing.T) {
 		t.Fatalf("expected initial start asprof command, got %+v", exec.commands)
 	}
 	startArgs := strings.Join(exec.commands[0].args, " ")
-	for _, want := range []string{"start -e itimer", "--alloc 512k", "--lock 10us", "-f /tmp/java-profiler/ap_7.jfr", "--libpath /tmp/java-profiler/libasyncProfiler.so"} {
+	for _, want := range []string{"start -e itimer", "-f /tmp/java-profiler/ap_7.jfr", "--libpath /tmp/java-profiler/libasyncProfiler.so"} {
 		if !strings.Contains(startArgs, want) {
 			t.Fatalf("expected start command to contain %q, got %s", want, startArgs)
+		}
+	}
+	for _, unsafeDefault := range []string{"--alloc", "--lock"} {
+		if strings.Contains(startArgs, unsafeDefault) {
+			t.Fatalf("expected default profiler command not to contain %q, got %s", unsafeDefault, startArgs)
+		}
+	}
+}
+
+func TestRunnerCanOptIntoAllocationAndLockProfiling(t *testing.T) {
+	root := t.TempDir()
+	procRoot := filepath.Join(root, "proc")
+	targetRoot := filepath.Join(procRoot, "42", "root")
+	if err := os.MkdirAll(filepath.Join(targetRoot, "tmp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(procRoot, "42"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(procRoot, "42", "status"), []byte("Name:\tjava\nNSpid:\t4242\t7\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	libPath := filepath.Join(root, "libasyncProfiler.so")
+	if err := os.WriteFile(libPath, []byte("native-profiler"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := NewRunner(Config{
+		ProcRoot:             procRoot,
+		AsprofPath:           "/assets/asprof",
+		LibraryPath:          libPath,
+		TargetTmpDir:         "/tmp/java-profiler",
+		AllocationAndLockJFR: true,
+	}, &recordingAttachController{})
+	exec := &recordingExecutor{}
+	runner.exec = exec
+	target := domain.TargetIdentity{Cluster: "c", Namespace: "prod", Service: "jdk17-http-demo", Pod: "jdk17-http-demo-1", ProcessID: 42, JVMStartTime: time.Unix(1, 0)}
+
+	if _, err := runner.Collect(context.Background(), "batch-1", target); err != nil {
+		t.Fatal(err)
+	}
+	startArgs := strings.Join(exec.commands[0].args, " ")
+	for _, want := range []string{"--alloc 512k", "--lock 10us"} {
+		if !strings.Contains(startArgs, want) {
+			t.Fatalf("expected opt-in profiler command to contain %q, got %s", want, startArgs)
 		}
 	}
 }
@@ -106,7 +150,7 @@ func TestRunnerUsesHotSpotAttachStopsParsesAndRestartsAsyncProfilerJFR(t *testin
 		TargetTmpDir: "/tmp/java-profiler",
 		Now:          fixedTimes(time.Unix(100, 0), time.Unix(160, 0)),
 	}, attach)
-	target := domain.TargetIdentity{Cluster: "c", Namespace: "prod", Service: "mservice", Pod: "mservice-1", ProcessID: 42, JVMStartTime: time.Unix(1, 0)}
+	target := domain.TargetIdentity{Cluster: "c", Namespace: "prod", Service: "jdk17-http-demo", Pod: "jdk17-http-demo-1", ProcessID: 42, JVMStartTime: time.Unix(1, 0)}
 
 	first, err := runner.Collect(context.Background(), "batch-1", target)
 	if err != nil {
@@ -119,13 +163,13 @@ func TestRunnerUsesHotSpotAttachStopsParsesAndRestartsAsyncProfilerJFR(t *testin
 		t.Fatalf("expected initial start attach command, got %+v", attach.commands)
 	}
 	start := attach.commands[0]
-	if start.pid != 42 || start.agentPath != "/tmp/java-profiler/libasyncProfiler.so" || !strings.HasPrefix(start.args, "start,file=/tmp/java-profiler/ap_7.jfr,jfr,event=itimer,interval=10ms,alloc=512k,lock=10us") {
+	if start.pid != 42 || start.agentPath != "/tmp/java-profiler/libasyncProfiler.so" || !strings.HasPrefix(start.args, "start,file=/tmp/java-profiler/ap_7.jfr,jfr,event=itimer,interval=10ms") || strings.Contains(start.args, "alloc=") || strings.Contains(start.args, "lock=") {
 		t.Fatalf("expected Coroot-style native agent start command, got %+v", start)
 	}
 	if _, err := os.Stat(filepath.Join(targetRoot, "tmp", "java-profiler", "libasyncProfiler.so")); err != nil {
 		t.Fatalf("expected profiler library staged into target root: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(targetRoot, "tmp", "java-profiler", "ap_7.jfr"), []byte("alloc_bytes|4096|kd.bos.Service.allocate;java.lang.Thread.run\nexecution_sample|7|kd.bos.Service.run\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(targetRoot, "tmp", "java-profiler", "ap_7.jfr"), []byte("alloc_bytes|4096|com.ebpfjava.examples.httpdemo.DemoHttpService.allocateObjects;java.lang.Thread.run\nexecution_sample|7|com.ebpfjava.examples.httpdemo.DemoHttpService.burnCpu\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -136,7 +180,7 @@ func TestRunnerUsesHotSpotAttachStopsParsesAndRestartsAsyncProfilerJFR(t *testin
 	if len(samples) != 2 {
 		t.Fatalf("expected parsed JFR samples, got %+v", samples)
 	}
-	if samples[0].Frames[0] != "kd.bos.Service.allocate" || samples[0].Target.Service != "mservice" {
+	if samples[0].Frames[0] != "com.ebpfjava.examples.httpdemo.DemoHttpService.allocateObjects" || samples[0].Target.Service != "jdk17-http-demo" {
 		t.Fatalf("expected real JFR stack and target identity, got %+v", samples[0])
 	}
 	if len(attach.commands) != 3 {

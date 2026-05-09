@@ -44,9 +44,9 @@ KUBECONFIG=/path/to/kubeconfig \
 JAVA_PROFILER_COLLECTOR_INTERVAL=30s \
 scripts/real-acceptance.sh \
   --configure-profiler \
-  --namespace kd-cosmic-xk \
-  --service mservice \
-  --artifact-dir /tmp/java-profiler-mservice-$(date +%Y%m%d-%H%M%S) \
+  --namespace java-profiler-qa \
+  --service jdk17-http-demo \
+  --artifact-dir /tmp/java-profiler-jdk17-demo-$(date +%Y%m%d-%H%M%S) \
   --require-full-profiling
 ```
 

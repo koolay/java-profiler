@@ -11,6 +11,7 @@ profiling:
   collectorInterval: 60s
   targetNamespace: ""
   targetService: ""
+  enableAllocationAndLockJFR: false
   temporaryMaxDuration: 1h
   snapshotInterval: 5m
 

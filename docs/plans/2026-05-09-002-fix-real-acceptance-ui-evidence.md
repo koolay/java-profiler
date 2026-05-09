@@ -16,9 +16,9 @@ The evidence screenshots show that the product experience is not yet acceptable:
 - `ui-02-cpu.png` renders the flamegraph as a very tall diagonal list of small buttons. Labels overlap visually, the page height is extreme, and a real Java/native stack is hard to inspect.
 - `ui-01-status.png` truncates Pod names and user actions at a normal desktop width. The table technically contains the right states, but it is not scannable.
 - `ui-04-ingestion.png` is readable enough, but it should remain stable after layout changes.
-- The recent mservice check also exposed an acceptance-script correctness issue: full-profiling acceptance must not pass from stale data outside the current run window.
+- The recent jdk17-http-demo check also exposed an acceptance-script correctness issue: full-profiling acceptance must not pass from stale data outside the current run window.
 
-This plan fixes the UI and acceptance evidence quality using the existing real artifacts as the design target. It does not attempt to claim current `mservice` profiling success while that workload is explicitly disabled.
+This plan fixes the UI and acceptance evidence quality using the existing real artifacts as the design target. It does not attempt to claim current `jdk17-http-demo` profiling success while that workload is explicitly disabled.
 
 ## Scope Boundaries
 
@@ -33,7 +33,7 @@ In scope:
 
 Out of scope:
 
-- Re-running `mservice` profiling while it remains disabled by metadata.
+- Re-running `jdk17-http-demo` profiling while it remains disabled by metadata.
 - Adding Pyroscope, Grafana, Parca, or another profile backend.
 - Adding general observability, tracing, logs, Prometheus metric charts, or non-Java profiling.
 - Changing async-profiler collection semantics unless a UI fixture exposes a data-shape bug.
@@ -163,7 +163,7 @@ Out of scope:
 - `go test ./...`
 - `helm lint ./deploy/helm --values deploy/helm/values.yaml`
 - `bash -n scripts/real-acceptance.sh`
-- Disabled `mservice` proof remains a failing acceptance with no stale-data pass.
+- Disabled `jdk17-http-demo` proof remains a failing acceptance with no stale-data pass.
 
 ## Sequencing
 
@@ -176,5 +176,5 @@ Out of scope:
 ## Assumptions
 
 - The archived isolated acceptance data is valid evidence for `async-profiler-lab`; it is the correct fixture for UI polish.
-- Current `mservice` remains disabled by metadata and should not be represented as a successful profiling run.
+- Current `jdk17-http-demo` remains disabled by metadata and should not be represented as a successful profiling run.
 - The existing self-owned UI remains the right target for first-version profiling investigation.

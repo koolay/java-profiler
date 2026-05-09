@@ -52,6 +52,8 @@ spec:
               value: /var/lib/java-profiler/assets/libasyncProfiler.so
             - name: JAVA_PROFILER_TARGET_TMP_DIR
               value: /tmp/java-profiler
+            - name: JAVA_PROFILER_ENABLE_ALLOC_LOCK_JFR
+              value: {{ .Values.profiling.enableAllocationAndLockJFR | default false | quote }}
             {{- if .Values.profiling.targetNamespace }}
             - name: JAVA_PROFILER_TARGET_NAMESPACE
               value: {{ .Values.profiling.targetNamespace | quote }}

@@ -31,6 +31,14 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await page.getByRole("button", { name: "cpu", exact: true }).click();
   await expect(page.getByPlaceholder("Search frame")).toBeVisible();
   await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
+  await page.getByPlaceholder("Search frame").fill("DemoHttpService");
+  const demoFrame = page.getByRole("button", { name: /DemoHttpService\.(burnCpu|handleWork)/ }).first();
+  await expect(demoFrame).toBeVisible();
+  await demoFrame.click();
+  const selectedFrame = page.getByRole("region", { name: "Selected flamegraph frame" });
+  await expect(selectedFrame).toContainText(/DemoHttpService\.(burnCpu|handleWork)/);
+  await expect(selectedFrame).toContainText(/Samples/);
+  await expect(selectedFrame).toContainText(/Current root/);
   await page.screenshot({ path: `${artifactDir}/ui-02-cpu.png`, fullPage: true });
 
   await page.getByRole("button", { name: "deadlocks", exact: true }).click();
