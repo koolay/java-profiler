@@ -163,6 +163,10 @@ UI target:
 - When a Java row has high total and low self, tell the user to start from that Java owner and inspect highlighted frames in the full stack; native/runtime frames explain where samples landed but are not the default optimization target.
 - Use a visible frame-category legend so users can distinguish application Java, JVM/runtime, and native/system context.
 - When focused, show an explicit `Focused: <frame>` status so users know the current root changed.
+- Add Pyroscope-style hover or focus inspection for each flame graph frame: full symbol, category, samples, `Total CPU`, `Self CPU`, and current-root percentages.
+- Treat `Both` as the primary CPU investigation workflow. Flame Graph-only mode is useful for graph inspection, but the realistic bottleneck path needs Java ranking and stack context visible together.
+- Keep native/system frames visually quieter than application Java frames. They explain where samples landed, but they should not look like the default optimization target.
+- Use a breadcrumb-style focus indicator so users can see that the current graph root changed and can return to the prior context.
 
 ### Memory
 
@@ -235,5 +239,8 @@ The next CPU view should behave like this:
 - Search highlights/dims matching frames in the existing graph.
 - Top Table supports sorting by `Self CPU`, `Total CPU`, and `Symbol`.
 - The selected function detail explains whether the cost is mostly direct self time or downstream total time.
+- Hovering or focusing a flame graph block exposes total/self CPU samples and percentages without relying on browser-native title tooltips.
+- Focused flame graph state is visible through a breadcrumb or equivalent current-root indicator.
+- Native/system frames remain visible in the flame graph but are visually secondary to highlighted application Java frames.
 - Real Playwright acceptance verifies the table contains no native frame as the first actionable row and verifies `Self CPU` and `Total CPU` are visible.
 - Memory and lock tabs use profile-type-specific labels and empty states; they must not reuse CPU wording.

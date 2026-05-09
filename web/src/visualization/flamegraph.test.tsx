@@ -6,9 +6,10 @@ test("renders flamegraph frames and partial warning", () => {
   expect(screen.getByText("Checkout.handle")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Checkout\.handle/ })).toHaveClass("flame-row-application");
   expect(screen.getByText(/Partial result/)).toBeInTheDocument();
-  expect(screen.getByText("Application Java")).toBeInTheDocument();
-  expect(screen.getByText("JVM/runtime")).toBeInTheDocument();
-  expect(screen.getByText("Native/system")).toBeInTheDocument();
+  const legend = screen.getByLabelText("Frame categories");
+  expect(within(legend).getByText("Application Java")).toBeInTheDocument();
+  expect(within(legend).getByText("JVM/runtime")).toBeInTheDocument();
+  expect(within(legend).getByText("Native/system")).toBeInTheDocument();
 });
 
 test("inspects, searches, and zooms nested frames while keeping long labels readable", () => {
@@ -30,24 +31,31 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
   );
 
   const nativeFrame = screen.getByRole("button", { name: /VeryLongNativeFrameName/ });
-  expect(nativeFrame).toHaveAttribute("title", "libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis: 8");
   expect(nativeFrame).toHaveClass("flame-row-native");
+  fireEvent.mouseEnter(nativeFrame);
+  const inspector = screen.getByRole("status");
+  expect(within(inspector).getByText("Native/system")).toBeInTheDocument();
+  expect(within(inspector).getByText("libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis")).toBeInTheDocument();
+  expect(within(inspector).getByText("Total CPU")).toBeInTheDocument();
+  expect(within(inspector).getByText("Self CPU")).toBeInTheDocument();
 
   fireEvent.click(nativeFrame);
   const detail = screen.getByLabelText("Selected flamegraph frame");
   expect(within(detail).getByText("libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis")).toBeInTheDocument();
   expect(within(detail).getByText("66.7%")).toBeInTheDocument();
+  expect(within(detail).getByText("Self CPU")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
   expect(screen.getByText("BusyApp.lambda$main$0:14")).toBeInTheDocument();
-  expect(screen.getByText(/Focused:/)).toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("Focused");
+  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("libjvm.so VeryLongNativeFrameNameThatWillNeedEllipsis");
 
   fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "busyapp" } });
   expect(screen.getByText("BusyApp.lambda$main$0:14").closest("button")).toHaveClass("flame-row-match");
   expect(screen.getByRole("button", { name: /VeryLongNativeFrameName/ })).toHaveClass("flame-row-dimmed");
 
   fireEvent.click(screen.getByRole("button", { name: "Reset" }));
-  expect(screen.getByRole("button", { name: /Thread\.run/ })).toHaveAttribute("title", "java/lang/Thread.run: 4");
+  expect(screen.getByRole("button", { name: /Thread\.run/ })).toBeInTheDocument();
 });
 
 test("returns to the previous zoom level with Back", () => {
@@ -93,7 +101,7 @@ test("shows real Java demo frame names in the detail panel", () => {
 
   const detail = screen.getByLabelText("Selected flamegraph frame");
   expect(within(detail).getByText("com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188")).toBeInTheDocument();
-  expect(within(detail).getByText("10.6%")).toBeInTheDocument();
+  expect(within(detail).getAllByText("10.6%")).toHaveLength(2);
 });
 
 test("highlights selected Java frames without replacing flamegraph context", () => {
@@ -120,10 +128,23 @@ test("highlights selected Java frames without replacing flamegraph context", () 
   expect(screen.getByText(/Full sampled stack context/)).toBeInTheDocument();
 
   fireEvent.click(burnCpuFrames[0]);
-  expect(within(screen.getByLabelText("Selected flamegraph frame")).getByText("7")).toBeInTheDocument();
+  expect(within(screen.getByLabelText("Selected flamegraph frame")).getAllByText("7")).toHaveLength(2);
 
   fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
   expect(screen.getByText(/Focused stack context/)).toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("DemoHttpService.burnCpu:188");
+});
+
+test("shows self and total metrics for leaf frames in the inspector", () => {
+  render(<Flamegraph root={{ name: "root", value: 10, children: [{ name: "Checkout.handle", value: 10 }] }} />);
+
+  fireEvent.mouseEnter(screen.getByRole("button", { name: /Checkout\.handle/ }));
+
+  const inspector = screen.getByRole("status");
+  expect(within(inspector).getByText("Application Java")).toBeInTheDocument();
+  expect(within(inspector).getByText("Checkout.handle")).toBeInTheDocument();
+  expect(within(inspector).getAllByText(/10/).length).toBeGreaterThanOrEqual(2);
+  expect(within(inspector).getAllByText("100.0%")).toHaveLength(2);
 });
 
 test("keeps flamegraph context when no frames match the search", () => {

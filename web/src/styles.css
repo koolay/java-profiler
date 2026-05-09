@@ -59,7 +59,7 @@ h1 { font-size: 30px; margin-bottom: 0; }
 .profile-view-toggle button { border: 0; border-right: 1px solid var(--line); background: #fff; padding: 8px 10px; white-space: nowrap; }
 .profile-view-toggle button:last-child { border-right: 0; }
 .profile-view-toggle button.active { background: var(--ink); color: #fff; }
-.profile-grid { display: grid; grid-template-columns: minmax(360px, 520px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.profile-grid { display: grid; grid-template-columns: minmax(300px, .75fr) minmax(520px, 1.25fr); gap: 12px; align-items: start; }
 .profile-stack { display: grid; gap: 12px; }
 .profile-flamegraph { min-width: 0; }
 .top-table-wrap { border: 1px solid var(--line); background: #fff; overflow: auto; max-height: 640px; }
@@ -77,27 +77,41 @@ h1 { font-size: 30px; margin-bottom: 0; }
 .flamegraph-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 10px; color: var(--muted); font-size: 12px; }
 .flamegraph-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .flamegraph-legend i { width: 12px; height: 8px; border: 1px solid rgba(8,42,40,.25); display: inline-block; }
-.legend-application, .flame-row-application { background: #d8f3ee; }
-.legend-runtime, .flame-row-runtime { background: #dbe8ff; }
-.legend-native, .flame-row-native { background: #f7e1b7; }
-.focus-pill { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px; padding: 5px 8px; border: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 12px; }
-.focus-pill code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.legend-application, .flame-row-application { background: #c9efe7; }
+.legend-runtime, .flame-row-runtime { background: #e1eaff; }
+.legend-native, .flame-row-native { background: #f4ead1; color: #44504c; }
+.focus-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+.focus-breadcrumb span { text-transform: uppercase; font-weight: 700; }
+.focus-breadcrumb code { padding: 4px 6px; border: 1px solid var(--line); background: #fff; color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.focus-breadcrumb code + code::before { content: "/"; color: var(--muted); margin-right: 6px; }
+.flamegraph-tooltip { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; margin: 0 0 10px; border: 1px solid var(--line); border-left: 3px solid var(--accent); background: #fff; padding: 10px 12px; }
+.flamegraph-tooltip > div:first-child { min-width: 0; }
+.flamegraph-tooltip span, .flamegraph-tooltip dt { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.flamegraph-tooltip strong { display: block; margin-top: 4px; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.35; }
+.flamegraph-tooltip dl { display: flex; gap: 8px; margin: 0; flex-wrap: wrap; }
+.flamegraph-tooltip dl div { min-width: 76px; background: #eef3ef; padding: 6px 8px; }
+.flamegraph-tooltip dd { margin: 2px 0 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+.flamegraph-tooltip dd span { display: inline; margin-left: 2px; text-transform: none; }
+.flamegraph-tooltip-native { border-left-color: #b98f39; }
+.flamegraph-tooltip-runtime { border-left-color: #6e83b7; }
 .flame-row { position: absolute; border: 1px solid rgba(8,42,40,.24); color: #102220; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 2px; height: 28px; padding: 4px 8px; transition: filter .14s ease, background .14s ease, box-shadow .14s ease; }
 .flame-row:hover { filter: brightness(.96); box-shadow: inset 0 0 0 2px rgba(12,125,125,.32); z-index: 3; }
-.flame-row-match { border-color: #b7352d; box-shadow: inset 0 0 0 2px rgba(183,53,45,.45); z-index: 1; }
+.flame-row-application { border-color: rgba(12,125,125,.42); font-weight: 700; }
+.flame-row-native .flame-frame, .flame-row-native .flame-value { color: #4d5955; }
+.flame-row-match { border-color: var(--accent); box-shadow: inset 0 0 0 2px rgba(12,125,125,.34); z-index: 1; }
 .flame-row-dimmed { opacity: .38; }
 .flame-row-selected { box-shadow: inset 0 0 0 2px #102220; z-index: 2; }
 .flame-row-tiny { padding-inline: 0; }
 .flame-row-tiny .flame-frame { opacity: 0; }
 .flame-frame { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 .flame-value { flex: 0 0 auto; font-size: 11px; font-variant-numeric: tabular-nums; color: #364744; }
-.flamegraph-detail { margin-top: 12px; border: 1px solid var(--line); background: #fff; padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.flamegraph-detail { margin-top: 12px; border: 1px solid var(--line); background: #fff; padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
 .flamegraph-detail span, .flamegraph-detail dt { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .flamegraph-detail code { display: block; margin-top: 5px; color: #102220; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .flamegraph-detail dl { display: flex; gap: 10px; flex-wrap: wrap; margin: 0; }
 .flamegraph-detail dl div { min-width: 84px; background: #eef3ef; padding: 8px 10px; }
 .flamegraph-detail dd { margin: 2px 0 0; font-weight: 800; font-variant-numeric: tabular-nums; }
-.flamegraph-detail button { border: 1px solid var(--ink); background: var(--ink); color: #fff; padding: 8px 10px; align-self: end; }
+.flamegraph-detail button { border: 1px solid var(--ink); background: var(--ink); color: #fff; padding: 8px 10px; align-self: end; justify-self: start; min-width: min(100%, 280px); }
 .flamegraph-empty { border: 1px dashed var(--line); background: #fff; color: var(--muted); padding: 16px; line-height: 1.45; }
 .event-card { border-left: 4px solid var(--risk); background: #fff; padding: 12px; margin-bottom: 10px; }
 pre { overflow: auto; background: #172120; color: #dff4ed; padding: 12px; }

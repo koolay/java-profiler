@@ -205,10 +205,10 @@ function formatSamples(value: number) {
 function describeHotFrame(frame: HotFrame) {
   if (frame.total <= 0) return undefined;
   if (frame.self > 0 && frame.self / frame.total >= 0.5) {
-    return `High self CPU: ${frame.symbol} directly consumes a meaningful share of samples. Start by inspecting this method's own work.`;
+    return `High self CPU: inspect ${frame.symbol}'s own work first.`;
   }
   if (frame.self === 0 || frame.self / frame.total < 0.5) {
-    return `High total, low Java self: start from ${frame.symbol}, then inspect the highlighted frames in the full stack. Runtime/native frames show where samples landed; this Java row is the nearest actionable owner.`;
+    return `High total, low self: start from ${frame.symbol}, then inspect highlighted callees and runtime/native frames.`;
   }
-  return `Mixed CPU cost: inspect both ${frame.symbol} and its callees in the flame graph.`;
+  return `Mixed CPU cost: inspect both ${frame.symbol} and its callees.`;
 }
