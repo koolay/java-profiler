@@ -11,10 +11,10 @@ const tabs = ["memory", "cpu", "locks", "deadlocks", "status", "ingestion"] as c
 type Tab = (typeof tabs)[number];
 
 export function ServiceOverview() {
-  const [tab, setTab] = useState<Tab>("memory");
-  const [namespace, setNamespace] = useState("prod");
-  const [service, setService] = useState("checkout");
-  const [rangeMinutes, setRangeMinutes] = useState(30);
+  const [tab, setTab] = useState<Tab>("cpu");
+  const [namespace, setNamespace] = useState("java-profiler-qa");
+  const [service, setService] = useState("jdk17-http-demo");
+  const [rangeMinutes, setRangeMinutes] = useState(60);
   const params = useMemo(() => {
     const end = new Date();
     const start = new Date(end.getTime() - rangeMinutes * 60_000);

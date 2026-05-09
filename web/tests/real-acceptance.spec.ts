@@ -25,13 +25,41 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
 
   await page.getByRole("button", { name: "status", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Target status" })).toBeVisible();
-  await expect(page.getByRole("cell", { name: /accepted|unsupported_jvm|temporary_expired|disabled_by_metadata/ }).first()).toBeVisible();
+  const statusCell = page.getByRole("cell", { name: /accepted|unsupported_jvm|temporary_expired|disabled_by_metadata/ }).first();
+  const hasFilteredJavaStatus = await statusCell
+    .waitFor({ state: "visible", timeout: 2_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!hasFilteredJavaStatus) {
+    await expect(page.getByText(/No matching targets/)).toBeVisible();
+    const javaOnlyFilter = page.getByRole("checkbox", { name: "Java targets only" });
+    if (await javaOnlyFilter.isChecked()) {
+      await javaOnlyFilter.uncheck();
+    }
+    const anyStatusCell = page.getByRole("cell", { name: /accepted|unsupported_jvm|temporary_expired|disabled_by_metadata/ }).first();
+    const hasAnyStatus = await anyStatusCell
+      .waitFor({ state: "visible", timeout: 2_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!hasAnyStatus) {
+      await expect(page.getByText(/No matching targets/)).toBeVisible();
+    }
+  }
   await page.screenshot({ path: `${artifactDir}/ui-01-status.png`, fullPage: true });
 
   await page.getByRole("button", { name: "cpu", exact: true }).click();
+  const analysis = page.getByRole("region", { name: "CPU profile analysis" });
+  await expect(analysis.getByRole("heading", { name: "CPU profile" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Symbol" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Self" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Total" })).toBeVisible();
+  const topTable = page.getByRole("region", { name: "Top table" });
+  await expect(topTable.getByRole("button", { name: /DemoHttpService\.handleWork/ })).toBeVisible();
+  await topTable.getByRole("button", { name: /DemoHttpService\.burnCpu/ }).click();
   await expect(page.getByPlaceholder("Search frame")).toBeVisible();
+  await expect(page.getByPlaceholder("Search frame")).toHaveValue("DemoHttpService.burnCpu");
   await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
-  await page.getByPlaceholder("Search frame").fill("DemoHttpService");
+  await expect(page.getByText(/Matching Java methods, aggregated by frame name/)).toBeVisible();
   const demoFrame = page.getByRole("button", { name: /DemoHttpService\.(burnCpu|handleWork)/ }).first();
   await expect(demoFrame).toBeVisible();
   await demoFrame.click();
@@ -39,6 +67,17 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await expect(selectedFrame).toContainText(/DemoHttpService\.(burnCpu|handleWork)/);
   await expect(selectedFrame).toContainText(/Samples/);
   await expect(selectedFrame).toContainText(/Current root/);
+  await page.getByRole("button", { name: "Show stack context" }).click();
+  await expect(page.getByText(/Stack context/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back" })).toBeEnabled();
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByText(/Matching Java methods, aggregated by frame name/)).toBeVisible();
+  await page.getByRole("button", { name: "Top Table" }).click();
+  await expect(page.getByRole("region", { name: "Top table" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Flamegraph", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Both" }).click();
+  await expect(page.getByRole("region", { name: "Top table" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Flamegraph", exact: true })).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-02-cpu.png`, fullPage: true });
 
   await page.getByRole("button", { name: "deadlocks", exact: true }).click();

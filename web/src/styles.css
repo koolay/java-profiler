@@ -47,7 +47,29 @@ h1 { font-size: 30px; margin-bottom: 0; }
 .flamegraph-tools { display: flex; gap: 8px; margin-bottom: 10px; }
 .flamegraph-tools input { border: 1px solid var(--line); padding: 8px; background: #fff; }
 .flamegraph-tools button { border: 1px solid var(--line); background: #fff; padding: 8px 10px; }
+.flamegraph-tools button:disabled { color: var(--muted); background: #edf1ed; cursor: default; }
+.flamegraph-mode { color: var(--muted); font-size: 13px; line-height: 1.4; margin: 0 0 10px; }
 .warning { color: var(--warn); background: #fff4d7; padding: 8px 10px; border-left: 3px solid var(--warn); }
+.profile-analysis { min-width: 0; }
+.profile-toolbar { display: flex; justify-content: space-between; gap: 16px; align-items: start; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 12px; }
+.profile-toolbar h2 { font-size: 18px; margin-bottom: 4px; }
+.profile-toolbar p { color: var(--muted); margin: 0; line-height: 1.45; font-size: 14px; }
+.profile-view-toggle { display: inline-flex; border: 1px solid var(--line); background: #fff; }
+.profile-view-toggle button { border: 0; border-right: 1px solid var(--line); background: #fff; padding: 8px 10px; white-space: nowrap; }
+.profile-view-toggle button:last-child { border-right: 0; }
+.profile-view-toggle button.active { background: var(--ink); color: #fff; }
+.profile-grid { display: grid; grid-template-columns: minmax(300px, 440px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.profile-stack { display: grid; gap: 12px; }
+.profile-flamegraph { min-width: 0; }
+.top-table-wrap { border: 1px solid var(--line); background: #fff; overflow: auto; max-height: 640px; }
+.top-table { min-width: 520px; table-layout: fixed; }
+.top-table th:nth-child(1), .top-table td:nth-child(1) { width: 58%; }
+.top-table th:nth-child(2), .top-table td:nth-child(2), .top-table th:nth-child(3), .top-table td:nth-child(3) { width: 21%; text-align: right; font-variant-numeric: tabular-nums; }
+.top-table tr.active { background: #eef5f1; box-shadow: inset 3px 0 0 var(--accent); }
+.top-table td { vertical-align: middle; }
+.top-table td button { width: 100%; border: 0; background: transparent; color: var(--ink); padding: 0; text-align: left; }
+.top-table td button span { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top-table td button small, .top-table td small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.25; }
 .flamegraph-stack { position: relative; min-width: 0; max-height: 560px; overflow: auto; border: 1px solid var(--line); background: #edf2ed; }
 .flame-row { position: absolute; border: 1px solid rgba(8,42,40,.24); background: #d8f3ee; color: #102220; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 2px; height: 28px; padding: 4px 8px; transition: filter .14s ease, background .14s ease, box-shadow .14s ease; }
 .flame-row:nth-child(4n + 1) { background: #c7eadf; }
@@ -67,6 +89,7 @@ h1 { font-size: 30px; margin-bottom: 0; }
 .flamegraph-detail dl div { min-width: 84px; background: #eef3ef; padding: 8px 10px; }
 .flamegraph-detail dd { margin: 2px 0 0; font-weight: 800; font-variant-numeric: tabular-nums; }
 .flamegraph-detail button { border: 1px solid var(--ink); background: var(--ink); color: #fff; padding: 8px 10px; align-self: end; }
+.flamegraph-empty { border: 1px dashed var(--line); background: #fff; color: var(--muted); padding: 16px; line-height: 1.45; }
 .event-card { border-left: 4px solid var(--risk); background: #fff; padding: 12px; margin-bottom: 10px; }
 pre { overflow: auto; background: #172120; color: #dff4ed; padding: 12px; }
 table { width: 100%; border-collapse: collapse; }
@@ -74,6 +97,8 @@ th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 10px 8
 th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .table-scroll { overflow-x: auto; border-bottom: 1px solid var(--line); }
 .table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status-filter { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+.status-filter input { width: auto; }
 .status-table { min-width: 920px; table-layout: fixed; }
 .status-table th:nth-child(1), .status-table td:nth-child(1) { width: 165px; }
 .status-table th:nth-child(2), .status-table td:nth-child(2) { width: 62px; }
@@ -101,6 +126,7 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
   .rail { flex-direction: row; justify-content: center; }
   .topbar, .service-layout, .view-grid { grid-template-columns: 1fr; display: grid; }
   .workspace { padding: 16px; }
+  .profile-toolbar, .profile-grid { grid-template-columns: 1fr; display: grid; }
   .flamegraph-detail { grid-template-columns: 1fr; }
   .flamegraph-detail button { justify-self: start; }
 }

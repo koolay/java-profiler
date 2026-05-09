@@ -33,14 +33,38 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
   expect(within(detail).getByText("libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis")).toBeInTheDocument();
   expect(within(detail).getByText("66.7%")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Zoom selected" }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
   expect(screen.getByText("BusyApp.lambda$main$0:14")).toBeInTheDocument();
 
   fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "busyapp" } });
   expect(screen.getByText("BusyApp.lambda$main$0:14").closest("button")).toHaveClass("flame-row-match");
+  expect(screen.queryByText("java/lang/Thread.run")).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Reset" }));
-  expect(screen.getByText("java/lang/Thread.run")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Thread\.run/ })).toHaveAttribute("title", "java/lang/Thread.run: 4");
+});
+
+test("returns to the previous zoom level with Back", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 8,
+        children: [{ name: "DemoHttpService.handleWork:93", value: 8, children: [{ name: "DemoHttpService$$Lambda_.handle", value: 8 }] }],
+      }}
+    />,
+  );
+
+  expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+
+  fireEvent.click(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
+  expect(screen.getByRole("button", { name: "Back" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "root 8" })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  expect(screen.getByRole("button", { name: "root8" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
 });
 
 test("shows real Java demo frame names in the detail panel", () => {
@@ -64,4 +88,53 @@ test("shows real Java demo frame names in the detail panel", () => {
   const detail = screen.getByLabelText("Selected flamegraph frame");
   expect(within(detail).getByText("com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188")).toBeInTheDocument();
   expect(within(detail).getByText("10.6%")).toBeInTheDocument();
+});
+
+test("aggregates repeated matching Java frames in search mode", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 21,
+        children: [
+          { name: "com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188", value: 7 },
+          { name: "libjvm.so.NativeFrame", value: 7, children: [{ name: "com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188", value: 7 }] },
+          { name: "com/ebpfjava/examples/httpdemo/DemoHttpService.handleWork:93", value: 7 },
+        ],
+      }}
+      initialQuery="DemoHttpService"
+    />,
+  );
+
+  const burnCpuFrames = screen.getAllByRole("button", { name: /DemoHttpService\.burnCpu:188/ });
+  expect(burnCpuFrames).toHaveLength(1);
+  expect(burnCpuFrames[0]).toHaveAttribute("title", "com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188: 14");
+  expect(burnCpuFrames[0]).toHaveStyle({ width: "100%" });
+  expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveStyle({ top: "64px" });
+  expect(screen.getByText(/Matching Java methods/)).toBeInTheDocument();
+
+  fireEvent.click(burnCpuFrames[0]);
+  expect(within(screen.getByLabelText("Selected flamegraph frame")).getByText("14")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Show stack context" }));
+  expect(screen.getByText(/Stack context/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /DemoHttpService\.burnCpu:188/ })).toHaveAttribute(
+    "title",
+    "com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188: 7",
+  );
+});
+
+test("shows an empty state when no frames match the search", () => {
+  render(<Flamegraph root={{ name: "root", value: 10, children: [{ name: "Checkout.handle", value: 10 }] }} />);
+
+  fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "DemoHttpService" } });
+
+  expect(screen.getByText('No frames match "DemoHttpService".')).toBeInTheDocument();
+  expect(screen.queryByText("Checkout.handle")).not.toBeInTheDocument();
+});
+
+test("shows a custom empty state when there are no samples", () => {
+  render(<Flamegraph root={{ name: "service", value: 0, children: [] }} emptyMessage="No allocation samples returned." />);
+
+  expect(screen.getByText("No allocation samples returned.")).toBeInTheDocument();
 });

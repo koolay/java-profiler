@@ -179,6 +179,52 @@ Owner / approver:
 
 所有诊断视图共享同一组选择器。发生 rollout、重启或扩缩容时，要核对 Pod、PID 和 JVM start time，避免把旧实例、新实例或无关副本混在一起解释。
 
+## 页面区域解读
+
+`Service diagnosis` 是服务级诊断页面。它把同一个 namespace、service、Pod 和时间范围下的证据放在一起，便于从“目标是否可采”切换到 CPU、内存分配、锁、死锁和 ingestion 链路。
+
+页面顶部搜索框用于快速定位 `namespace / service / pod`。如果你已经知道异常 Pod，优先搜索或过滤到该 Pod；如果只知道服务名，先按 service 进入，再用 `status` 判断是否只有单个 Pod 异常。
+
+左侧上下文栏显示当前查询条件：
+
+- `Namespace`：当前命名空间。截图示例是 `java-profiler-qa`。
+- `Service`：当前服务。截图示例是 `jdk17-http-demo`。
+- `Range`：当前分析时间范围。截图示例是 `Last 1h`。
+- `UTC`：当前时间显示时区。跨地区协作时，记录事件时间时要同时写明时区。
+
+左侧提示语强调：Prometheus 仍然负责指标趋势图；本 UI 只展示 profiles、线程证据、目标状态和 ingestion health。也就是说，先用现有监控确认“CPU 高、GC 高、延迟高”这类症状，再回到本页面找 Java 栈证据。
+
+顶部标签页含义：
+
+| 标签 | 用途 | 什么时候打开 |
+| --- | --- | --- |
+| `Memory` | 查看 allocation bytes、allocation objects 和 top allocating stacks。 | GC 压力、allocation rate 或对象创建异常。 |
+| `Cpu` | 查看 CPU profile flamegraph。 | CPU 高、线程忙、业务路径耗时异常。 |
+| `Locks` | 查看 lock wait 或 contention profile。 | 请求卡住、线程 BLOCKED、锁竞争。 |
+| `Deadlocks` | 查看 JVM 结构化死锁事件。 | 疑似死锁或线程永久互等。 |
+| `Status` | 查看每个目标 JVM 是否可采、为什么不可采、用户下一步动作。 | 所有排查都先打开。 |
+| `Ingestion` | 查看 collector 上传、backend 接受、ClickHouse 写入和丢弃/拒绝状态。 | profile 或线程视图为空、数据不完整或怀疑链路问题。 |
+
+`Status` 标签页中的 `Target status` 表格逐行表示一个目标 JVM 或一次目标状态记录。截图中的关键列按如下方式阅读：
+
+| 列 | 含义 | 解读方式 |
+| --- | --- | --- |
+| `Pod` | 目标 Pod 名。长名称会截断，排查时应结合完整 Pod 名或 hover/title 信息记录。 |
+| `PID` | 目标 JVM 进程 ID。PID 可能复用，发布或重启窗口内不要只靠 PID 判断身份。 |
+| `Seen` | backend 看到该状态距当前查询时间的时间差。越新越能代表当前状态。 |
+| `State` | collector 对目标的采集状态，例如 `temporary`、`disabled`、`unsupported`。 |
+| `Reason` | 状态原因代码，例如 `accepted`、`disabled_by_metadata`、`unsupported_jvm`。它决定下一步动作。 |
+| `Message` | 面向用户的简短状态说明。它帮助确认 reason 是否符合预期。 |
+| `User action` | 推荐处理动作。优先按这一列处理，再进入 profile 视图。 |
+
+对截图中的三类状态，可以这样解读：
+
+- `State=temporary` 且 `Reason=accepted`：该 HotSpot 兼容 JVM 的临时 profiling 已生效，可以进入 `Cpu`、`Memory`、`Locks` 或线程视图查看同一目标和时间范围内的数据。
+- `State=disabled` 且 `Reason=disabled_by_metadata`：profiling 被 metadata 禁用，或没有启用所需 metadata。需要添加 profiling metadata，或确认显式禁用是预期行为。
+- `State=unsupported` 且 `Reason=unsupported_jvm`：collector 判断该 JVM 不适合当前 v1 HotSpot profiling。先确认它是否为业务 JVM、是否 HotSpot 兼容、是否选错 container 或 PID。
+
+同一服务同时出现 `temporary`、`disabled` 和 `unsupported` 并不矛盾。多副本、重启、sidecar、多 Java 进程或不同 Pod metadata 都可能让同一 service 下有多种状态。排查时先缩小到异常 Pod 和 JVM，再解释 profile 数据。
+
 ## 理解目标状态
 
 `status` 是第一入口。常见 reason：

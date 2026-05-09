@@ -11,11 +11,15 @@ export function MemoryView({ params }: { params: URLSearchParams }) {
 		<section className="view-grid">
 			<div className="view-copy">
 				<h2>Allocation sources</h2>
-				<p>Allocation profiles identify code paths creating objects. Retained heap ownership requires heap dump analysis outside v1.</p>
+				<p>Allocation profiles identify code paths creating objects. This view only has data when allocation profiling is enabled for the collector.</p>
 				{loading && <p className="muted">Loading profile evidence.</p>}
 				{error && <p className="warning">Backend unavailable: {error}</p>}
 			</div>
-			<Flamegraph root={data?.root ?? fallback.root} metadata={data?.metadata} />
+			<Flamegraph
+				root={data?.root ?? fallback.root}
+				metadata={data?.metadata}
+				emptyMessage="No allocation samples returned. Allocation profiling is disabled by default in this environment because CPU-only profiling is the validated safe mode."
+			/>
 		</section>
 	);
 }

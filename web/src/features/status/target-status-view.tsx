@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { TargetStatus } from "../../api/types";
 import { getTargetStatus } from "../../api/client";
 import { useAPI } from "../../api/use-api";
@@ -5,11 +6,17 @@ import { useAPI } from "../../api/use-api";
 const empty: TargetStatus[] = [];
 
 export function TargetStatusView({ params, statuses }: { params: URLSearchParams; statuses?: TargetStatus[] }) {
+  const [javaTargetsOnly, setJavaTargetsOnly] = useState(true);
   const loaded = useAPI(() => getTargetStatus(params), [params.toString()], empty);
-  const visible = statuses ?? loaded.data ?? empty;
+  const allStatuses = statuses ?? loaded.data ?? empty;
+  const visible = javaTargetsOnly ? allStatuses.filter(isAcceptedJavaTarget) : allStatuses;
   return (
     <section aria-label="Target status">
       <h2>Target status</h2>
+      <label className="status-filter">
+        <input type="checkbox" checked={javaTargetsOnly} onChange={(event) => setJavaTargetsOnly(event.target.checked)} />
+        Java targets only
+      </label>
       {loaded.error && !statuses && <p className="warning">Backend unavailable: {loaded.error}. Check the backend pod, ClickHouse schema, and Web API proxy.</p>}
       {!loaded.loading && !loaded.error && visible.length === 0 && <p className="muted">No matching targets for this namespace, service, Pod, JVM, or time range. Confirm the selector and profiling metadata.</p>}
       <div className="table-scroll" role="region" aria-label="Target status results" tabIndex={0}>
@@ -34,6 +41,10 @@ export function TargetStatusView({ params, statuses }: { params: URLSearchParams
       </div>
     </section>
   );
+}
+
+function isAcceptedJavaTarget(status: TargetStatus) {
+  return status.reason === "accepted" || status.message.toLowerCase().includes("hotspot-compatible jvm");
 }
 
 function formatSeen(value?: string) {
