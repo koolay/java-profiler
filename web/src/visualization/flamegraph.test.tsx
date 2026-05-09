@@ -109,7 +109,7 @@ test("highlights selected Java frames without replacing flamegraph context", () 
   const burnCpuFrames = screen.getAllByRole("button", { name: /DemoHttpService\.burnCpu:188/ });
   expect(burnCpuFrames).toHaveLength(2);
   expect(screen.getByRole("button", { name: /^root/ })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /NativeFrame/ })).toHaveClass("flame-row-dimmed");
+  expect(screen.getByRole("button", { name: /NativeFrame/ })).not.toHaveClass("flame-row-dimmed");
   expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
   expect(screen.getByText(/Full sampled stack context/)).toBeInTheDocument();
 

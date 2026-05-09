@@ -62,6 +62,8 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await expect(page.getByPlaceholder("Search frame")).toHaveValue("");
   await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
   await expect(page.getByText(/Full sampled stack context/)).toBeVisible();
+  await expect(page.getByText(/High total, low Java self|High self CPU|Mixed CPU cost/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /so\.6/ }).first()).not.toHaveClass(/flame-row-dimmed/);
   const demoFrame = page.getByRole("button", { name: /DemoHttpService\.(burnCpu|handleWork)/ }).first();
   await expect(demoFrame).toBeVisible();
   await demoFrame.click();
@@ -72,6 +74,7 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await page.getByPlaceholder("Search frame").fill("burnCpu");
   await expect(page.getByText(/Search highlights matching frames/)).toBeVisible();
   await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /so\.6/ }).first()).toHaveClass(/flame-row-dimmed/);
   await page.getByRole("button", { name: "Focus selected" }).click();
   await expect(page.getByText(/Focused stack context/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Back" })).toBeEnabled();

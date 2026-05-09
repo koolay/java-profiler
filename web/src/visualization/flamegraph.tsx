@@ -6,6 +6,7 @@ type Props = {
   metadata?: PartialMetadata;
   emptyMessage?: string;
   highlightQuery?: string;
+  insight?: string;
 };
 
 type Frame = FlamegraphNode & {
@@ -17,7 +18,7 @@ type Frame = FlamegraphNode & {
   dimmed: boolean;
 };
 
-export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "" }: Props) {
+export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight }: Props) {
   const [query, setQuery] = useState("");
   const [zoomPath, setZoomPath] = useState("root");
   const [selectedPath, setSelectedPath] = useState("root");
@@ -28,7 +29,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
   const queryActive = query.trim().length > 0;
   const highlightActive = highlightQuery.trim().length > 0;
   const zoomed = zoomPath !== "root";
-  const selectedFrame = ((queryActive || highlightActive) && selectedPath === "root" ? frames.find((frame) => frame.matched) : frames.find((frame) => frame.path === selectedPath)) ?? frames[0];
+  const selectedFrame = (highlightActive && selectedPath === "root" ? frames.find((frame) => frame.matched) : frames.find((frame) => frame.path === selectedPath)) ?? frames[0];
   const currentRootValue = Math.max(1, frames[0]?.value ?? 1);
   const selectedPercent = selectedFrame ? (selectedFrame.value / currentRootValue) * 100 : 0;
   const resetZoom = () => {
@@ -73,6 +74,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
             : "Full sampled stack context. Width shows total resource share under the current root; vertical position is stack hierarchy."}
       </p>
       {metadata?.partial && <p className="warning">Partial result: {(metadata.reasons ?? ["query budget"]).join(", ")}.</p>}
+      {insight && <p className="profile-insight">{insight}</p>}
       {hasSamples ? (
         <div className="flamegraph-stack" style={{ height: Math.max(1, depth + 1) * rowHeight }}>
           {frames.map((frame) => (
@@ -138,7 +140,7 @@ function layout(root: FlamegraphNode, zoomPath: string, query: string, highlight
       left,
       width,
       matched,
-      dimmed: activeMatch.length > 0 && !matched,
+      dimmed: normalizedQuery.length > 0 && !matched,
     });
     const children = (node.children ?? []).map((child, index) => ({ child, index }));
     const total = children.reduce((sum, { child }) => sum + Math.max(0, child.value), 0) || Math.max(1, node.value);

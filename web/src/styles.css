@@ -54,6 +54,7 @@ h1 { font-size: 30px; margin-bottom: 0; }
 .profile-toolbar { display: flex; justify-content: space-between; gap: 16px; align-items: start; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 12px; }
 .profile-toolbar h2 { font-size: 18px; margin-bottom: 4px; }
 .profile-toolbar p { color: var(--muted); margin: 0; line-height: 1.45; font-size: 14px; }
+.profile-insight { margin: 0 0 10px; border-left: 3px solid var(--accent); background: #eef5f1; color: #253532; padding: 8px 10px; line-height: 1.4; font-size: 13px; }
 .profile-view-toggle { display: inline-flex; border: 1px solid var(--line); background: #fff; }
 .profile-view-toggle button { border: 0; border-right: 1px solid var(--line); background: #fff; padding: 8px 10px; white-space: nowrap; }
 .profile-view-toggle button:last-child { border-right: 0; }

@@ -47,6 +47,8 @@ test("renders top table and flame graph in both mode", () => {
   fireEvent.click(within(topTable).getByRole("button", { name: /DemoHttpService\.handleWork/ }));
   expect(screen.getByPlaceholderText("Search frame")).toHaveValue("");
   expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
+  expect(screen.getByRole("button", { name: /so\.6/ })).not.toHaveClass("flame-row-dimmed");
+  expect(screen.getByText(/High total, low Java self/)).toBeInTheDocument();
 });
 
 test("sorts the top table by total by default and supports self sorting", () => {

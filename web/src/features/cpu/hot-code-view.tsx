@@ -30,6 +30,7 @@ export function HotCodeView({ root, metadata }: Props) {
   const sortedFrames = useMemo(() => sortHotFrames(hotFrames, sortKey), [hotFrames, sortKey]);
   const selected = hotFrames.find((frame) => frame.name === selectedName) ?? sortedFrames[0];
   const highlightQuery = selected?.symbol ?? "";
+  const insight = selected ? describeHotFrame(selected) : undefined;
 
   if (hotFrames.length === 0) {
     return (
@@ -57,7 +58,7 @@ export function HotCodeView({ root, metadata }: Props) {
         {viewMode !== "flame-graph" && <TopTable frames={sortedFrames} selected={selected} sortKey={sortKey} onSort={setSortKey} onSelect={setSelectedName} />}
         {viewMode !== "top-table" && (
           <div className="profile-flamegraph">
-            <Flamegraph root={root} metadata={metadata} highlightQuery={highlightQuery} />
+            <Flamegraph root={root} metadata={metadata} highlightQuery={highlightQuery} insight={insight} />
           </div>
         )}
       </div>
@@ -199,4 +200,15 @@ function TopTable({
 
 function formatSamples(value: number) {
   return value.toLocaleString();
+}
+
+function describeHotFrame(frame: HotFrame) {
+  if (frame.total <= 0) return undefined;
+  if (frame.self > 0 && frame.self / frame.total >= 0.5) {
+    return "High self CPU: this Java method directly consumes a meaningful share of samples.";
+  }
+  if (frame.self === 0 || frame.self / frame.total < 0.5) {
+    return "High total, low Java self: CPU is observed under this Java method, mostly in callees or runtime/native frames.";
+  }
+  return "Mixed CPU cost: inspect both this Java method and its callees in the flame graph.";
 }
