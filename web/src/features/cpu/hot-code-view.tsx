@@ -175,8 +175,8 @@ function TopTable({
         <thead>
           <tr>
             <th><button className={sortKey === "symbol" ? "active" : ""} onClick={() => onSort("symbol")}>Symbol</button></th>
-            <th><button className={sortKey === "self" ? "active" : ""} onClick={() => onSort("self")}>Self</button></th>
-            <th><button className={sortKey === "total" ? "active" : ""} onClick={() => onSort("total")}>Total</button></th>
+            <th><button className={sortKey === "self" ? "active" : ""} onClick={() => onSort("self")}>Self CPU</button></th>
+            <th><button className={sortKey === "total" ? "active" : ""} onClick={() => onSort("total")}>Total CPU</button></th>
           </tr>
         </thead>
         <tbody>
@@ -205,10 +205,10 @@ function formatSamples(value: number) {
 function describeHotFrame(frame: HotFrame) {
   if (frame.total <= 0) return undefined;
   if (frame.self > 0 && frame.self / frame.total >= 0.5) {
-    return "High self CPU: this Java method directly consumes a meaningful share of samples.";
+    return `High self CPU: ${frame.symbol} directly consumes a meaningful share of samples. Start by inspecting this method's own work.`;
   }
   if (frame.self === 0 || frame.self / frame.total < 0.5) {
-    return "High total, low Java self: CPU is observed under this Java method, mostly in callees or runtime/native frames.";
+    return `High total, low Java self: start from ${frame.symbol}, then inspect the highlighted frames in the full stack. Runtime/native frames show where samples landed; this Java row is the nearest actionable owner.`;
   }
-  return "Mixed CPU cost: inspect both this Java method and its callees in the flame graph.";
+  return `Mixed CPU cost: inspect both ${frame.symbol} and its callees in the flame graph.`;
 }

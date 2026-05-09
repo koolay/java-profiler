@@ -16,7 +16,10 @@ type Frame = FlamegraphNode & {
   width: number;
   matched: boolean;
   dimmed: boolean;
+  category: FrameCategory;
 };
+
+type FrameCategory = "application" | "runtime" | "native";
 
 export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight }: Props) {
   const [query, setQuery] = useState("");
@@ -75,12 +78,18 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
       </p>
       {metadata?.partial && <p className="warning">Partial result: {(metadata.reasons ?? ["query budget"]).join(", ")}.</p>}
       {insight && <p className="profile-insight">{insight}</p>}
+      <div className="flamegraph-legend" aria-label="Frame categories">
+        <span><i className="legend-application" />Application Java</span>
+        <span><i className="legend-runtime" />JVM/runtime</span>
+        <span><i className="legend-native" />Native/system</span>
+      </div>
+      {zoomed && selectedFrame && <p className="focus-pill">Focused: <code>{formatFrameLabel(selectedFrame.name)}</code></p>}
       {hasSamples ? (
         <div className="flamegraph-stack" style={{ height: Math.max(1, depth + 1) * rowHeight }}>
           {frames.map((frame) => (
             <button
               key={frame.path}
-              className={`flame-row${frame.matched ? " flame-row-match" : ""}${frame.dimmed ? " flame-row-dimmed" : ""}${frame.path === selectedFrame?.path ? " flame-row-selected" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
+              className={`flame-row flame-row-${frame.category}${frame.matched ? " flame-row-match" : ""}${frame.dimmed ? " flame-row-dimmed" : ""}${frame.path === selectedFrame?.path ? " flame-row-selected" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
               style={{
                 left: `${frame.left}%`,
                 top: frame.depth * rowHeight,
@@ -141,6 +150,7 @@ function layout(root: FlamegraphNode, zoomPath: string, query: string, highlight
       width,
       matched,
       dimmed: normalizedQuery.length > 0 && !matched,
+      category: classifyFrame(node.name),
     });
     const children = (node.children ?? []).map((child, index) => ({ child, index }));
     const total = children.reduce((sum, { child }) => sum + Math.max(0, child.value), 0) || Math.max(1, node.value);
@@ -153,6 +163,32 @@ function layout(root: FlamegraphNode, zoomPath: string, query: string, highlight
   };
   visit(zoomRoot, 0, zoomPath, 0, 100);
   return frames;
+}
+
+function classifyFrame(name: string): FrameCategory {
+  const normalized = name.toLowerCase();
+  if (
+    /^so(\.|$)/.test(normalized) ||
+    normalized.includes(".so") ||
+    normalized.includes("[vdso]") ||
+    normalized.includes("pthread") ||
+    normalized.includes("clock_") ||
+    normalized.includes("__") ||
+    /(^|[./])(read|write|open|close|poll|select|epoll|recv|send|accept|connect)([:.]|$)/.test(normalized)
+  ) {
+    return "native";
+  }
+  if (
+    normalized.startsWith("java/") ||
+    normalized.startsWith("jdk/") ||
+    normalized.startsWith("sun/") ||
+    normalized.includes("thread.") ||
+    normalized.includes("serverimpl") ||
+    normalized.includes("filter$chain")
+  ) {
+    return "runtime";
+  }
+  return "application";
 }
 
 function findByPath(root: FlamegraphNode, path: string): FlamegraphNode | undefined {

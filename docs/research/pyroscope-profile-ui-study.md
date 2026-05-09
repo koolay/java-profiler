@@ -159,6 +159,10 @@ UI target:
 - Primary sort: `Total CPU` for first-pass bottleneck discovery, with `Self CPU` available for direct CPU burners.
 - Detail copy: "High self means this method itself burns CPU. High total with low self means inspect callees."
 - Native/JVM/runtime frames stay in the flame graph but are excluded from Hot Code by default.
+- Use `Self CPU` and `Total CPU` labels in CPU tables so the columns do not look reusable across allocation or lock profiles.
+- When a Java row has high total and low self, tell the user to start from that Java owner and inspect highlighted frames in the full stack; native/runtime frames explain where samples landed but are not the default optimization target.
+- Use a visible frame-category legend so users can distinguish application Java, JVM/runtime, and native/system context.
+- When focused, show an explicit `Focused: <frame>` status so users know the current root changed.
 
 ### Memory
 
@@ -216,8 +220,8 @@ The next CPU view should behave like this:
 
 1. The default screen shows `Top Table` and `Flame Graph` together.
 2. The top table lists actionable Java symbols only.
-3. The columns are always `Symbol`, `Self`, and `Total`.
-4. Default sort is explicit. Prefer `Total` for first-time bottleneck discovery, with one-click `Self` sorting for direct CPU burners.
+3. The CPU columns are always `Symbol`, `Self CPU`, and `Total CPU`.
+4. Default sort is explicit. Prefer `Total CPU` for first-time bottleneck discovery, with one-click `Self CPU` sorting for direct CPU burners.
 5. Selecting a row highlights matching frames in the full flame graph.
 6. Search remains separate and visually dims non-matching frames instead of replacing context.
 7. "Focus block" drills into a selected block and shows a removable focus state.
@@ -226,10 +230,10 @@ The next CPU view should behave like this:
 ## Acceptance Criteria For The Next Iteration
 
 - `so.6`, `.so`, `[vdso]`, `pthread`, `libjvm`, and JDK/runtime frames do not appear in Hot Code / Top Table by default.
-- `Self` and `Total` are both visible at desktop width in `Both` mode.
+- `Self CPU` and `Total CPU` are both visible at desktop width in `Both` mode.
 - A Top Table row click does not filter away flame graph context.
 - Search highlights/dims matching frames in the existing graph.
-- Top Table supports sorting by `Self`, `Total`, and `Symbol`.
+- Top Table supports sorting by `Self CPU`, `Total CPU`, and `Symbol`.
 - The selected function detail explains whether the cost is mostly direct self time or downstream total time.
-- Real Playwright acceptance verifies the table contains no native frame as the first actionable row and verifies `Self` and `Total` are visible.
+- Real Playwright acceptance verifies the table contains no native frame as the first actionable row and verifies `Self CPU` and `Total CPU` are visible.
 - Memory and lock tabs use profile-type-specific labels and empty states; they must not reuse CPU wording.

@@ -51,8 +51,8 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   const analysis = page.getByRole("region", { name: "CPU profile analysis" });
   await expect(analysis.getByRole("heading", { name: "CPU profile" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Symbol" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Self" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Total" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Self CPU" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Total CPU" })).toBeVisible();
   const topTable = page.getByRole("region", { name: "Top table" });
   await expect(topTable.getByRole("button", { name: /DemoHttpService\.handleWork/ })).toBeVisible();
   const firstDataRow = topTable.locator("tbody tr").first();
@@ -62,7 +62,10 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await expect(page.getByPlaceholder("Search frame")).toHaveValue("");
   await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
   await expect(page.getByText(/Full sampled stack context/)).toBeVisible();
-  await expect(page.getByText(/High total, low Java self|High self CPU|Mixed CPU cost/)).toBeVisible();
+  await expect(page.getByText(/start from DemoHttpService|Start by inspecting this method|inspect both DemoHttpService/)).toBeVisible();
+  await expect(page.getByText("Application Java")).toBeVisible();
+  await expect(page.getByText("JVM/runtime")).toBeVisible();
+  await expect(page.getByText("Native/system")).toBeVisible();
   await expect(page.getByRole("button", { name: /so\.6/ }).first()).not.toHaveClass(/flame-row-dimmed/);
   const demoFrame = page.getByRole("button", { name: /DemoHttpService\.(burnCpu|handleWork)/ }).first();
   await expect(demoFrame).toBeVisible();
@@ -77,6 +80,7 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await expect(page.getByRole("button", { name: /so\.6/ }).first()).toHaveClass(/flame-row-dimmed/);
   await page.getByRole("button", { name: "Focus selected" }).click();
   await expect(page.getByText(/Focused stack context/)).toBeVisible();
+  await expect(page.getByText(/Focused:/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Back" })).toBeEnabled();
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page.getByText(/Search highlights matching frames/)).toBeVisible();

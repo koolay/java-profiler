@@ -19,6 +19,7 @@
 - **[2026-05-08-001-feat-java-profiler-implementation-plan.md](./plans/2026-05-08-001-feat-java-profiler-implementation-plan.md)** - Java profiling implementation plan
 - **[2026-05-08-002-fix-feature-slice-review-findings.md](./plans/2026-05-08-002-fix-feature-slice-review-findings.md)** - Fix plan for review findings in the vertical slice
 - **[2026-05-10-004-flamegraph-actionable-context-ux.md](./plans/2026-05-10-004-flamegraph-actionable-context-ux.md)** - Flame graph actionable-context UX fixes for Java CPU bottleneck analysis
+- **[2026-05-10-005-pyroscope-study-alignment-polish.md](./plans/2026-05-10-005-pyroscope-study-alignment-polish.md)** - Final Pyroscope study alignment polish for CPU table labels, insight copy, frame categories, and focus state
 
 ### operations/
 

@@ -4,7 +4,11 @@ import { Flamegraph } from "./flamegraph";
 test("renders flamegraph frames and partial warning", () => {
   render(<Flamegraph root={{ name: "root", value: 10, children: [{ name: "Checkout.handle", value: 10 }] }} metadata={{ partial: true, reasons: ["node_limit"] }} />);
   expect(screen.getByText("Checkout.handle")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Checkout\.handle/ })).toHaveClass("flame-row-application");
   expect(screen.getByText(/Partial result/)).toBeInTheDocument();
+  expect(screen.getByText("Application Java")).toBeInTheDocument();
+  expect(screen.getByText("JVM/runtime")).toBeInTheDocument();
+  expect(screen.getByText("Native/system")).toBeInTheDocument();
 });
 
 test("inspects, searches, and zooms nested frames while keeping long labels readable", () => {
@@ -27,6 +31,7 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
 
   const nativeFrame = screen.getByRole("button", { name: /VeryLongNativeFrameName/ });
   expect(nativeFrame).toHaveAttribute("title", "libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis: 8");
+  expect(nativeFrame).toHaveClass("flame-row-native");
 
   fireEvent.click(nativeFrame);
   const detail = screen.getByLabelText("Selected flamegraph frame");
@@ -35,6 +40,7 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
 
   fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
   expect(screen.getByText("BusyApp.lambda$main$0:14")).toBeInTheDocument();
+  expect(screen.getByText(/Focused:/)).toBeInTheDocument();
 
   fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "busyapp" } });
   expect(screen.getByText("BusyApp.lambda$main$0:14").closest("button")).toHaveClass("flame-row-match");

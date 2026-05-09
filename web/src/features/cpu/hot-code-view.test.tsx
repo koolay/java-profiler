@@ -38,8 +38,8 @@ test("renders top table and flame graph in both mode", () => {
   expect(within(analysis).getByRole("heading", { name: "CPU profile" })).toBeInTheDocument();
   expect(screen.getByRole("region", { name: "Top table" })).toBeInTheDocument();
   expect(screen.getByRole("region", { name: "Flamegraph" })).toBeInTheDocument();
-  expect(screen.getByRole("columnheader", { name: "Self" })).toBeInTheDocument();
-  expect(screen.getByRole("columnheader", { name: "Total" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Self CPU" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Total CPU" })).toBeInTheDocument();
   expect(screen.getByRole("row", { name: /DemoHttpService\.burnCpu/ })).toBeInTheDocument();
   expect(screen.queryByRole("row", { name: /so\.6/ })).not.toBeInTheDocument();
 
@@ -48,7 +48,7 @@ test("renders top table and flame graph in both mode", () => {
   expect(screen.getByPlaceholderText("Search frame")).toHaveValue("");
   expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
   expect(screen.getByRole("button", { name: /so\.6/ })).not.toHaveClass("flame-row-dimmed");
-  expect(screen.getByText(/High total, low Java self/)).toBeInTheDocument();
+  expect(screen.getByText(/High total, low Java self: start from DemoHttpService\.handleWork/)).toBeInTheDocument();
 });
 
 test("sorts the top table by total by default and supports self sorting", () => {
@@ -58,7 +58,7 @@ test("sorts the top table by total by default and supports self sorting", () => 
   const rows = within(table).getAllByRole("row");
   expect(rows[1]).toHaveTextContent("DemoHttpService.burnCpu");
 
-  fireEvent.click(screen.getByRole("button", { name: "Self" }));
+  fireEvent.click(screen.getByRole("button", { name: "Self CPU" }));
   const selfSortedRows = within(table).getAllByRole("row");
   expect(selfSortedRows[1]).toHaveTextContent("DemoHttpService.burnCpu");
 });

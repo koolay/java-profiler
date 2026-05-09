@@ -74,12 +74,17 @@ h1 { font-size: 30px; margin-bottom: 0; }
 .top-table td button span { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top-table td button small, .top-table td small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.25; }
 .flamegraph-stack { position: relative; min-width: 0; max-height: 560px; overflow: auto; border: 1px solid var(--line); background: #edf2ed; }
-.flame-row { position: absolute; border: 1px solid rgba(8,42,40,.24); background: #d8f3ee; color: #102220; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 2px; height: 28px; padding: 4px 8px; transition: filter .14s ease, background .14s ease, box-shadow .14s ease; }
-.flame-row:nth-child(4n + 1) { background: #c7eadf; }
-.flame-row:nth-child(4n + 2) { background: #dbe8ff; }
-.flame-row:nth-child(4n + 3) { background: #f7e1b7; }
+.flamegraph-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+.flamegraph-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.flamegraph-legend i { width: 12px; height: 8px; border: 1px solid rgba(8,42,40,.25); display: inline-block; }
+.legend-application, .flame-row-application { background: #d8f3ee; }
+.legend-runtime, .flame-row-runtime { background: #dbe8ff; }
+.legend-native, .flame-row-native { background: #f7e1b7; }
+.focus-pill { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px; padding: 5px 8px; border: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 12px; }
+.focus-pill code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.flame-row { position: absolute; border: 1px solid rgba(8,42,40,.24); color: #102220; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 2px; height: 28px; padding: 4px 8px; transition: filter .14s ease, background .14s ease, box-shadow .14s ease; }
 .flame-row:hover { filter: brightness(.96); box-shadow: inset 0 0 0 2px rgba(12,125,125,.32); z-index: 3; }
-.flame-row-match { background: #ffd3cc; border-color: #b7352d; z-index: 1; }
+.flame-row-match { border-color: #b7352d; box-shadow: inset 0 0 0 2px rgba(183,53,45,.45); z-index: 1; }
 .flame-row-dimmed { opacity: .38; }
 .flame-row-selected { box-shadow: inset 0 0 0 2px #102220; z-index: 2; }
 .flame-row-tiny { padding-inline: 0; }
