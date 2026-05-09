@@ -4,7 +4,30 @@ COPY go.mod ./
 COPY . .
 RUN go build -o /out/java-profiler-collector ./cmd/collector
 
+FROM ghcr.io/koolay/library/alpine:3.18.0 AS async-profiler
+ARG TARGETARCH
+ARG ASYNC_PROFILER_VERSION=4.2.1
+ARG ASYNC_PROFILER_SHA256_X64=e4d764f27d06a1d339d13df4f2e1599558b69fcfb01d4c811d13b8c895d7ea63
+ARG ASYNC_PROFILER_SHA256_ARM64=b7f58eead5973d5b04a920380f278e75cf190b49435974c3569869d298639664
+WORKDIR /assets
+RUN set -eux; \
+    case "${TARGETARCH:-amd64}" in \
+      amd64) ap_arch="x64"; ap_sha="${ASYNC_PROFILER_SHA256_X64}" ;; \
+      arm64) ap_arch="arm64"; ap_sha="${ASYNC_PROFILER_SHA256_ARM64}" ;; \
+      *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 2 ;; \
+    esac; \
+    apk add --no-cache ca-certificates curl tar; \
+    archive="async-profiler-${ASYNC_PROFILER_VERSION}-linux-${ap_arch}.tar.gz"; \
+    curl --http1.1 --retry 3 --retry-all-errors --retry-delay 2 -fsSL -o "${archive}" "https://github.com/async-profiler/async-profiler/releases/download/v${ASYNC_PROFILER_VERSION}/${archive}"; \
+    if [ -n "${ap_sha}" ]; then echo "${ap_sha}  ${archive}" | sha256sum -c -; fi; \
+    tar -xzf "${archive}"; \
+    cp "async-profiler-${ASYNC_PROFILER_VERSION}-linux-${ap_arch}/bin/asprof" /asprof; \
+    cp "async-profiler-${ASYNC_PROFILER_VERSION}-linux-${ap_arch}/lib/libasyncProfiler.so" /libasyncProfiler.so; \
+    chmod 0755 /asprof /libasyncProfiler.so
+
 FROM gcr.io/distroless/base-debian12:nonroot
 COPY --from=build /out/java-profiler-collector /java-profiler-collector
+COPY --from=async-profiler /asprof /var/lib/java-profiler/assets/asprof
+COPY --from=async-profiler /libasyncProfiler.so /var/lib/java-profiler/assets/libasyncProfiler.so
 USER nonroot:nonroot
 ENTRYPOINT ["/java-profiler-collector"]

@@ -16,6 +16,8 @@ const root = {
     { name: "com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:189", value: 2 },
     { name: "org/acme/orders/CheckoutService.priceCart:42", value: 3 },
     { name: "java/lang/Thread.run:1583", value: 5 },
+    { name: "java.lang.Thread.run:1583", value: 4 },
+    { name: "I2C.C2I adapters", value: 9 },
     { name: "libjvm.so.NativeFrame", value: 10 },
     { name: "pthread_cond_timedwait", value: 7 },
   ],
@@ -26,9 +28,46 @@ test("computes Pyroscope-style self and total metrics for actionable Java frames
 
   expect(frames.map((frame) => frame.symbol)).toEqual(expect.arrayContaining(["DemoHttpService.burnCpu", "DemoHttpService.handleWork", "CheckoutService.priceCart"]));
   expect(frames.map((frame) => frame.symbol)).not.toContain("so.6");
+  expect(frames.map((frame) => frame.symbol)).not.toContain("I2C.C2I adapters");
+  expect(frames.map((frame) => frame.symbol)).not.toContain("Thread.run");
   expect(frames.find((frame) => frame.symbol === "DemoHttpService.burnCpu")).toMatchObject({ self: 26, total: 26 });
   expect(frames.find((frame) => frame.symbol === "DemoHttpService.handleWork")).toMatchObject({ self: 4, total: 16 });
   expect(frames.find((frame) => frame.symbol === "CheckoutService.priceCart")).toMatchObject({ self: 3, total: 3 });
+});
+
+test("keeps same class names from different packages as distinct hot code rows", () => {
+  const frames = collectHotJavaFrames({
+    name: "root",
+    value: 10,
+    children: [
+      { name: "com/foo/CheckoutService.priceCart:10", value: 6 },
+      { name: "org/acme/CheckoutService.priceCart:42", value: 4 },
+    ],
+  });
+
+  expect(frames.filter((frame) => frame.symbol === "CheckoutService.priceCart")).toHaveLength(2);
+  expect(frames.map((frame) => frame.fullSymbol)).toEqual(expect.arrayContaining(["com.foo.CheckoutService.priceCart", "org.acme.CheckoutService.priceCart"]));
+});
+
+test("keeps flame graph visible when CPU profile has no actionable Java frames", () => {
+  render(
+    <HotCodeView
+      root={{
+        name: "root",
+        value: 14,
+        children: [
+          { name: "so.6", value: 8 },
+          { name: "java.lang.Thread.run:1583", value: 4 },
+          { name: "I2C.C2I adapters", value: 2 },
+        ],
+      }}
+    />,
+  );
+
+  expect(screen.getByText(/No application Java frames were found/)).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Top table" })).not.toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Flamegraph" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Thread\.run/ })).toHaveClass("flame-row-runtime");
 });
 
 test("renders top table and flame graph in both mode", () => {

@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/koolay/java-profiler/backend/internal/clickhouse"
@@ -65,23 +64,24 @@ func (i ProfileBatchIngestor) Ingest(ctx context.Context, req ProfileBatchReques
 		CollectorID: req.CollectorID,
 		BatchType:   domain.BatchTypeProfile,
 		ReceivedAt:  firstNonZero(req.ReceivedAt, time.Now().UTC()),
-		Status:      clickhouse.IngestionAccepted,
+		Status:      clickhouse.IngestionClaimed,
 		PayloadHash: payloadHash(req.Samples),
 	}
+	status, err := i.Ingestion.Record(ctx, batch)
+	if err != nil {
+		return IngestResult{}, err
+	}
+	if status == clickhouse.IngestionRejected {
+		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch id reused with different payload"}, nil
+	}
+	if status == clickhouse.IngestionDuplicate {
+		return IngestResult{Status: clickhouse.IngestionDuplicate, Message: "duplicate batch ignored"}, nil
+	}
 	if err := i.Profiles.InsertProfileBatch(ctx, req.BatchID, req.Samples); err != nil {
-		if errors.Is(err, clickhouse.ErrDuplicateBatch) {
-			status, recordErr := i.Ingestion.Record(ctx, batch)
-			if recordErr != nil {
-				return IngestResult{}, recordErr
-			}
-			if status == clickhouse.IngestionRejected {
-				return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch id reused with different payload"}, nil
-			}
-			return IngestResult{Status: clickhouse.IngestionDuplicate, Message: "duplicate batch ignored"}, nil
-		}
 		return IngestResult{Status: clickhouse.IngestionRetryable, Retryable: true, Message: err.Error()}, nil
 	}
-	status, err := i.Ingestion.Record(ctx, batch)
+	batch.Status = clickhouse.IngestionAccepted
+	status, err = i.Ingestion.Record(ctx, batch)
 	if err != nil {
 		return IngestResult{}, err
 	}

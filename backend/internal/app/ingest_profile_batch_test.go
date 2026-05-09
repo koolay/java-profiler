@@ -81,6 +81,14 @@ func TestProfileBatchIngestorRejectsSameBatchDifferentPayload(t *testing.T) {
 	if result.Status != clickhouse.IngestionRejected {
 		t.Fatalf("expected reused batch id with changed payload to be rejected, got %+v", result)
 	}
+	profiles := ingestor.Profiles.(appProfileQueryStore)
+	samples, err := profiles.QuerySamples(context.Background(), clickhouse.ProfileQuery{Namespace: "prod", Service: "checkout"})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(samples) != 1 || samples[0].Value != 10 {
+		t.Fatalf("conflicting batch should not write payload rows: %+v", samples)
+	}
 }
 
 func TestProfileBatchIngestorRejectsSamplesWithoutTimeRange(t *testing.T) {
@@ -103,5 +111,163 @@ func TestProfileBatchIngestorRejectsSamplesWithoutTimeRange(t *testing.T) {
 	}
 	if result.Status != clickhouse.IngestionRejected {
 		t.Fatalf("expected missing time range to be rejected, got %+v", result)
+	}
+}
+
+type failingProfileStore struct {
+	err    error
+	writes int
+}
+
+func (s *failingProfileStore) InsertProfileBatch(context.Context, string, []clickhouse.ProfileSample) error {
+	s.writes++
+	return s.err
+}
+
+func TestProfileBatchIngestorAllowsRetryAfterPayloadWriteFailure(t *testing.T) {
+	store := &failingProfileStore{err: clickhouse.ErrRetryableStorage}
+	ingestion := clickhouse.NewIngestionRepository()
+	req := ProfileBatchRequest{
+		BatchID:     "batch-1",
+		CollectorID: "collector-a",
+		Samples: []clickhouse.ProfileSample{{
+			BatchID:     "batch-1",
+			Target:      domain.TargetIdentity{Namespace: "prod", Service: "checkout", ProcessID: 1, JVMStartTime: time.Unix(1, 0)},
+			ProfileType: domain.ProfileTypeCPU,
+			StartedAt:   time.Unix(100, 0),
+			EndedAt:     time.Unix(160, 0),
+			StackID:     "stack-1",
+			Value:       10,
+		}},
+	}
+	ingestor := ProfileBatchIngestor{Profiles: store, Ingestion: ingestion}
+	result, err := ingestor.Ingest(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if result.Status != clickhouse.IngestionRetryable {
+		t.Fatalf("expected retryable write failure, got %+v", result)
+	}
+
+	profiles := clickhouse.NewProfileRepository()
+	ingestor.Profiles = profiles
+	result, err = ingestor.Ingest(context.Background(), req)
+	if err != nil || result.Status != clickhouse.IngestionAccepted {
+		t.Fatalf("expected retry after claim to write payload, got %+v err=%v", result, err)
+	}
+	samples, err := profiles.QuerySamples(context.Background(), clickhouse.ProfileQuery{Namespace: "prod", Service: "checkout"})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(samples) != 1 {
+		t.Fatalf("expected retried payload write, got %+v", samples)
+	}
+}
+
+func TestTargetStatusBatchIngestorDeduplicatesBeforeWrite(t *testing.T) {
+	statuses := clickhouse.NewStatusRepository()
+	ingestor := TargetStatusIngestor{
+		Statuses:  statuses,
+		Ingestion: clickhouse.NewIngestionRepository(),
+	}
+	req := TargetStatusBatchRequest{
+		BatchID:     "status-batch-1",
+		CollectorID: "collector-a",
+		Statuses: []clickhouse.TargetStatus{{
+			Target:       domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "pod-a", ProcessID: 1, JVMStartTime: time.Unix(1, 0)},
+			StatusAt:     time.Unix(100, 0),
+			DesiredState: domain.TargetDesiredStateEnabled,
+			Reason:       domain.StatusReasonAccepted,
+		}},
+	}
+	if result, err := ingestor.Ingest(context.Background(), req); err != nil || result.Status != clickhouse.IngestionAccepted {
+		t.Fatalf("expected accepted, got %+v err=%v", result, err)
+	}
+	if result, err := ingestor.Ingest(context.Background(), req); err != nil || result.Status != clickhouse.IngestionDuplicate {
+		t.Fatalf("expected duplicate, got %+v err=%v", result, err)
+	}
+	changed := req
+	changed.Statuses = []clickhouse.TargetStatus{{
+		Target:       domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "pod-b", ProcessID: 2, JVMStartTime: time.Unix(2, 0)},
+		StatusAt:     time.Unix(101, 0),
+		DesiredState: domain.TargetDesiredStateEnabled,
+		Reason:       domain.StatusReasonAccepted,
+	}}
+	if result, err := ingestor.Ingest(context.Background(), changed); err != nil || result.Status != clickhouse.IngestionRejected {
+		t.Fatalf("expected conflicting batch rejected, got %+v err=%v", result, err)
+	}
+	got, err := statuses.LatestByService(context.Background(), clickhouse.TargetStatusQuery{Namespace: "prod", Service: "checkout"})
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(got) != 1 || got[0].Target.Pod != "pod-a" || got[0].BatchID != req.BatchID {
+		t.Fatalf("unexpected status rows after duplicate/conflict: %+v", got)
+	}
+}
+
+func TestTargetStatusBatchIngestorRejectsChildBatchConflict(t *testing.T) {
+	ingestor := TargetStatusIngestor{
+		Statuses:  clickhouse.NewStatusRepository(),
+		Ingestion: clickhouse.NewIngestionRepository(),
+	}
+	result, err := ingestor.Ingest(context.Background(), TargetStatusBatchRequest{
+		BatchID:     "status-batch-1",
+		CollectorID: "collector-a",
+		Statuses: []clickhouse.TargetStatus{{
+			BatchID:      "other-batch",
+			Target:       domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "pod-a", ProcessID: 1, JVMStartTime: time.Unix(1, 0)},
+			StatusAt:     time.Unix(100, 0),
+			DesiredState: domain.TargetDesiredStateEnabled,
+			Reason:       domain.StatusReasonAccepted,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if result.Status != clickhouse.IngestionRejected {
+		t.Fatalf("expected child batch conflict rejected, got %+v", result)
+	}
+}
+
+func TestThreadSnapshotBatchIngestorDeduplicatesBeforeWrite(t *testing.T) {
+	threads := clickhouse.NewThreadRepository()
+	ingestor := ThreadSnapshotIngestor{
+		Threads:   threads,
+		Ingestion: clickhouse.NewIngestionRepository(),
+	}
+	req := ThreadSnapshotBatchRequest{
+		BatchID:     "thread-batch-1",
+		CollectorID: "collector-a",
+		Snapshots: []clickhouse.ThreadSnapshot{{
+			Target:     domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "pod-a", ProcessID: 1, JVMStartTime: time.Unix(1, 0)},
+			SnapshotAt: time.Unix(100, 0),
+			ThreadID:   1,
+			ThreadName: "main",
+			State:      "RUNNABLE",
+		}},
+	}
+	if result, err := ingestor.Ingest(context.Background(), req); err != nil || result.Status != clickhouse.IngestionAccepted {
+		t.Fatalf("expected accepted, got %+v err=%v", result, err)
+	}
+	if result, err := ingestor.Ingest(context.Background(), req); err != nil || result.Status != clickhouse.IngestionDuplicate {
+		t.Fatalf("expected duplicate, got %+v err=%v", result, err)
+	}
+	changed := req
+	changed.Snapshots = []clickhouse.ThreadSnapshot{{
+		Target:     domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "pod-b", ProcessID: 2, JVMStartTime: time.Unix(2, 0)},
+		SnapshotAt: time.Unix(101, 0),
+		ThreadID:   2,
+		ThreadName: "worker",
+		State:      "BLOCKED",
+	}}
+	if result, err := ingestor.Ingest(context.Background(), changed); err != nil || result.Status != clickhouse.IngestionRejected {
+		t.Fatalf("expected conflicting batch rejected, got %+v err=%v", result, err)
+	}
+	got, err := threads.ListSnapshots(context.Background(), "prod", "checkout")
+	if err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if len(got) != 1 || got[0].ThreadName != "main" || got[0].BatchID != req.BatchID {
+		t.Fatalf("unexpected thread rows after duplicate/conflict: %+v", got)
 	}
 }

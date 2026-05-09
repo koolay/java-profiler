@@ -37,6 +37,9 @@ export function HotCodeView({ root, metadata }: Props) {
       <section className="profile-analysis" aria-label="CPU profile analysis">
         <h2>CPU profile</h2>
         <p className="flamegraph-empty">No application Java frames were found in this CPU profile. Use the flame graph to inspect runtime or native frames.</p>
+        <div className="profile-flamegraph">
+          <Flamegraph root={root} metadata={metadata} />
+        </div>
       </section>
     );
   }
@@ -72,7 +75,7 @@ export function collectHotJavaFrames(root: FlamegraphNode): HotFrame[] {
   const visit = (node: FlamegraphNode) => {
     const parsed = parseJavaFrame(node.name);
     if (parsed && isApplicationFrame(parsed)) {
-      const key = `${parsed.className}.${parsed.method}`;
+      const key = `${parsed.fullClassName}.${parsed.method}`;
       const current = totals.get(key);
       const total = Math.max(0, node.value);
       const childTotal = (node.children ?? []).reduce((sum, child) => sum + Math.max(0, child.value), 0);
@@ -124,18 +127,24 @@ function parseJavaFrame(name: string): ParsedFrame | undefined {
 function isApplicationFrame(frame: ParsedFrame) {
   if (frame.name.includes("$$Lambda")) return false;
   const normalizedName = frame.name.toLowerCase();
+  const normalizedMethod = frame.method.toLowerCase();
+  const normalizedClass = frame.fullClassName.toLowerCase();
   if (
     normalizedName.includes(".so") ||
     normalizedName.includes("[vdso]") ||
     normalizedName.includes("pthread") ||
-    normalizedName.includes("clock_gettime")
+    normalizedName.includes("clock_gettime") ||
+    normalizedName.includes("adapter") ||
+    normalizedName.includes("stubroutine") ||
+    normalizedName.includes("vtablestub") ||
+    normalizedName.includes("itable stub")
   ) {
     return false;
   }
-  if (/^(read|write|open|close|poll|select|epoll|recv|send|accept|connect|syscall|nanosleep)$/.test(frame.method.toLowerCase())) return false;
+  if (/\s/.test(frame.method) || /\s/.test(frame.className)) return false;
+  if (/^(read|write|open|close|poll|select|epoll|recv|send|accept|connect|syscall|nanosleep)$/.test(normalizedMethod)) return false;
   if (/^\d/.test(frame.method) || /^\d/.test(frame.className)) return false;
   if (!/^[A-Z_$]/.test(frame.className)) return false;
-  const normalizedClass = frame.fullClassName.toLowerCase();
   const excludedPrefixes = [
     "java.",
     "javax.",
@@ -145,7 +154,9 @@ function isApplicationFrame(frame: ParsedFrame) {
     "org.graalvm.",
     "lib",
   ];
-  return !excludedPrefixes.some((prefix) => normalizedClass.startsWith(prefix));
+  if (excludedPrefixes.some((prefix) => normalizedClass.startsWith(prefix))) return false;
+  const excludedExactClasses = new Set(["i2c", "c2i", "itable", "vtable", "stubroutines"]);
+  return !excludedExactClasses.has(normalizedClass) && !excludedExactClasses.has(frame.className.toLowerCase());
 }
 
 function sortHotFrames(frames: HotFrame[], sortKey: SortKey) {

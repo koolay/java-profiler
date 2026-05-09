@@ -2,9 +2,10 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { Flamegraph } from "./flamegraph";
 
 test("renders flamegraph frames and partial warning", () => {
-  render(<Flamegraph root={{ name: "root", value: 10, children: [{ name: "Checkout.handle", value: 10 }] }} metadata={{ partial: true, reasons: ["node_limit"] }} />);
+  render(<Flamegraph root={{ name: "root", value: 14, children: [{ name: "Checkout.handle", value: 10 }, { name: "java.lang.Thread.run", value: 4 }] }} metadata={{ partial: true, reasons: ["node_limit"] }} />);
   expect(screen.getByText("Checkout.handle")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Checkout\.handle/ })).toHaveClass("flame-row-application");
+  expect(screen.getByRole("button", { name: /Thread\.run/ })).toHaveClass("flame-row-runtime");
   expect(screen.getByText(/Partial result/)).toBeInTheDocument();
   const legend = screen.getByLabelText("Frame categories");
   expect(within(legend).getByText("Application Java")).toBeInTheDocument();
@@ -145,6 +146,21 @@ test("shows self and total metrics for leaf frames in the inspector", () => {
   expect(within(inspector).getByText("Checkout.handle")).toBeInTheDocument();
   expect(within(inspector).getAllByText(/10/).length).toBeGreaterThanOrEqual(2);
   expect(within(inspector).getAllByText("100.0%")).toHaveLength(2);
+});
+
+test("keeps child width proportional to parent total when the parent has self CPU", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 100,
+        children: [{ name: "Checkout.handle", value: 100, children: [{ name: "Checkout.parse", value: 10 }] }],
+      }}
+    />,
+  );
+
+  const child = screen.getByRole("button", { name: /Checkout\.parse/ });
+  expect(child).toHaveStyle({ width: "10%" });
 });
 
 test("keeps flamegraph context when no frames match the search", () => {

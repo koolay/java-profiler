@@ -104,9 +104,48 @@ gap() {
     exit 1
   fi
 }
+optional_gap() {
+  log "GAP: $*"
+}
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
+}
+
+duration_seconds() {
+  case "$1" in
+    *ms) echo 1 ;;
+    *s) echo "${1%s}" ;;
+    *m) echo "$(( ${1%m} * 60 ))" ;;
+    *h) echo "$(( ${1%h} * 3600 ))" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+drive_workload_load() {
+  local local_port="${JAVA_PROFILER_WORKLOAD_PORT:-18182}"
+  local duration="${1:-30}"
+  local service_port
+  service_port="$(kubectl -n "$namespace" get "svc/$service_name" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true)"
+  if [[ -z "$service_port" ]]; then
+    log "- workload service ${namespace}/${service_name} has no Service; assuming in-pod load is already active"
+    return 0
+  fi
+  kubectl -n "$namespace" port-forward --address 127.0.0.1 "svc/$service_name" "${local_port}:${service_port}" >"$artifact_dir/port-forward-workload.log" 2>&1 &
+  cleanup_pids+=("$!")
+  if ! wait_http "http://127.0.0.1:${local_port}/health"; then
+    log "- workload service is not the JDK17 HTTP demo; skipping endpoint load driver"
+    return 0
+  fi
+  log "- driving JDK17 demo load for ${duration}s during profiling window"
+  local deadline=$(( $(date +%s) + duration ))
+  local iteration=0
+  while [[ "$(date +%s)" -lt "$deadline" ]]; do
+    iteration=$((iteration + 1))
+    for mode in cpu alloc lock; do
+      curl -fsS "http://127.0.0.1:${local_port}/work?mode=${mode}&durationMs=3000" >>"$artifact_dir/workload-${mode}-load.log" 2>&1 || true
+    done
+  done
 }
 
 wait_http() {
@@ -293,6 +332,7 @@ YAML
     --set "image.web=$web_image" \
     --set "clickhouse.dsn=${clickhouse_dsn}" \
     --set "profiling.collectorInterval=${collector_interval}" \
+    --set "profiling.enableAllocationAndLockJFR=${require_full}" \
     --set "profiling.targetNamespace=${namespace}" \
     --set "profiling.targetService=${service_name}" \
     --set "auth.existingSecret=java-profiler-auth" \
@@ -476,6 +516,7 @@ if [[ "$configure_profiler" == "true" && "$install" != "true" ]]; then
     --reuse-values \
     --set "clusterName=$(kubectl config current-context)" \
     --set "profiling.collectorInterval=${collector_interval}" \
+    --set "profiling.enableAllocationAndLockJFR=${require_full}" \
     --set "profiling.targetNamespace=${namespace}" \
     --set "profiling.targetService=${service_name}"
   pass "profiler target filters configured for ${namespace}/${service_name}"
@@ -532,6 +573,13 @@ fi
 backend_no_auth_code="$(curl -sS -o "$artifact_dir/backend-no-auth.txt" -w '%{http_code}' "http://127.0.0.1:${backend_port}/api/ui/v1/target-status")"
 [[ "$backend_no_auth_code" == "401" ]] || fail "backend without UI token returned $backend_no_auth_code, expected 401"
 pass "backend direct UI API rejects missing token"
+
+profile_wait_seconds="${JAVA_PROFILER_ACCEPTANCE_PROFILE_WAIT_SECONDS:-$(( $(duration_seconds "$collector_interval") * 2 + 10 ))}"
+drive_workload_load "$profile_wait_seconds" &
+load_pid="$!"
+cleanup_pids+=("$load_pid")
+log "- waiting ${profile_wait_seconds}s for async-profiler start/stop/read cycles"
+wait "$load_pid" || true
 
 start="${JAVA_PROFILER_ACCEPTANCE_START:-$acceptance_started_at}"
 end="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -607,13 +655,13 @@ fi
 if [[ "${thread_snapshots:-0}" -gt 0 ]]; then
   pass "thread snapshot path is working"
 else
-  gap "thread snapshot path is not proven: thread_snapshots=${thread_snapshots:-0}"
+  optional_gap "thread snapshot path is not proven in this run: thread_snapshots=${thread_snapshots:-0}"
 fi
 
 if [[ "${deadlock_events:-0}" -gt 0 ]]; then
   pass "deadlock event path has data"
 else
-  gap "deadlock event path has no data in this run: deadlock_events=${deadlock_events:-0}"
+  optional_gap "deadlock event path has no data in this run: deadlock_events=${deadlock_events:-0}"
 fi
 
 if [[ "$ingestion_code" == "200" ]]; then

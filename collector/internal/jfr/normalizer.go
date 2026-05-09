@@ -10,6 +10,8 @@ import (
 	"github.com/koolay/java-profiler/domain"
 )
 
+const DefaultCPUExecutionSampleValueNS uint64 = 10_000_000
+
 func Normalize(batchID string, target domain.TargetIdentity, events []Event) []profiling.ProfileSample {
 	return NormalizeWindow(batchID, target, events, time.Time{}, time.Time{})
 }
@@ -21,6 +23,10 @@ func NormalizeWindow(batchID string, target domain.TargetIdentity, events []Even
 		if !ok {
 			continue
 		}
+		value := event.Value
+		if profileType == domain.ProfileTypeCPU {
+			value = event.Value * DefaultCPUExecutionSampleValueNS
+		}
 		frames := boundedFrames(event.Frames, 256)
 		samples = append(samples, profiling.ProfileSample{
 			BatchID:     batchID,
@@ -30,7 +36,7 @@ func NormalizeWindow(batchID string, target domain.TargetIdentity, events []Even
 			EndedAt:     endedAt,
 			StackID:     stackID(frames),
 			Frames:      frames,
-			Value:       event.Value,
+			Value:       value,
 			Truncated:   len(event.Frames) > len(frames),
 		})
 	}

@@ -248,20 +248,6 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 			log.Printf("profile batch upload failed: batch=%s samples=%d: %v", batchID, len(samples), err)
 			return err
 		}
-		threadBatchID := fmt.Sprintf("%s-thread-%d", r.collectorID, started.UnixNano())
-		snapshots, deadlocks := threadEvidence(threadBatchID, acceptedTargets, started)
-		threadBatch, err := pipeline.BuildThreadSnapshotBatch(threadBatchID, r.collectorID, snapshots, deadlocks)
-		if err != nil {
-			r.exporter.Inc("java_profiler_collector_upload_failures")
-			return err
-		}
-		threadClient := r.backend
-		threadClient.URL = pipeline.ThreadSnapshotURL(r.backend.URL)
-		if err := threadClient.Upload(ctx, threadBatch); err != nil {
-			r.exporter.Inc("java_profiler_collector_upload_failures")
-			r.exporter.Inc("java_profiler_collector_upload_retryable")
-			return err
-		}
 		r.exporter.Inc("java_profiler_collector_upload_success")
 	}
 	return nil
@@ -292,62 +278,6 @@ func (r *Runtime) targetAllowed(target domain.TargetIdentity) bool {
 		return false
 	}
 	return true
-}
-
-func threadEvidence(batchID string, targets []domain.TargetIdentity, observedAt time.Time) ([]profiling.ThreadSnapshot, []profiling.DeadlockEvent) {
-	snapshots := make([]profiling.ThreadSnapshot, 0, len(targets)*3)
-	deadlocks := make([]profiling.DeadlockEvent, 0, len(targets))
-	cpuTime := uint64(150_000_000)
-	userCPU := uint64(120_000_000)
-	for _, target := range targets {
-		snapshots = append(snapshots,
-			profiling.ThreadSnapshot{
-				BatchID:        batchID,
-				Target:         target,
-				SnapshotAt:     observedAt,
-				ThreadID:       1,
-				NativeThreadID: fmt.Sprintf("%d", target.ProcessID),
-				ThreadName:     "main",
-				State:          "RUNNABLE",
-				StackFrames:    []string{target.Service + ".requestLoop", target.Workload + ".handleRequest", "java.lang.Thread.run"},
-				CPUTimeNS:      &cpuTime,
-				UserCPUTimeNS:  &userCPU,
-			},
-			profiling.ThreadSnapshot{
-				BatchID:     batchID,
-				Target:      target,
-				SnapshotAt:  observedAt,
-				ThreadID:    2,
-				ThreadName:  "worker-blocked",
-				State:       "BLOCKED",
-				StackFrames: []string{target.Service + ".criticalSection", "java.lang.Object.wait"},
-				LockOwner:   "worker-owner",
-				BlockedLock: "java.lang.Object@profiling-lock",
-			},
-			profiling.ThreadSnapshot{
-				BatchID:         batchID,
-				Target:          target,
-				SnapshotAt:      observedAt,
-				ThreadID:        3,
-				ThreadName:      "deadlock-candidate",
-				State:           "BLOCKED",
-				StackFrames:     []string{target.Service + ".deadlockProbe", "java.lang.Object.wait"},
-				LockOwner:       "worker-blocked",
-				BlockedLock:     "java.lang.Object@deadlock-a",
-				DeadlockCycleID: fmt.Sprintf("%s-%d-cycle", target.Pod, target.ProcessID),
-			},
-		)
-		deadlocks = append(deadlocks, profiling.DeadlockEvent{
-			EventID:         fmt.Sprintf("%s-%d-%d", batchID, target.ProcessID, observedAt.UnixNano()),
-			Target:          target,
-			EventAt:         observedAt,
-			CycleID:         fmt.Sprintf("%s-%d-cycle", target.Pod, target.ProcessID),
-			InvolvedThreads: []string{"worker-blocked", "deadlock-candidate"},
-			Locks:           []string{"java.lang.Object@deadlock-a", "java.lang.Object@deadlock-b"},
-			BlockingFrames:  []string{target.Service + ".deadlockProbe", target.Service + ".criticalSection"},
-		})
-	}
-	return snapshots, deadlocks
 }
 
 func NewMetricsHandler(exporter *collectorMetrics.Exporter) http.Handler {

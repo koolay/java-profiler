@@ -13,6 +13,7 @@ type IngestionStatus string
 const (
 	IngestionAccepted  IngestionStatus = "accepted"
 	IngestionDuplicate IngestionStatus = "duplicate"
+	IngestionClaimed   IngestionStatus = "claimed"
 	IngestionRejected  IngestionStatus = "rejected"
 	IngestionRetryable IngestionStatus = "retryable"
 )
@@ -46,6 +47,13 @@ func (r *IngestionRepository) Record(_ context.Context, batch IngestionBatch) (I
 	defer r.mu.Unlock()
 	if existing, ok := r.batches[batch.BatchID]; ok {
 		if existing.PayloadHash == batch.PayloadHash {
+			if existing.Status == IngestionClaimed {
+				if batch.Status == IngestionAccepted {
+					r.batches[batch.BatchID] = batch
+					return batch.Status, nil
+				}
+				return IngestionClaimed, nil
+			}
 			return IngestionDuplicate, nil
 		}
 		return IngestionRejected, nil

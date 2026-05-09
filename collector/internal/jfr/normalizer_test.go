@@ -26,4 +26,10 @@ func TestNormalizeMapsRequiredProfileTypes(t *testing.T) {
 			t.Fatalf("invalid sample: %+v", sample)
 		}
 	}
+	if samples[0].ProfileType != domain.ProfileTypeCPU || samples[0].Value != DefaultCPUExecutionSampleValueNS {
+		t.Fatalf("expected CPU sample value in nanoseconds, got %+v", samples[0])
+	}
+	if samples[1].Value != 2 || samples[2].Value != 3 || samples[3].Value != 4 || samples[4].Value != 5 {
+		t.Fatalf("non-CPU sample values should remain unchanged: %+v", samples)
+	}
 }

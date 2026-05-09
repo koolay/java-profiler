@@ -9,6 +9,7 @@ backend_image="${BACKEND_IMAGE:-java-profiler-backend:qa-amd64}"
 collector_image="${COLLECTOR_IMAGE:-java-profiler-collector:qa-amd64}"
 web_image="${WEB_IMAGE:-java-profiler-web:qa-amd64}"
 async_profiler_version="${ASYNC_PROFILER_VERSION:-4.2.1}"
+async_profiler_sha256="${ASYNC_PROFILER_SHA256:-}"
 collector_base_image="${COLLECTOR_BASE_IMAGE:-docker.m.daocloud.io/library/golang:1.21-alpine}"
 
 case "$arch" in
@@ -25,13 +26,19 @@ CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -o "$out_dir/bin/java
 ap_arch="$arch"
 if [[ "$arch" == "amd64" ]]; then
   ap_arch="x64"
+  async_profiler_sha256="${async_profiler_sha256:-e4d764f27d06a1d339d13df4f2e1599558b69fcfb01d4c811d13b8c895d7ea63}"
+elif [[ "$arch" == "arm64" ]]; then
+  async_profiler_sha256="${async_profiler_sha256:-b7f58eead5973d5b04a920380f278e75cf190b49435974c3569869d298639664}"
 fi
 ap_archive="$out_dir/async-profiler-${async_profiler_version}-linux-${ap_arch}.tar.gz"
 ap_extract="$out_dir/async-profiler-${async_profiler_version}-linux-${ap_arch}"
 ap_dir="$out_dir/docker/async-profiler"
 if [[ ! -s "$ap_archive" ]]; then
   echo "Downloading async-profiler ${async_profiler_version} linux/${ap_arch}"
-  curl -fsSL -o "$ap_archive" "https://github.com/async-profiler/async-profiler/releases/download/v${async_profiler_version}/async-profiler-${async_profiler_version}-linux-${ap_arch}.tar.gz"
+  curl --http1.1 --retry 3 --retry-all-errors --retry-delay 2 -fsSL -o "$ap_archive" "https://github.com/async-profiler/async-profiler/releases/download/v${async_profiler_version}/async-profiler-${async_profiler_version}-linux-${ap_arch}.tar.gz"
+fi
+if [[ -n "$async_profiler_sha256" ]]; then
+  echo "${async_profiler_sha256}  ${ap_archive}" | sha256sum -c -
 fi
 rm -rf "$ap_extract" "$ap_dir"
 tar -xzf "$ap_archive" -C "$out_dir"

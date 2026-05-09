@@ -26,8 +26,8 @@ auth:
 
 assets:
   asyncProfiler:
-    version: "4.2"
-    sha256: "4a0097892186730096e7dea6037d9ce706f1e7bb35a7fdbdd951879c42bdfc46"
+    version: "4.2.1"
+    sha256: "e4d764f27d06a1d339d13df4f2e1599558b69fcfb01d4c811d13b8c895d7ea63"
   threadHelper:
     sha256: "c46abd8e1e151b13e2169b2adef59e8bc84f1357c7a811f454a8172cb2b38481"
 

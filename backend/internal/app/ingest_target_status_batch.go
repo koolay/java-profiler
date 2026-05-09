@@ -31,23 +31,39 @@ func (i TargetStatusIngestor) Ingest(ctx context.Context, req TargetStatusBatchR
 	if req.BatchID == "" || req.CollectorID == "" {
 		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch_id and collector_id are required"}, nil
 	}
-	for _, status := range req.Statuses {
+	statuses := append([]clickhouse.TargetStatus(nil), req.Statuses...)
+	for index, status := range statuses {
+		if status.BatchID != "" && status.BatchID != req.BatchID {
+			return IngestResult{Status: clickhouse.IngestionRejected, Message: "status batch_id conflicts with envelope batch_id"}, nil
+		}
 		if status.Target.Key() == "" || status.StatusAt.IsZero() || !status.DesiredStateIsValid() || !status.Reason.IsValid() {
 			return IngestResult{Status: clickhouse.IngestionRejected, Message: "invalid target status"}, nil
 		}
+		statuses[index].BatchID = req.BatchID
 	}
 	batch := clickhouse.IngestionBatch{
 		BatchID:     req.BatchID,
 		CollectorID: req.CollectorID,
 		BatchType:   domain.BatchTypeTargetStatus,
 		ReceivedAt:  firstNonZero(req.ReceivedAt, time.Now().UTC()),
-		Status:      clickhouse.IngestionAccepted,
-		PayloadHash: targetStatusHash(req.Statuses),
-	}
-	if err := i.Statuses.InsertStatuses(ctx, req.Statuses); err != nil {
-		return IngestResult{Status: clickhouse.IngestionRetryable, Retryable: true, Message: err.Error()}, nil
+		Status:      clickhouse.IngestionClaimed,
+		PayloadHash: targetStatusHash(statuses),
 	}
 	status, err := i.Ingestion.Record(ctx, batch)
+	if err != nil {
+		return IngestResult{}, err
+	}
+	if status == clickhouse.IngestionRejected {
+		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch id reused with different payload"}, nil
+	}
+	if status == clickhouse.IngestionDuplicate {
+		return IngestResult{Status: clickhouse.IngestionDuplicate, Message: "duplicate batch ignored"}, nil
+	}
+	if err := i.Statuses.InsertStatuses(ctx, statuses); err != nil {
+		return IngestResult{Status: clickhouse.IngestionRetryable, Retryable: true, Message: err.Error()}, nil
+	}
+	batch.Status = clickhouse.IngestionAccepted
+	status, err = i.Ingestion.Record(ctx, batch)
 	if err != nil {
 		return IngestResult{}, err
 	}

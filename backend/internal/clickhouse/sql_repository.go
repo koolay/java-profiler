@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,7 +44,8 @@ func (r *SQLRepository) ApplySchema(ctx context.Context) error {
 func (r *SQLRepository) InsertProfileBatch(ctx context.Context, batchID string, samples []ProfileSample) error {
 	seenStacks := map[string]bool{}
 	for _, sample := range samples {
-		if !seenStacks[sample.StackID] {
+		stackKey := profileStackKey(sample)
+		if !seenStacks[stackKey] {
 			if _, err := r.db.ExecContext(ctx, `
 				INSERT INTO java_profiler_profile_stacks
 				(cluster, namespace, service, pod, container, node, process_id, jvm_start_time, stack_id, frames)
@@ -51,7 +53,7 @@ func (r *SQLRepository) InsertProfileBatch(ctx context.Context, batchID string, 
 				sample.Target.Cluster, sample.Target.Namespace, sample.Target.Service, sample.Target.Pod, sample.Target.Container, sample.Target.Node, sample.Target.ProcessID, sample.Target.JVMStartTime, sample.StackID, sample.Frames); err != nil {
 				return err
 			}
-			seenStacks[sample.StackID] = true
+			seenStacks[stackKey] = true
 		}
 		truncated := uint8(0)
 		if sample.Truncated {
@@ -68,6 +70,19 @@ func (r *SQLRepository) InsertProfileBatch(ctx context.Context, batchID string, 
 	return nil
 }
 
+func profileStackKey(sample ProfileSample) string {
+	return strings.Join([]string{
+		sample.Target.Cluster,
+		sample.Target.Namespace,
+		sample.Target.Service,
+		sample.Target.Pod,
+		sample.Target.Container,
+		sample.Target.Node,
+		sample.Target.JVMStartTime.UTC().Format(time.RFC3339Nano),
+		sample.StackID,
+	}, "\x00") + "\x00" + strconv.FormatInt(int64(sample.Target.ProcessID), 10)
+}
+
 func (r *SQLRepository) QuerySamples(ctx context.Context, q ProfileQuery) ([]ProfileSample, error) {
 	limit := q.Limit
 	if limit <= 0 {
@@ -76,7 +91,16 @@ func (r *SQLRepository) QuerySamples(ctx context.Context, q ProfileQuery) ([]Pro
 	query := `
 		SELECT s.batch_id, s.cluster, s.namespace, s.service, s.pod, s.container, s.node, s.process_id, s.jvm_start_time, s.profile_type, s.started_at, s.ended_at, s.stack_id, s.sample_value, s.truncated, any(st.frames)
 		FROM java_profiler_profile_samples s
-		LEFT JOIN java_profiler_profile_stacks st ON s.stack_id = st.stack_id
+		LEFT JOIN java_profiler_profile_stacks st
+		  ON s.cluster = st.cluster
+		 AND s.namespace = st.namespace
+		 AND s.service = st.service
+		 AND s.pod = st.pod
+		 AND s.container = st.container
+		 AND s.node = st.node
+		 AND s.process_id = st.process_id
+		 AND s.jvm_start_time = st.jvm_start_time
+		 AND s.stack_id = st.stack_id
 		WHERE (? = '' OR s.namespace = ?) AND (? = '' OR s.service = ?) AND (? = '' OR s.pod = ?) AND (? = '' OR s.profile_type = ?)
 		  AND (? = 1 OR s.ended_at >= ?) AND (? = 1 OR s.started_at <= ?)
 		GROUP BY s.batch_id, s.cluster, s.namespace, s.service, s.pod, s.container, s.node, s.process_id, s.jvm_start_time, s.profile_type, s.started_at, s.ended_at, s.stack_id, s.sample_value, s.truncated
@@ -366,9 +390,24 @@ func zeroTimeFlag(value time.Time) uint8 {
 
 func (r *SQLRepository) Record(ctx context.Context, batch IngestionBatch) (IngestionStatus, error) {
 	var existingHash string
-	err := r.db.QueryRowContext(ctx, `SELECT payload_hash FROM java_profiler_ingestion_batches WHERE batch_id = ? AND batch_type = ? LIMIT 1`, batch.BatchID, batch.BatchType).Scan(&existingHash)
+	var existingStatus string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT payload_hash, status
+		FROM java_profiler_ingestion_batches
+		WHERE batch_id = ? AND batch_type = ?
+		ORDER BY received_at DESC
+		LIMIT 1`, batch.BatchID, batch.BatchType).Scan(&existingHash, &existingStatus)
 	if err == nil {
 		if existingHash == batch.PayloadHash {
+			if IngestionStatus(existingStatus) == IngestionClaimed {
+				if batch.Status == IngestionAccepted {
+					if err := r.insertIngestionBatch(ctx, batch); err != nil {
+						return "", err
+					}
+					return batch.Status, nil
+				}
+				return IngestionClaimed, nil
+			}
 			return IngestionDuplicate, nil
 		}
 		return IngestionRejected, nil
@@ -379,19 +418,23 @@ func (r *SQLRepository) Record(ctx context.Context, batch IngestionBatch) (Inges
 	if batch.ReceivedAt.IsZero() {
 		batch.ReceivedAt = time.Now().UTC()
 	}
+	if err := r.insertIngestionBatch(ctx, batch); err != nil {
+		return "", err
+	}
+	return batch.Status, nil
+}
+
+func (r *SQLRepository) insertIngestionBatch(ctx context.Context, batch IngestionBatch) error {
 	retryable := uint8(0)
 	if batch.Retryable {
 		retryable = 1
 	}
-	_, err = r.db.ExecContext(ctx, `
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO java_profiler_ingestion_batches
 		(batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		batch.BatchID, batch.CollectorID, batch.BatchType, batch.ReceivedAt, batch.Status, retryable, batch.PayloadHash, batch.Message)
-	if err != nil {
-		return "", err
-	}
-	return batch.Status, nil
+	return err
 }
 
 func (r *SQLRepository) ListIngestionBatches(ctx context.Context, q IngestionQuery) ([]IngestionBatch, error) {

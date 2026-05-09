@@ -186,7 +186,7 @@ function layout(root: FlamegraphNode, zoomPath: string, query: string, highlight
       category: classifyFrame(node.name),
     });
     const children = (node.children ?? []).map((child, index) => ({ child, index }));
-    const total = children.reduce((sum, { child }) => sum + Math.max(0, child.value), 0) || Math.max(1, node.value);
+    const total = Math.max(Math.max(0, node.value), childTotal, 1);
     let offset = left;
     for (const { child, index } of children) {
       const childWidth = width * (Math.max(0, child.value) / total);
@@ -230,7 +230,7 @@ function labelForCategory(category: FrameCategory) {
 }
 
 function classifyFrame(name: string): FrameCategory {
-  const normalized = name.toLowerCase();
+  const normalized = name.replaceAll("/", ".").toLowerCase();
   if (
     /^so(\.|$)/.test(normalized) ||
     normalized.includes(".so") ||
@@ -243,9 +243,15 @@ function classifyFrame(name: string): FrameCategory {
     return "native";
   }
   if (
-    normalized.startsWith("java/") ||
-    normalized.startsWith("jdk/") ||
-    normalized.startsWith("sun/") ||
+    normalized.startsWith("java.") ||
+    normalized.startsWith("javax.") ||
+    normalized.startsWith("jdk.") ||
+    normalized.startsWith("sun.") ||
+    normalized.startsWith("com.sun.") ||
+    normalized.includes("c2i adapter") ||
+    normalized.includes("i2c adapter") ||
+    normalized.includes("stubroutine") ||
+    normalized.includes("vtablestub") ||
     normalized.includes("thread.") ||
     normalized.includes("serverimpl") ||
     normalized.includes("filter$chain")
