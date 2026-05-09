@@ -5,7 +5,7 @@ type Props = {
   root: FlamegraphNode;
   metadata?: PartialMetadata;
   emptyMessage?: string;
-  initialQuery?: string;
+  highlightQuery?: string;
 };
 
 type Frame = FlamegraphNode & {
@@ -14,20 +14,21 @@ type Frame = FlamegraphNode & {
   left: number;
   width: number;
   matched: boolean;
-  aggregate?: boolean;
+  dimmed: boolean;
 };
 
-export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", initialQuery = "" }: Props) {
-  const [query, setQuery] = useState(initialQuery);
+export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "" }: Props) {
+  const [query, setQuery] = useState("");
   const [zoomPath, setZoomPath] = useState("root");
   const [selectedPath, setSelectedPath] = useState("root");
   const [zoomHistory, setZoomHistory] = useState<string[]>([]);
-  const frames = useMemo(() => layout(root, zoomPath, query), [root, query, zoomPath]);
+  const frames = useMemo(() => layout(root, zoomPath, query, highlightQuery), [root, highlightQuery, query, zoomPath]);
   const depth = Math.max(0, ...frames.map((frame) => frame.depth));
   const rowHeight = 32;
   const queryActive = query.trim().length > 0;
+  const highlightActive = highlightQuery.trim().length > 0;
   const zoomed = zoomPath !== "root";
-  const selectedFrame = (queryActive && selectedPath === "root" ? frames.find((frame) => frame.matched) : frames.find((frame) => frame.path === selectedPath)) ?? frames[0];
+  const selectedFrame = ((queryActive || highlightActive) && selectedPath === "root" ? frames.find((frame) => frame.matched) : frames.find((frame) => frame.path === selectedPath)) ?? frames[0];
   const currentRootValue = Math.max(1, frames[0]?.value ?? 1);
   const selectedPercent = selectedFrame ? (selectedFrame.value / currentRootValue) * 100 : 0;
   const resetZoom = () => {
@@ -65,9 +66,11 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
         <button onClick={resetZoom}>Reset</button>
       </div>
       <p className="flamegraph-mode">
-        {queryActive && !zoomed
-          ? "Matching Java methods, aggregated by frame name. Select a row for details or use Show stack context to inspect one sampled path."
-          : "Stack context. Outer runtime frames and application frames are shown from the selected sampled path; this is not Java source-line call order."}
+        {zoomed
+            ? "Focused stack context. Width is relative to the focused block."
+          : queryActive
+            ? "Search highlights matching frames and keeps the sampled stack context visible."
+            : "Full sampled stack context. Width shows total resource share under the current root; vertical position is stack hierarchy."}
       </p>
       {metadata?.partial && <p className="warning">Partial result: {(metadata.reasons ?? ["query budget"]).join(", ")}.</p>}
       {hasSamples ? (
@@ -75,7 +78,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
           {frames.map((frame) => (
             <button
               key={frame.path}
-              className={`flame-row${frame.matched ? " flame-row-match" : ""}${frame.path === selectedFrame?.path ? " flame-row-selected" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
+              className={`flame-row${frame.matched ? " flame-row-match" : ""}${frame.dimmed ? " flame-row-dimmed" : ""}${frame.path === selectedFrame?.path ? " flame-row-selected" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
               style={{
                 left: `${frame.left}%`,
                 top: frame.depth * rowHeight,
@@ -112,33 +115,32 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
               <dd>{selectedFrame.depth}</dd>
             </div>
           </dl>
-          <button onClick={zoomToSelected}>{queryActive && !zoomed ? "Show stack context" : "Focus selected"}</button>
+          <button onClick={zoomToSelected}>Focus selected</button>
         </div>
       )}
     </section>
   );
 }
 
-function layout(root: FlamegraphNode, zoomPath: string, query: string): Frame[] {
+function layout(root: FlamegraphNode, zoomPath: string, query: string, highlightQuery: string): Frame[] {
   const zoomRoot = findByPath(root, zoomPath) ?? root;
   const normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery.length > 0) return filteredLayout(zoomRoot, zoomPath, normalizedQuery);
-  const isIncluded = (node: FlamegraphNode): boolean =>
-    normalizedQuery.length === 0 ||
-    node.name.toLowerCase().includes(normalizedQuery) ||
-    (node.children ?? []).some(isIncluded);
+  const normalizedHighlight = highlightQuery.trim().toLowerCase();
+  const activeMatch = normalizedQuery || normalizedHighlight;
+  const matches = (node: FlamegraphNode) => activeMatch.length > 0 && node.name.toLowerCase().includes(activeMatch);
   const frames: Frame[] = [];
   const visit = (node: FlamegraphNode, depth: number, path: string, left: number, width: number) => {
-    if (!isIncluded(node)) return;
+    const matched = matches(node);
     frames.push({
       ...node,
       depth,
       path,
       left,
       width,
-      matched: normalizedQuery.length > 0 && node.name.toLowerCase().includes(normalizedQuery),
+      matched,
+      dimmed: activeMatch.length > 0 && !matched,
     });
-    const children = (node.children ?? []).map((child, index) => ({ child, index })).filter(({ child }) => isIncluded(child));
+    const children = (node.children ?? []).map((child, index) => ({ child, index }));
     const total = children.reduce((sum, { child }) => sum + Math.max(0, child.value), 0) || Math.max(1, node.value);
     let offset = left;
     for (const { child, index } of children) {
@@ -148,63 +150,6 @@ function layout(root: FlamegraphNode, zoomPath: string, query: string): Frame[] 
     }
   };
   visit(zoomRoot, 0, zoomPath, 0, 100);
-  return frames;
-}
-
-function filteredLayout(root: FlamegraphNode, zoomPath: string, normalizedQuery: string): Frame[] {
-  const matches = new Map<string, { total: number; count: number; firstPath: string }>();
-  const rootMatches = root.name.toLowerCase().includes(normalizedQuery);
-  const collect = (node: FlamegraphNode, path: string) => {
-    if (node.name.toLowerCase().includes(normalizedQuery)) {
-      const current = matches.get(node.name);
-      matches.set(node.name, {
-        total: (current?.total ?? 0) + node.value,
-        count: (current?.count ?? 0) + 1,
-        firstPath: current?.firstPath ?? path,
-      });
-    }
-    for (const [index, child] of (node.children ?? []).entries()) {
-      collect(child, `${path}/${index}`);
-    }
-  };
-  if (rootMatches) {
-    for (const [index, child] of (root.children ?? []).entries()) {
-      collect(child, `${zoomPath}/${index}`);
-    }
-  } else {
-    collect(root, zoomPath);
-  }
-  const groupedMatches = Array.from(matches.entries())
-    .map(([name, match]) => ({ name, ...match }))
-    .sort((left, right) => right.total - left.total || left.name.localeCompare(right.name));
-  if (!rootMatches && groupedMatches.length === 0) return [];
-
-  const rootValue = groupedMatches.reduce((sum, node) => sum + Math.max(0, node.total), 0) || root.value;
-  const frames: Frame[] = [
-    {
-      ...root,
-      value: rootMatches ? root.value : rootValue,
-      children: [],
-      depth: 0,
-      path: rootMatches ? zoomPath : `${zoomPath}#search-root`,
-      left: 0,
-      width: 100,
-      matched: rootMatches,
-    },
-  ];
-  for (const [depth, node] of groupedMatches.entries()) {
-    frames.push({
-      name: node.name,
-      value: node.total,
-      children: [],
-      depth: depth + 1,
-      path: node.firstPath,
-      left: 0,
-      width: 100,
-      matched: true,
-      aggregate: node.count > 1,
-    });
-  }
   return frames;
 }
 

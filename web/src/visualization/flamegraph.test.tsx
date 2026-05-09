@@ -38,7 +38,7 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
 
   fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "busyapp" } });
   expect(screen.getByText("BusyApp.lambda$main$0:14").closest("button")).toHaveClass("flame-row-match");
-  expect(screen.queryByText("java/lang/Thread.run")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /VeryLongNativeFrameName/ })).toHaveClass("flame-row-dimmed");
 
   fireEvent.click(screen.getByRole("button", { name: "Reset" }));
   expect(screen.getByRole("button", { name: /Thread\.run/ })).toHaveAttribute("title", "java/lang/Thread.run: 4");
@@ -90,7 +90,7 @@ test("shows real Java demo frame names in the detail panel", () => {
   expect(within(detail).getByText("10.6%")).toBeInTheDocument();
 });
 
-test("aggregates repeated matching Java frames in search mode", () => {
+test("highlights selected Java frames without replacing flamegraph context", () => {
   render(
     <Flamegraph
       root={{
@@ -102,35 +102,31 @@ test("aggregates repeated matching Java frames in search mode", () => {
           { name: "com/ebpfjava/examples/httpdemo/DemoHttpService.handleWork:93", value: 7 },
         ],
       }}
-      initialQuery="DemoHttpService"
+      highlightQuery="DemoHttpService"
     />,
   );
 
   const burnCpuFrames = screen.getAllByRole("button", { name: /DemoHttpService\.burnCpu:188/ });
-  expect(burnCpuFrames).toHaveLength(1);
-  expect(burnCpuFrames[0]).toHaveAttribute("title", "com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188: 14");
-  expect(burnCpuFrames[0]).toHaveStyle({ width: "100%" });
-  expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveStyle({ top: "64px" });
-  expect(screen.getByText(/Matching Java methods/)).toBeInTheDocument();
+  expect(burnCpuFrames).toHaveLength(2);
+  expect(screen.getByRole("button", { name: /^root/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /NativeFrame/ })).toHaveClass("flame-row-dimmed");
+  expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
+  expect(screen.getByText(/Full sampled stack context/)).toBeInTheDocument();
 
   fireEvent.click(burnCpuFrames[0]);
-  expect(within(screen.getByLabelText("Selected flamegraph frame")).getByText("14")).toBeInTheDocument();
+  expect(within(screen.getByLabelText("Selected flamegraph frame")).getByText("7")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Show stack context" }));
-  expect(screen.getByText(/Stack context/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /DemoHttpService\.burnCpu:188/ })).toHaveAttribute(
-    "title",
-    "com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188: 7",
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
+  expect(screen.getByText(/Focused stack context/)).toBeInTheDocument();
 });
 
-test("shows an empty state when no frames match the search", () => {
+test("keeps flamegraph context when no frames match the search", () => {
   render(<Flamegraph root={{ name: "root", value: 10, children: [{ name: "Checkout.handle", value: 10 }] }} />);
 
   fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "DemoHttpService" } });
 
-  expect(screen.getByText('No frames match "DemoHttpService".')).toBeInTheDocument();
-  expect(screen.queryByText("Checkout.handle")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Checkout\.handle/ })).toHaveClass("flame-row-dimmed");
+  expect(screen.getByText(/Search highlights matching frames/)).toBeInTheDocument();
 });
 
 test("shows a custom empty state when there are no samples", () => {

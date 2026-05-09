@@ -10,6 +10,7 @@ type Props = {
 type HotFrame = {
   name: string;
   symbol: string;
+  fullSymbol: string;
   className: string;
   line?: number;
   self: number;
@@ -19,13 +20,16 @@ type HotFrame = {
 };
 
 type ViewMode = "top-table" | "flame-graph" | "both";
+type SortKey = "total" | "self" | "symbol";
 
 export function HotCodeView({ root, metadata }: Props) {
   const hotFrames = useMemo(() => collectHotJavaFrames(root), [root]);
   const [selectedName, setSelectedName] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<ViewMode>("both");
-  const selected = hotFrames.find((frame) => frame.name === selectedName) ?? hotFrames[0];
-  const stackQuery = selected?.symbol ?? "DemoHttpService";
+  const [sortKey, setSortKey] = useState<SortKey>("total");
+  const sortedFrames = useMemo(() => sortHotFrames(hotFrames, sortKey), [hotFrames, sortKey]);
+  const selected = hotFrames.find((frame) => frame.name === selectedName) ?? sortedFrames[0];
+  const highlightQuery = selected?.symbol ?? "";
 
   if (hotFrames.length === 0) {
     return (
@@ -50,10 +54,10 @@ export function HotCodeView({ root, metadata }: Props) {
         </div>
       </div>
       <div className={viewMode === "both" ? "profile-grid" : "profile-stack"}>
-        {viewMode !== "flame-graph" && <TopTable frames={hotFrames} selected={selected} onSelect={setSelectedName} />}
+        {viewMode !== "flame-graph" && <TopTable frames={sortedFrames} selected={selected} sortKey={sortKey} onSort={setSortKey} onSelect={setSelectedName} />}
         {viewMode !== "top-table" && (
           <div className="profile-flamegraph">
-            <Flamegraph key={stackQuery} root={root} metadata={metadata} initialQuery={stackQuery} />
+            <Flamegraph root={root} metadata={metadata} highlightQuery={highlightQuery} />
           </div>
         )}
       </div>
@@ -87,12 +91,12 @@ export function collectHotJavaFrames(root: FlamegraphNode): HotFrame[] {
       name: hottestLine?.name ?? frame.name,
       line: hottestLine?.line ?? frame.line,
       symbol: `${frame.className}.${frame.method}`,
+      fullSymbol: `${frame.fullClassName}.${frame.method}`,
       self,
       total,
       selfPercent: (self / totalSamples) * 100,
       totalPercent: (total / totalSamples) * 100,
-    }))
-    .sort((left, right) => right.self - left.self || right.total - left.total || left.name.localeCompare(right.name));
+    }));
 }
 
 type ParsedFrame = {
@@ -118,6 +122,18 @@ function parseJavaFrame(name: string): ParsedFrame | undefined {
 
 function isApplicationFrame(frame: ParsedFrame) {
   if (frame.name.includes("$$Lambda")) return false;
+  const normalizedName = frame.name.toLowerCase();
+  if (
+    normalizedName.includes(".so") ||
+    normalizedName.includes("[vdso]") ||
+    normalizedName.includes("pthread") ||
+    normalizedName.includes("clock_gettime")
+  ) {
+    return false;
+  }
+  if (/^(read|write|open|close|poll|select|epoll|recv|send|accept|connect|syscall|nanosleep)$/.test(frame.method.toLowerCase())) return false;
+  if (/^\d/.test(frame.method) || /^\d/.test(frame.className)) return false;
+  if (!/^[A-Z_$]/.test(frame.className)) return false;
   const normalizedClass = frame.fullClassName.toLowerCase();
   const excludedPrefixes = [
     "java.",
@@ -131,15 +147,35 @@ function isApplicationFrame(frame: ParsedFrame) {
   return !excludedPrefixes.some((prefix) => normalizedClass.startsWith(prefix));
 }
 
-function TopTable({ frames, selected, onSelect }: { frames: HotFrame[]; selected?: HotFrame; onSelect: (name: string) => void }) {
+function sortHotFrames(frames: HotFrame[], sortKey: SortKey) {
+  return [...frames].sort((left, right) => {
+    if (sortKey === "symbol") return left.symbol.localeCompare(right.symbol) || right.total - left.total;
+    if (sortKey === "self") return right.self - left.self || right.total - left.total || left.symbol.localeCompare(right.symbol);
+    return right.total - left.total || right.self - left.self || left.symbol.localeCompare(right.symbol);
+  });
+}
+
+function TopTable({
+  frames,
+  selected,
+  sortKey,
+  onSort,
+  onSelect,
+}: {
+  frames: HotFrame[];
+  selected?: HotFrame;
+  sortKey: SortKey;
+  onSort: (sortKey: SortKey) => void;
+  onSelect: (name: string) => void;
+}) {
   return (
     <div className="top-table-wrap" role="region" aria-label="Top table">
       <table className="top-table">
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Self</th>
-            <th>Total</th>
+            <th><button className={sortKey === "symbol" ? "active" : ""} onClick={() => onSort("symbol")}>Symbol</button></th>
+            <th><button className={sortKey === "self" ? "active" : ""} onClick={() => onSort("self")}>Self</button></th>
+            <th><button className={sortKey === "total" ? "active" : ""} onClick={() => onSort("total")}>Total</button></th>
           </tr>
         </thead>
         <tbody>
@@ -148,7 +184,7 @@ function TopTable({ frames, selected, onSelect }: { frames: HotFrame[]; selected
               <td>
                 <button onClick={() => onSelect(frame.name)}>
                   <span>{frame.symbol}</span>
-                  <small>{frame.line ? `${frame.className}:${frame.line}` : frame.className}</small>
+                  <small>{frame.line ? `${frame.className}:${frame.line}` : frame.fullSymbol}</small>
                 </button>
               </td>
               <td>{formatSamples(frame.self)} <small>{frame.selfPercent.toFixed(1)}%</small></td>

@@ -30,6 +30,7 @@
 
 - **[coroot-node-agent-java-agent.md](./research/coroot-node-agent-java-agent.md)** - Coroot Java agent research
 - **[chdb-go.md](./research/chdb-go.md)** - chDB Go binding research for local embedded ClickHouse-compatible validation
+- **[pyroscope-profile-ui-study.md](./research/pyroscope-profile-ui-study.md)** - Pyroscope-style profile UI research and product review notes for bottleneck analysis
 
 ### implementation/
 
