@@ -119,7 +119,7 @@ func TestRunnerCanOptIntoAllocationAndLockProfiling(t *testing.T) {
 		t.Fatal(err)
 	}
 	startArgs := strings.Join(exec.commands[0].args, " ")
-	for _, want := range []string{"--alloc 512k", "--lock 10us"} {
+	for _, want := range []string{"--alloc 8m", "--lock 10us"} {
 		if !strings.Contains(startArgs, want) {
 			t.Fatalf("expected opt-in profiler command to contain %q, got %s", want, startArgs)
 		}

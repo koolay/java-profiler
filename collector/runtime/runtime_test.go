@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	profiling "github.com/koolay/java-profiler/contracts/profiling"
 	"github.com/koolay/java-profiler/domain"
 )
 
@@ -66,5 +67,27 @@ func TestRuntimeScanOnceUpdatesStatusesAndMetrics(t *testing.T) {
 		if !strings.Contains(snapshot, want) {
 			t.Fatalf("expected metrics snapshot to contain %q, got %q", want, snapshot)
 		}
+	}
+}
+
+func TestChunkProfileSamplesCopiesAndPreservesSmallBatches(t *testing.T) {
+	samples := []profiling.ProfileSample{
+		{BatchID: "batch", StackID: "a", Value: 1},
+		{BatchID: "batch", StackID: "b", Value: 2},
+		{BatchID: "batch", StackID: "c", Value: 3},
+	}
+
+	small := chunkProfileSamples(samples[:2], 10)
+	if len(small) != 1 || len(small[0]) != 2 {
+		t.Fatalf("expected one small chunk, got %#v", small)
+	}
+
+	chunks := chunkProfileSamples(samples, 2)
+	if len(chunks) != 2 || len(chunks[0]) != 2 || len(chunks[1]) != 1 {
+		t.Fatalf("unexpected chunks: %#v", chunks)
+	}
+	chunks[0][0].BatchID = "changed"
+	if samples[0].BatchID != "batch" {
+		t.Fatalf("chunk mutation leaked into source sample: %#v", samples[0])
 	}
 }

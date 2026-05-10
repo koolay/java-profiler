@@ -10,7 +10,7 @@ collector_image="${COLLECTOR_IMAGE:-java-profiler-collector:qa-amd64}"
 web_image="${WEB_IMAGE:-java-profiler-web:qa-amd64}"
 async_profiler_version="${ASYNC_PROFILER_VERSION:-4.2.1}"
 async_profiler_sha256="${ASYNC_PROFILER_SHA256:-}"
-collector_base_image="${COLLECTOR_BASE_IMAGE:-docker.m.daocloud.io/library/golang:1.21-alpine}"
+collector_base_image="${COLLECTOR_BASE_IMAGE:-ghcr.io/koolay/library/alpine:3.18.0}"
 
 case "$arch" in
   amd64|arm64) ;;

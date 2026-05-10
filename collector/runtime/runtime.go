@@ -50,6 +50,8 @@ type Runtime struct {
 	targetSvc    string
 }
 
+const maxProfileSamplesPerBatch = 10_000
+
 func NewCollector(cfg Config) *Runtime {
 	procRoot := cfg.ProcRoot
 	if procRoot == "" {
@@ -237,12 +239,7 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 		if profileErr != nil {
 			r.exporter.Inc("java_profiler_collector_profiler_failures")
 		}
-		batch, err := pipeline.BuildProfileBatch(batchID, r.collectorID, samples)
-		if err != nil {
-			r.exporter.Inc("java_profiler_collector_upload_failures")
-			return err
-		}
-		if err := r.backend.Upload(ctx, batch); err != nil {
+		if err := r.uploadProfileSamples(ctx, batchID, samples); err != nil {
 			r.exporter.Inc("java_profiler_collector_upload_failures")
 			r.exporter.Inc("java_profiler_collector_upload_retryable")
 			log.Printf("profile batch upload failed: batch=%s samples=%d: %v", batchID, len(samples), err)
@@ -251,6 +248,45 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 		r.exporter.Inc("java_profiler_collector_upload_success")
 	}
 	return nil
+}
+
+func (r *Runtime) uploadProfileSamples(ctx context.Context, batchID string, samples []profiling.ProfileSample) error {
+	chunks := chunkProfileSamples(samples, maxProfileSamplesPerBatch)
+	if len(chunks) == 0 {
+		chunks = [][]profiling.ProfileSample{nil}
+	}
+	for index, chunk := range chunks {
+		chunkBatchID := batchID
+		if len(chunks) > 1 {
+			chunkBatchID = fmt.Sprintf("%s-part-%04d", batchID, index+1)
+			for sampleIndex := range chunk {
+				chunk[sampleIndex].BatchID = chunkBatchID
+			}
+		}
+		batch, err := pipeline.BuildProfileBatch(chunkBatchID, r.collectorID, chunk)
+		if err != nil {
+			return err
+		}
+		if err := r.backend.Upload(ctx, batch); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func chunkProfileSamples(samples []profiling.ProfileSample, maxPerBatch int) [][]profiling.ProfileSample {
+	if maxPerBatch <= 0 || len(samples) <= maxPerBatch {
+		return [][]profiling.ProfileSample{samples}
+	}
+	chunks := make([][]profiling.ProfileSample, 0, (len(samples)+maxPerBatch-1)/maxPerBatch)
+	for start := 0; start < len(samples); start += maxPerBatch {
+		end := start + maxPerBatch
+		if end > len(samples) {
+			end = len(samples)
+		}
+		chunks = append(chunks, append([]profiling.ProfileSample(nil), samples[start:end]...))
+	}
+	return chunks
 }
 
 func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets []domain.TargetIdentity) ([]profiling.ProfileSample, error) {

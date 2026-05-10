@@ -142,8 +142,18 @@ drive_workload_load() {
   local iteration=0
   while [[ "$(date +%s)" -lt "$deadline" ]]; do
     iteration=$((iteration + 1))
-    for mode in cpu alloc lock; do
+    for mode in cpu alloc; do
       curl -fsS "http://127.0.0.1:${local_port}/work?mode=${mode}&durationMs=3000" >>"$artifact_dir/workload-${mode}-load.log" 2>&1 || true
+    done
+    # Lock profiling needs real contention. A single request can hold and
+    # release the monitor without ever blocking another Java thread.
+    lock_pids=()
+    for _ in 1 2 3; do
+      curl -fsS "http://127.0.0.1:${local_port}/work?mode=lock&durationMs=3000" >>"$artifact_dir/workload-lock-load.log" 2>&1 &
+      lock_pids+=("$!")
+    done
+    for lock_pid in "${lock_pids[@]}"; do
+      wait "$lock_pid" || true
     done
   done
 }
@@ -293,7 +303,7 @@ spec:
               memory: 512Mi
             limits:
               cpu: "1"
-              memory: 2Gi
+              memory: 4Gi
 ---
 apiVersion: v1
 kind: Service
@@ -562,8 +572,15 @@ wait_http "http://127.0.0.1:${backend_port}/metrics" || fail "backend port-forwa
 wait_http "http://127.0.0.1:${collector_port}/metrics" || fail "collector port-forward did not become ready"
 pass "port-forwards are ready"
 
-curl -sS "http://127.0.0.1:${web_port}/api/ui/v1/target-status" >"$artifact_dir/web-target-status.json"
-web_status_len="$(jq 'length' "$artifact_dir/web-target-status.json")"
+web_status_len="0"
+for _ in $(seq 1 90); do
+  curl -sS "http://127.0.0.1:${web_port}/api/ui/v1/target-status" >"$artifact_dir/web-target-status.json"
+  web_status_len="$(jq 'length' "$artifact_dir/web-target-status.json")"
+  if [[ "$web_status_len" -gt 0 ]]; then
+    break
+  fi
+  sleep 1
+done
 if [[ "$web_status_len" -gt 0 ]]; then
   pass "web proxy returns target status JSON ($web_status_len rows)"
 else

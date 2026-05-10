@@ -48,6 +48,11 @@ type session struct {
 	jfrPath   string
 }
 
+const (
+	allocationSampleInterval = "8m"
+	lockSampleThreshold      = "10us"
+)
+
 func NewRunner(cfg Config, attach AttachController) *Runner {
 	if cfg.ProcRoot == "" {
 		cfg.ProcRoot = "/proc"
@@ -144,7 +149,7 @@ func (r *Runner) start(ctx context.Context, key string, pid int, nsPID int, star
 			"--libpath", r.targetLibraryPath(),
 		}
 		if r.cfg.AllocationAndLockJFR {
-			args = append(args[:5], append([]string{"--alloc", "512k", "--lock", "10us"}, args[5:]...)...)
+			args = append(args[:5], append([]string{"--alloc", allocationSampleInterval, "--lock", lockSampleThreshold}, args[5:]...)...)
 		}
 		args = append(args, strconv.Itoa(pid))
 		if _, err := r.exec.Run(ctx, r.cfg.AsprofPath, args...); err != nil {
@@ -155,7 +160,7 @@ func (r *Runner) start(ctx context.Context, key string, pid int, nsPID int, star
 	}
 	args := fmt.Sprintf("start,file=%s,jfr,event=itimer,interval=10ms", jfrPath)
 	if r.cfg.AllocationAndLockJFR {
-		args += ",alloc=512k,lock=10us"
+		args += ",alloc=" + allocationSampleInterval + ",lock=" + lockSampleThreshold
 	}
 	if err := r.attach.LoadNativeAgent(ctx, pid, r.targetLibraryPath(), args); err != nil {
 		return err
