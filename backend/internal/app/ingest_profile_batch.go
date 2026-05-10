@@ -8,14 +8,16 @@ import (
 	"time"
 
 	"github.com/koolay/java-profiler/backend/internal/clickhouse"
+	"github.com/koolay/java-profiler/contracts/profiling"
 	"github.com/koolay/java-profiler/domain"
 )
 
 type ProfileBatchRequest struct {
-	BatchID     string
-	CollectorID string
-	ReceivedAt  time.Time
-	Samples     []clickhouse.ProfileSample
+	BatchID     string                         `json:"batch_id"`
+	CollectorID string                         `json:"collector_id"`
+	ReceivedAt  time.Time                      `json:"received_at"`
+	Metadata    profiling.ProfileBatchMetadata `json:"metadata"`
+	Samples     []clickhouse.ProfileSample     `json:"samples"`
 }
 
 type IngestResult struct {
@@ -51,33 +53,54 @@ func (i ProfileBatchIngestor) Ingest(ctx context.Context, req ProfileBatchReques
 	if req.BatchID == "" || req.CollectorID == "" {
 		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch_id and collector_id are required"}, nil
 	}
+	batch := clickhouse.IngestionBatch{
+		BatchID:               req.BatchID,
+		CollectorID:           req.CollectorID,
+		BatchType:             domain.BatchTypeProfile,
+		ReceivedAt:            firstNonZero(req.ReceivedAt, time.Now().UTC()),
+		Status:                clickhouse.IngestionClaimed,
+		PayloadHash:           payloadHash(req.Samples),
+		RawSampleCount:        req.Metadata.WindowRawSampleCount,
+		AggregatedSampleCount: req.Metadata.WindowAggregatedSampleCount,
+		BatchSampleCount:      req.Metadata.BatchSampleCount,
+		DroppedSampleCount:    req.Metadata.DroppedSampleCount,
+		DroppedStackCount:     req.Metadata.DroppedStackCount,
+		Truncated:             req.Metadata.Truncated,
+	}
 	for _, sample := range req.Samples {
 		if !sample.ProfileType.IsValid() || sample.Target.Key() == "" {
-			return IngestResult{Status: clickhouse.IngestionRejected, Message: "invalid profile sample"}, nil
+			batch.Status = clickhouse.IngestionRejected
+			batch.Message = "invalid profile sample"
+			_, _ = i.Ingestion.Record(ctx, batch)
+			return IngestResult{Status: clickhouse.IngestionRejected, Message: batch.Message}, nil
 		}
 		if sample.StartedAt.IsZero() || sample.EndedAt.IsZero() || sample.EndedAt.Before(sample.StartedAt) {
-			return IngestResult{Status: clickhouse.IngestionRejected, Message: "profile sample time range is required"}, nil
+			batch.Status = clickhouse.IngestionRejected
+			batch.Message = "profile sample time range is required"
+			_, _ = i.Ingestion.Record(ctx, batch)
+			return IngestResult{Status: clickhouse.IngestionRejected, Message: batch.Message}, nil
 		}
-	}
-	batch := clickhouse.IngestionBatch{
-		BatchID:     req.BatchID,
-		CollectorID: req.CollectorID,
-		BatchType:   domain.BatchTypeProfile,
-		ReceivedAt:  firstNonZero(req.ReceivedAt, time.Now().UTC()),
-		Status:      clickhouse.IngestionClaimed,
-		PayloadHash: payloadHash(req.Samples),
 	}
 	status, err := i.Ingestion.Record(ctx, batch)
 	if err != nil {
 		return IngestResult{}, err
 	}
 	if status == clickhouse.IngestionRejected {
-		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch id reused with different payload"}, nil
+		batch.Status = clickhouse.IngestionRejected
+		batch.Message = "batch id reused with different payload"
+		_, _ = i.Ingestion.Record(ctx, batch)
+		return IngestResult{Status: clickhouse.IngestionRejected, Message: batch.Message}, nil
 	}
 	if status == clickhouse.IngestionDuplicate {
 		return IngestResult{Status: clickhouse.IngestionDuplicate, Message: "duplicate batch ignored"}, nil
 	}
 	if err := i.Profiles.InsertProfileBatch(ctx, req.BatchID, req.Samples); err != nil {
+		batch.Status = clickhouse.IngestionRetryable
+		batch.Retryable = true
+		batch.Message = err.Error()
+		if _, recordErr := i.Ingestion.Record(ctx, batch); recordErr != nil {
+			return IngestResult{}, recordErr
+		}
 		return IngestResult{Status: clickhouse.IngestionRetryable, Retryable: true, Message: err.Error()}, nil
 	}
 	batch.Status = clickhouse.IngestionAccepted

@@ -399,8 +399,8 @@ func (r *SQLRepository) Record(ctx context.Context, batch IngestionBatch) (Inges
 		LIMIT 1`, batch.BatchID, batch.BatchType).Scan(&existingHash, &existingStatus)
 	if err == nil {
 		if existingHash == batch.PayloadHash {
-			if IngestionStatus(existingStatus) == IngestionClaimed {
-				if batch.Status == IngestionAccepted {
+			if IngestionStatus(existingStatus) == IngestionClaimed || IngestionStatus(existingStatus) == IngestionRetryable {
+				if batch.Status == IngestionAccepted || batch.Status == IngestionRetryable || batch.Status == IngestionRejected {
 					if err := r.insertIngestionBatch(ctx, batch); err != nil {
 						return "", err
 					}
@@ -409,6 +409,12 @@ func (r *SQLRepository) Record(ctx context.Context, batch IngestionBatch) (Inges
 				return IngestionClaimed, nil
 			}
 			return IngestionDuplicate, nil
+		}
+		if batch.Status == IngestionRejected {
+			if err := r.insertIngestionBatch(ctx, batch); err != nil {
+				return "", err
+			}
+			return batch.Status, nil
 		}
 		return IngestionRejected, nil
 	}
@@ -429,11 +435,15 @@ func (r *SQLRepository) insertIngestionBatch(ctx context.Context, batch Ingestio
 	if batch.Retryable {
 		retryable = 1
 	}
+	truncated := uint8(0)
+	if batch.Truncated {
+		truncated = 1
+	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO java_profiler_ingestion_batches
-		(batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		batch.BatchID, batch.CollectorID, batch.BatchType, batch.ReceivedAt, batch.Status, retryable, batch.PayloadHash, batch.Message)
+		(batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message, raw_sample_count, aggregated_sample_count, batch_sample_count, dropped_sample_count, dropped_stack_count, truncated)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		batch.BatchID, batch.CollectorID, batch.BatchType, batch.ReceivedAt, batch.Status, retryable, batch.PayloadHash, batch.Message, batch.RawSampleCount, batch.AggregatedSampleCount, batch.BatchSampleCount, batch.DroppedSampleCount, batch.DroppedStackCount, truncated)
 	return err
 }
 
@@ -443,7 +453,7 @@ func (r *SQLRepository) ListIngestionBatches(ctx context.Context, q IngestionQue
 		limit = 1000
 	}
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message
+		SELECT batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message, raw_sample_count, aggregated_sample_count, batch_sample_count, dropped_sample_count, dropped_stack_count, truncated
 		FROM java_profiler_ingestion_batches
 		ORDER BY received_at DESC
 		LIMIT ?`, limit)
@@ -457,12 +467,14 @@ func (r *SQLRepository) ListIngestionBatches(ctx context.Context, q IngestionQue
 		var batchType string
 		var status string
 		var retryable uint8
-		if err := rows.Scan(&batch.BatchID, &batch.CollectorID, &batchType, &batch.ReceivedAt, &status, &retryable, &batch.PayloadHash, &batch.Message); err != nil {
+		var truncated uint8
+		if err := rows.Scan(&batch.BatchID, &batch.CollectorID, &batchType, &batch.ReceivedAt, &status, &retryable, &batch.PayloadHash, &batch.Message, &batch.RawSampleCount, &batch.AggregatedSampleCount, &batch.BatchSampleCount, &batch.DroppedSampleCount, &batch.DroppedStackCount, &truncated); err != nil {
 			return nil, err
 		}
 		batch.BatchType = domain.BatchType(batchType)
 		batch.Status = IngestionStatus(status)
 		batch.Retryable = retryable == 1
+		batch.Truncated = truncated == 1
 		out = append(out, batch)
 	}
 	return out, rows.Err()

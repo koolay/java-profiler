@@ -67,12 +67,27 @@ func TestCollectorUploadAuthenticated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := `{"BatchID":"batch-1","CollectorID":"collector-a","Samples":[]}`
+	body := `{"batch_id":"batch-1","collector_id":"collector-a","samples":[]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/collector/v1/profile-batches", bytes.NewBufferString(body))
 	req.Header.Set("Authorization", "Bearer secret")
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("expected accepted, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCollectorProfileUploadTooLarge(t *testing.T) {
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "secret"}}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"batch_id":"batch-oversized","collector_id":"collector-a","samples":[],"padding":"` + strings.Repeat("x", 64<<20) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/collector/v1/profile-batches", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected request entity too large, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }

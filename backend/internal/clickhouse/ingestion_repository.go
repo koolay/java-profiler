@@ -19,14 +19,20 @@ const (
 )
 
 type IngestionBatch struct {
-	BatchID     string
-	CollectorID string
-	BatchType   domain.BatchType
-	ReceivedAt  time.Time
-	Status      IngestionStatus
-	Retryable   bool
-	PayloadHash string
-	Message     string
+	BatchID               string
+	CollectorID           string
+	BatchType             domain.BatchType
+	ReceivedAt            time.Time
+	Status                IngestionStatus
+	Retryable             bool
+	PayloadHash           string
+	Message               string
+	RawSampleCount        int
+	AggregatedSampleCount int
+	BatchSampleCount      int
+	DroppedSampleCount    int
+	DroppedStackCount     int
+	Truncated             bool
 }
 
 type IngestionQuery struct {
@@ -47,14 +53,18 @@ func (r *IngestionRepository) Record(_ context.Context, batch IngestionBatch) (I
 	defer r.mu.Unlock()
 	if existing, ok := r.batches[batch.BatchID]; ok {
 		if existing.PayloadHash == batch.PayloadHash {
-			if existing.Status == IngestionClaimed {
-				if batch.Status == IngestionAccepted {
+			if existing.Status == IngestionClaimed || existing.Status == IngestionRetryable {
+				if batch.Status == IngestionAccepted || batch.Status == IngestionRetryable || batch.Status == IngestionRejected {
 					r.batches[batch.BatchID] = batch
 					return batch.Status, nil
 				}
 				return IngestionClaimed, nil
 			}
 			return IngestionDuplicate, nil
+		}
+		if batch.Status == IngestionRejected {
+			r.batches[batch.BatchID] = batch
+			return batch.Status, nil
 		}
 		return IngestionRejected, nil
 	}

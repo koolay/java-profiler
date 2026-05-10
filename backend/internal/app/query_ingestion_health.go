@@ -24,10 +24,13 @@ type IngestionHealthBatch struct {
 }
 
 type IngestionHealthTotals struct {
-	Accepted  int `json:"accepted"`
-	Duplicate int `json:"duplicate"`
-	Retryable int `json:"retryable"`
-	Rejected  int `json:"rejected"`
+	Accepted         int `json:"accepted"`
+	Duplicate        int `json:"duplicate"`
+	Retryable        int `json:"retryable"`
+	Rejected         int `json:"rejected"`
+	DroppedSamples   int `json:"dropped_samples"`
+	DroppedStacks    int `json:"dropped_stacks"`
+	TruncatedBatches int `json:"truncated_batches"`
 }
 
 func QueryIngestionHealth(ctx context.Context, repo IngestionQueryStore) (IngestionHealth, error) {
@@ -49,6 +52,11 @@ func QueryIngestionHealth(ctx context.Context, repo IngestionQueryStore) (Ingest
 			current.LastMessage = batch.Message
 		}
 		grouped[key] = current
+		totals.DroppedSamples += batch.DroppedSampleCount
+		totals.DroppedStacks += batch.DroppedStackCount
+		if batch.Truncated {
+			totals.TruncatedBatches++
+		}
 		switch batch.Status {
 		case clickhouse.IngestionAccepted:
 			totals.Accepted++

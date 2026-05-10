@@ -64,6 +64,9 @@ export type IngestionHealth = {
     duplicate: number;
     retryable: number;
     rejected: number;
+    dropped_samples: number;
+    dropped_stacks: number;
+    truncated_batches: number;
   };
   batches: Array<{
     batch_type: string;

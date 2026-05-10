@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/koolay/java-profiler/backend/internal/clickhouse"
+	"github.com/koolay/java-profiler/contracts/profiling"
 	"github.com/koolay/java-profiler/domain"
 )
 
@@ -42,6 +43,58 @@ func TestProfileBatchIngestorAcceptsAndDeduplicates(t *testing.T) {
 	}
 	if len(samples) != 1 {
 		t.Fatalf("duplicate upload should not inflate samples: %+v", samples)
+	}
+}
+
+func TestProfileBatchIngestRecordsMetadata(t *testing.T) {
+	ingestion := clickhouse.NewIngestionRepository()
+	ingestor := ProfileBatchIngestor{
+		Profiles:  clickhouse.NewProfileRepository(),
+		Ingestion: ingestion,
+	}
+
+	result, err := ingestor.Ingest(context.Background(), ProfileBatchRequest{
+		BatchID:     "batch-meta",
+		CollectorID: "collector-a",
+		ReceivedAt:  time.Unix(1, 0),
+		Metadata: profiling.ProfileBatchMetadata{
+			WindowRawSampleCount:        100,
+			WindowAggregatedSampleCount: 20,
+			BatchSampleCount:            10,
+			DroppedSampleCount:          5,
+			DroppedStackCount:           4,
+			Truncated:                   true,
+		},
+		Samples: []clickhouse.ProfileSample{{
+			BatchID:     "batch-meta",
+			Target:      domain.TargetIdentity{Namespace: "prod", Service: "checkout", ProcessID: 1, JVMStartTime: time.Unix(1, 0)},
+			ProfileType: domain.ProfileTypeCPU,
+			StartedAt:   time.Unix(100, 0),
+			EndedAt:     time.Unix(160, 0),
+			StackID:     "stack-1",
+			Frames:      []string{"root", "Demo.burnCpu:188"},
+			Value:       10,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if result.Status != clickhouse.IngestionAccepted {
+		t.Fatalf("status = %s", result.Status)
+	}
+
+	batches, err := ingestion.ListIngestionBatches(context.Background(), clickhouse.IngestionQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if len(batches) == 0 {
+		t.Fatalf("expected ingestion batch")
+	}
+	if batches[0].DroppedSampleCount != 5 {
+		t.Fatalf("dropped sample count = %d", batches[0].DroppedSampleCount)
+	}
+	if !batches[0].Truncated {
+		t.Fatalf("expected truncated batch")
 	}
 }
 

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/koolay/java-profiler/backend/internal/app"
@@ -22,6 +23,11 @@ func (h IngestHandlers) ProfileBatch(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var req app.ProfileBatchRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<20)).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "profile batch too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
