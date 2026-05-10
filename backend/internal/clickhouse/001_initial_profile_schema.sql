@@ -134,6 +134,8 @@ CREATE TABLE IF NOT EXISTS java_profiler_ingestion_batches
     dropped_sample_count UInt64 DEFAULT 0,
     dropped_stack_count UInt64 DEFAULT 0,
     truncated UInt8 DEFAULT 0,
+    status_version UInt8 DEFAULT 0,
+    recorded_at DateTime64(9, 'UTC') DEFAULT now64(9),
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
     expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
 )

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -82,12 +83,35 @@ func TestCollectorProfileUploadTooLarge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := `{"batch_id":"batch-oversized","collector_id":"collector-a","samples":[],"padding":"` + strings.Repeat("x", 64<<20) + `"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/collector/v1/profile-batches", strings.NewReader(body))
+	body := io.MultiReader(
+		strings.NewReader(`{"batch_id":"batch-oversized","collector_id":"collector-a","samples":[],"padding":"`),
+		&repeatingByteReader{remaining: (64 << 20) + 1, value: 'x'},
+		strings.NewReader(`"}`),
+	)
+	req := httptest.NewRequest(http.MethodPost, "/api/collector/v1/profile-batches", body)
 	req.Header.Set("Authorization", "Bearer secret")
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, req)
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected request entity too large, got %d body=%s", rec.Code, rec.Body.String())
 	}
+}
+
+type repeatingByteReader struct {
+	remaining int
+	value     byte
+}
+
+func (r *repeatingByteReader) Read(p []byte) (int, error) {
+	if r.remaining == 0 {
+		return 0, io.EOF
+	}
+	if len(p) > r.remaining {
+		p = p[:r.remaining]
+	}
+	for i := range p {
+		p[i] = r.value
+	}
+	r.remaining -= len(p)
+	return len(p), nil
 }

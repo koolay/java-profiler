@@ -144,6 +144,44 @@ func TestProfileBatchIngestorRejectsSameBatchDifferentPayload(t *testing.T) {
 	}
 }
 
+func TestProfileBatchIngestorRejectsSameBatchDifferentMetadata(t *testing.T) {
+	ingestor := ProfileBatchIngestor{
+		Profiles:  clickhouse.NewProfileRepository(),
+		Ingestion: clickhouse.NewIngestionRepository(),
+	}
+	base := ProfileBatchRequest{
+		BatchID:     "batch-1",
+		CollectorID: "collector-a",
+		Metadata: profiling.ProfileBatchMetadata{
+			WindowRawSampleCount: 10,
+			BatchSampleCount:     1,
+		},
+		Samples: []clickhouse.ProfileSample{{
+			BatchID:     "batch-1",
+			Target:      domain.TargetIdentity{Namespace: "prod", Service: "checkout", ProcessID: 1, JVMStartTime: time.Unix(1, 0)},
+			ProfileType: domain.ProfileTypeCPU,
+			StartedAt:   time.Unix(100, 0),
+			EndedAt:     time.Unix(160, 0),
+			StackID:     "stack-1",
+			Frames:      []string{"A"},
+			Value:       10,
+		}},
+	}
+	if result, err := ingestor.Ingest(context.Background(), base); err != nil || result.Status != clickhouse.IngestionAccepted {
+		t.Fatalf("expected accepted, got %+v err=%v", result, err)
+	}
+	changed := base
+	changed.Metadata.DroppedSampleCount = 5
+	changed.Metadata.Truncated = true
+	result, err := ingestor.Ingest(context.Background(), changed)
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if result.Status != clickhouse.IngestionRejected {
+		t.Fatalf("expected changed metadata to reject reused batch id, got %+v", result)
+	}
+}
+
 func TestProfileBatchIngestorRejectsSamplesWithoutTimeRange(t *testing.T) {
 	ingestor := ProfileBatchIngestor{
 		Profiles:  clickhouse.NewProfileRepository(),
@@ -164,6 +202,28 @@ func TestProfileBatchIngestorRejectsSamplesWithoutTimeRange(t *testing.T) {
 	}
 	if result.Status != clickhouse.IngestionRejected {
 		t.Fatalf("expected missing time range to be rejected, got %+v", result)
+	}
+}
+
+func TestProfileBatchIngestorDoesNotRecordUnattributableRejection(t *testing.T) {
+	ingestion := clickhouse.NewIngestionRepository()
+	ingestor := ProfileBatchIngestor{
+		Profiles:  clickhouse.NewProfileRepository(),
+		Ingestion: ingestion,
+	}
+	result, err := ingestor.Ingest(context.Background(), ProfileBatchRequest{})
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+	if result.Status != clickhouse.IngestionRejected {
+		t.Fatalf("expected rejected, got %+v", result)
+	}
+	batches, err := ingestion.ListIngestionBatches(context.Background(), clickhouse.IngestionQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if len(batches) != 0 {
+		t.Fatalf("unattributable rejection should not be recorded, got %+v", batches)
 	}
 }
 
@@ -214,6 +274,16 @@ func TestProfileBatchIngestorAllowsRetryAfterPayloadWriteFailure(t *testing.T) {
 	}
 	if len(samples) != 1 {
 		t.Fatalf("expected retried payload write, got %+v", samples)
+	}
+	batches, err := ingestion.ListIngestionBatches(context.Background(), clickhouse.IngestionQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if len(batches) != 1 {
+		t.Fatalf("expected one final ingestion state, got %+v", batches)
+	}
+	if batches[0].Status != clickhouse.IngestionAccepted {
+		t.Fatalf("expected final accepted state, got %+v", batches[0])
 	}
 }
 

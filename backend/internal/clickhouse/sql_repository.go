@@ -38,6 +38,11 @@ func (r *SQLRepository) ApplySchema(ctx context.Context) error {
 			return err
 		}
 	}
+	for _, stmt := range SchemaUpgradeStatements() {
+		if _, err := r.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -395,7 +400,7 @@ func (r *SQLRepository) Record(ctx context.Context, batch IngestionBatch) (Inges
 		SELECT payload_hash, status
 		FROM java_profiler_ingestion_batches
 		WHERE batch_id = ? AND batch_type = ?
-		ORDER BY received_at DESC
+		ORDER BY status_version DESC, recorded_at DESC, received_at DESC
 		LIMIT 1`, batch.BatchID, batch.BatchType).Scan(&existingHash, &existingStatus)
 	if err == nil {
 		if existingHash == batch.PayloadHash {
@@ -431,6 +436,7 @@ func (r *SQLRepository) Record(ctx context.Context, batch IngestionBatch) (Inges
 }
 
 func (r *SQLRepository) insertIngestionBatch(ctx context.Context, batch IngestionBatch) error {
+	prepareIngestionBatch(&batch)
 	retryable := uint8(0)
 	if batch.Retryable {
 		retryable = 1
@@ -441,9 +447,9 @@ func (r *SQLRepository) insertIngestionBatch(ctx context.Context, batch Ingestio
 	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO java_profiler_ingestion_batches
-		(batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message, raw_sample_count, aggregated_sample_count, batch_sample_count, dropped_sample_count, dropped_stack_count, truncated)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		batch.BatchID, batch.CollectorID, batch.BatchType, batch.ReceivedAt, batch.Status, retryable, batch.PayloadHash, batch.Message, batch.RawSampleCount, batch.AggregatedSampleCount, batch.BatchSampleCount, batch.DroppedSampleCount, batch.DroppedStackCount, truncated)
+		(batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message, raw_sample_count, aggregated_sample_count, batch_sample_count, dropped_sample_count, dropped_stack_count, truncated, status_version, recorded_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		batch.BatchID, batch.CollectorID, batch.BatchType, batch.ReceivedAt, batch.Status, retryable, batch.PayloadHash, batch.Message, batch.RawSampleCount, batch.AggregatedSampleCount, batch.BatchSampleCount, batch.DroppedSampleCount, batch.DroppedStackCount, truncated, batch.StatusVersion, batch.RecordedAt)
 	return err
 }
 
@@ -453,9 +459,17 @@ func (r *SQLRepository) ListIngestionBatches(ctx context.Context, q IngestionQue
 		limit = 1000
 	}
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message, raw_sample_count, aggregated_sample_count, batch_sample_count, dropped_sample_count, dropped_stack_count, truncated
-		FROM java_profiler_ingestion_batches
-		ORDER BY received_at DESC
+		SELECT batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message, raw_sample_count, aggregated_sample_count, batch_sample_count, dropped_sample_count, dropped_stack_count, truncated, status_version, recorded_at
+		FROM
+		(
+			SELECT *, row_number() OVER (
+				PARTITION BY batch_id, batch_type
+				ORDER BY status_version DESC, recorded_at DESC, received_at DESC
+			) AS rn
+			FROM java_profiler_ingestion_batches
+		)
+		WHERE rn = 1
+		ORDER BY recorded_at DESC, received_at DESC
 		LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -468,7 +482,7 @@ func (r *SQLRepository) ListIngestionBatches(ctx context.Context, q IngestionQue
 		var status string
 		var retryable uint8
 		var truncated uint8
-		if err := rows.Scan(&batch.BatchID, &batch.CollectorID, &batchType, &batch.ReceivedAt, &status, &retryable, &batch.PayloadHash, &batch.Message, &batch.RawSampleCount, &batch.AggregatedSampleCount, &batch.BatchSampleCount, &batch.DroppedSampleCount, &batch.DroppedStackCount, &truncated); err != nil {
+		if err := rows.Scan(&batch.BatchID, &batch.CollectorID, &batchType, &batch.ReceivedAt, &status, &retryable, &batch.PayloadHash, &batch.Message, &batch.RawSampleCount, &batch.AggregatedSampleCount, &batch.BatchSampleCount, &batch.DroppedSampleCount, &batch.DroppedStackCount, &truncated, &batch.StatusVersion, &batch.RecordedAt); err != nil {
 			return nil, err
 		}
 		batch.BatchType = domain.BatchType(batchType)

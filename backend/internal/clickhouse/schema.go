@@ -12,6 +12,19 @@ func InitialSchema() (string, error) {
 	return initialSchema, nil
 }
 
+func SchemaUpgradeStatements() []string {
+	return []string{
+		"ALTER TABLE java_profiler_ingestion_batches ADD COLUMN IF NOT EXISTS raw_sample_count UInt64 DEFAULT 0",
+		"ALTER TABLE java_profiler_ingestion_batches ADD COLUMN IF NOT EXISTS aggregated_sample_count UInt64 DEFAULT 0",
+		"ALTER TABLE java_profiler_ingestion_batches ADD COLUMN IF NOT EXISTS batch_sample_count UInt64 DEFAULT 0",
+		"ALTER TABLE java_profiler_ingestion_batches ADD COLUMN IF NOT EXISTS dropped_sample_count UInt64 DEFAULT 0",
+		"ALTER TABLE java_profiler_ingestion_batches ADD COLUMN IF NOT EXISTS dropped_stack_count UInt64 DEFAULT 0",
+		"ALTER TABLE java_profiler_ingestion_batches ADD COLUMN IF NOT EXISTS truncated UInt8 DEFAULT 0",
+		"ALTER TABLE java_profiler_ingestion_batches ADD COLUMN IF NOT EXISTS status_version UInt8 DEFAULT 0",
+		"ALTER TABLE java_profiler_ingestion_batches ADD COLUMN IF NOT EXISTS recorded_at DateTime64(9, 'UTC') DEFAULT now64(9)",
+	}
+}
+
 func SplitStatements(schema string) []string {
 	parts := strings.Split(schema, ";")
 	out := make([]string, 0, len(parts))

@@ -24,6 +24,24 @@ func TestInitialSchemaHasBoundedTTL(t *testing.T) {
 	}
 }
 
+func TestSchemaUpgradesAddIngestionMetadataColumns(t *testing.T) {
+	upgrades := strings.Join(SchemaUpgradeStatements(), "\n")
+	for _, want := range []string{
+		"ADD COLUMN IF NOT EXISTS raw_sample_count",
+		"ADD COLUMN IF NOT EXISTS aggregated_sample_count",
+		"ADD COLUMN IF NOT EXISTS batch_sample_count",
+		"ADD COLUMN IF NOT EXISTS dropped_sample_count",
+		"ADD COLUMN IF NOT EXISTS dropped_stack_count",
+		"ADD COLUMN IF NOT EXISTS truncated",
+		"ADD COLUMN IF NOT EXISTS status_version",
+		"ADD COLUMN IF NOT EXISTS recorded_at",
+	} {
+		if !strings.Contains(upgrades, want) {
+			t.Fatalf("schema upgrades missing %q in:\n%s", want, upgrades)
+		}
+	}
+}
+
 func TestRetentionRepositoryReportsHealthInputs(t *testing.T) {
 	status := RetentionTableStatus{
 		Table:        "java_profiler_profile_samples",

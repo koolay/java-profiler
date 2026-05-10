@@ -51,6 +51,7 @@ type IngestionQueryStore interface {
 
 func (i ProfileBatchIngestor) Ingest(ctx context.Context, req ProfileBatchRequest) (IngestResult, error) {
 	if req.BatchID == "" || req.CollectorID == "" {
+		// Without batch and collector identifiers there is no stable key to attribute ingestion health to.
 		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch_id and collector_id are required"}, nil
 	}
 	batch := clickhouse.IngestionBatch{
@@ -59,7 +60,7 @@ func (i ProfileBatchIngestor) Ingest(ctx context.Context, req ProfileBatchReques
 		BatchType:             domain.BatchTypeProfile,
 		ReceivedAt:            firstNonZero(req.ReceivedAt, time.Now().UTC()),
 		Status:                clickhouse.IngestionClaimed,
-		PayloadHash:           payloadHash(req.Samples),
+		PayloadHash:           payloadHash(req.Samples, req.Metadata),
 		RawSampleCount:        req.Metadata.WindowRawSampleCount,
 		AggregatedSampleCount: req.Metadata.WindowAggregatedSampleCount,
 		BatchSampleCount:      req.Metadata.BatchSampleCount,
@@ -114,8 +115,11 @@ func (i ProfileBatchIngestor) Ingest(ctx context.Context, req ProfileBatchReques
 	return IngestResult{Status: clickhouse.IngestionAccepted, Message: "accepted"}, nil
 }
 
-func payloadHash(samples []clickhouse.ProfileSample) string {
-	data, _ := json.Marshal(samples)
+func payloadHash(samples []clickhouse.ProfileSample, metadata profiling.ProfileBatchMetadata) string {
+	data, _ := json.Marshal(struct {
+		Samples  []clickhouse.ProfileSample     `json:"samples"`
+		Metadata profiling.ProfileBatchMetadata `json:"metadata"`
+	}{Samples: samples, Metadata: metadata})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
