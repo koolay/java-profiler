@@ -74,7 +74,19 @@ func AggregateSamples(samples []profiling.ProfileSample) []profiling.ProfileSamp
 		if out[i].Value != out[j].Value {
 			return out[i].Value > out[j].Value
 		}
-		return strings.Join(out[i].Frames, "\n") < strings.Join(out[j].Frames, "\n")
+		if framesI, framesJ := strings.Join(out[i].Frames, "\n"), strings.Join(out[j].Frames, "\n"); framesI != framesJ {
+			return framesI < framesJ
+		}
+		if targetI, targetJ := out[i].Target.Key(), out[j].Target.Key(); targetI != targetJ {
+			return targetI < targetJ
+		}
+		if startedI, startedJ := out[i].StartedAt.UnixNano(), out[j].StartedAt.UnixNano(); startedI != startedJ {
+			return startedI < startedJ
+		}
+		if endedI, endedJ := out[i].EndedAt.UnixNano(), out[j].EndedAt.UnixNano(); endedI != endedJ {
+			return endedI < endedJ
+		}
+		return out[i].StackID < out[j].StackID
 	})
 	return out
 }

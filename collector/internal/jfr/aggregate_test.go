@@ -65,3 +65,21 @@ func TestAggregateSamplesKeepsDifferentTargetsSeparate(t *testing.T) {
 		t.Fatalf("targets were aggregated together: %+v", got)
 	}
 }
+
+func TestAggregateSamplesSortsEqualFrameTiesByTarget(t *testing.T) {
+	now := time.Unix(1, 0)
+	targetA := domain.TargetIdentity{Namespace: "java-profiler-qa", Pod: "demo-a", Service: "jdk17-http-demo"}
+	targetB := domain.TargetIdentity{Namespace: "java-profiler-qa", Pod: "demo-b", Service: "jdk17-http-demo"}
+	samples := []profiling.ProfileSample{
+		{Target: targetB, ProfileType: domain.ProfileTypeCPU, StartedAt: now, EndedAt: now.Add(time.Second), StackID: "b", Frames: []string{"root", "Demo.burnCpu:188"}, Value: 3},
+		{Target: targetA, ProfileType: domain.ProfileTypeCPU, StartedAt: now, EndedAt: now.Add(time.Second), StackID: "a", Frames: []string{"root", "Demo.burnCpu:188"}, Value: 3},
+	}
+
+	got := AggregateSamples(samples)
+	if len(got) != 2 {
+		t.Fatalf("len = %d", len(got))
+	}
+	if got[0].Target.Pod != "demo-a" || got[1].Target.Pod != "demo-b" {
+		t.Fatalf("pods = %q, %q", got[0].Target.Pod, got[1].Target.Pod)
+	}
+}
