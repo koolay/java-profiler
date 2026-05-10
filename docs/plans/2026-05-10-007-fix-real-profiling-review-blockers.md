@@ -1,7 +1,7 @@
 ---
 title: fix: Real Profiling Review Blockers
 type: fix
-status: active
+status: completed
 date: 2026-05-10
 origin: docs/brainstorms/java-profiler-requirements.md
 ---
@@ -207,4 +207,3 @@ Related tests:
 - Packaging async-profiler in the collector image may require replacing the distroless runtime stage or adding only executable/native assets carefully.
 - Pre-write idempotency for ClickHouse needs a practical design because inserts are not transactional in the same way as in-memory tests.
 - Removing synthetic deadlock data may require updating strict acceptance expectations and documentation so empty deadlock state is accepted unless a real deadlock workload is present.
-
