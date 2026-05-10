@@ -49,6 +49,7 @@ type Runtime struct {
 	profileLimits pipeline.ProfileBatchLimits
 	targetNS      string
 	targetSvc     string
+	podSource     func(context.Context) map[string]podItem
 }
 
 const maxProfileSamplesPerBatch = 10_000
@@ -80,6 +81,7 @@ func NewCollector(cfg Config) *Runtime {
 		pollInterval: interval,
 		profiler: profiler.NewRunner(profiler.Config{
 			ProcRoot:             procRoot,
+			OwnerID:              collectorID,
 			AsprofPath:           os.Getenv("JAVA_PROFILER_ASPROF_PATH"),
 			LibraryPath:          os.Getenv("JAVA_PROFILER_ASYNC_PROFILER_LIB"),
 			TargetTmpDir:         os.Getenv("JAVA_PROFILER_TARGET_TMP_DIR"),
@@ -127,6 +129,9 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 		return err
 	}
 	pods := r.discoverPods(ctx)
+	if r.podSource != nil {
+		pods = r.podSource(ctx)
+	}
 	compatible := 0
 	conflicting := 0
 	unsupported := 0
@@ -189,8 +194,20 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 				acceptedTargets = append(acceptedTargets, target)
 			} else {
 				conflicting++
-				status.Reason = domain.StatusReasonProfilerConflict
-				status.Message = "async-profiler already present"
+				recovery, err := r.profiler.RecoverConflict(ctx, target)
+				if recovery.Owned {
+					status.Reason = domain.StatusReasonOrphanedProfilerSession
+					if recovery.Recovered {
+						status.Message = "owned async-profiler session recovered; profiling deferred until next scan"
+					} else if err != nil {
+						status.Message = "owned async-profiler session recovery deferred: " + err.Error()
+					} else {
+						status.Message = "owned async-profiler session recovery deferred"
+					}
+				} else {
+					status.Reason = domain.StatusReasonProfilerConflict
+					status.Message = "async-profiler already present"
+				}
 			}
 		case !eligibility.HotSpotCompatible:
 			unsupported++

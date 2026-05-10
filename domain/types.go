@@ -65,23 +65,24 @@ const (
 type StatusReason string
 
 const (
-	StatusReasonNone               StatusReason = ""
-	StatusReasonDisabledByMetadata StatusReason = "disabled_by_metadata"
-	StatusReasonTemporaryExpired   StatusReason = "temporary_expired"
-	StatusReasonInvalidDuration    StatusReason = "invalid_duration"
-	StatusReasonUnsupportedJVM     StatusReason = "unsupported_jvm"
-	StatusReasonProfilerConflict   StatusReason = "profiler_conflict"
-	StatusReasonAttachFailed       StatusReason = "attach_failed"
-	StatusReasonUploadRetryable    StatusReason = "upload_retryable"
-	StatusReasonUploadDropped      StatusReason = "upload_dropped"
-	StatusReasonStorageRejected    StatusReason = "storage_rejected"
-	StatusReasonAccepted           StatusReason = "accepted"
+	StatusReasonNone                    StatusReason = ""
+	StatusReasonDisabledByMetadata      StatusReason = "disabled_by_metadata"
+	StatusReasonTemporaryExpired        StatusReason = "temporary_expired"
+	StatusReasonInvalidDuration         StatusReason = "invalid_duration"
+	StatusReasonUnsupportedJVM          StatusReason = "unsupported_jvm"
+	StatusReasonProfilerConflict        StatusReason = "profiler_conflict"
+	StatusReasonOrphanedProfilerSession StatusReason = "orphaned_profiler_session"
+	StatusReasonAttachFailed            StatusReason = "attach_failed"
+	StatusReasonUploadRetryable         StatusReason = "upload_retryable"
+	StatusReasonUploadDropped           StatusReason = "upload_dropped"
+	StatusReasonStorageRejected         StatusReason = "storage_rejected"
+	StatusReasonAccepted                StatusReason = "accepted"
 )
 
 func (r StatusReason) IsValid() bool {
 	switch r {
 	case StatusReasonNone, StatusReasonDisabledByMetadata, StatusReasonTemporaryExpired, StatusReasonInvalidDuration,
-		StatusReasonUnsupportedJVM, StatusReasonProfilerConflict, StatusReasonAttachFailed, StatusReasonUploadRetryable,
+		StatusReasonUnsupportedJVM, StatusReasonProfilerConflict, StatusReasonOrphanedProfilerSession, StatusReasonAttachFailed, StatusReasonUploadRetryable,
 		StatusReasonUploadDropped, StatusReasonStorageRejected, StatusReasonAccepted:
 		return true
 	default:

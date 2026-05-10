@@ -28,6 +28,7 @@ type Executor interface {
 
 type Config struct {
 	ProcRoot             string
+	OwnerID              string
 	AsprofPath           string
 	LibraryPath          string
 	TargetTmpDir         string
@@ -47,6 +48,11 @@ type CollectionResult struct {
 	RawSampleCount int
 }
 
+type ConflictRecovery struct {
+	Owned     bool
+	Recovered bool
+}
+
 type session struct {
 	pid       int
 	startedAt time.Time
@@ -64,6 +70,9 @@ func NewRunner(cfg Config, attach AttachController) *Runner {
 	}
 	if cfg.TargetTmpDir == "" {
 		cfg.TargetTmpDir = "/tmp/java-profiler"
+	}
+	if cfg.OwnerID == "" {
+		cfg.OwnerID = "java-profiler-collector"
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -101,6 +110,10 @@ func (r *Runner) Collect(ctx context.Context, batchID string, target domain.Targ
 	if err := r.stop(ctx, target.ProcessID, prior.jfrPath); err != nil {
 		return CollectionResult{}, err
 	}
+	delete(r.sessions, key)
+	if err := RemoveSessionMarker(r.cfg.ProcRoot, target.ProcessID); err != nil {
+		return CollectionResult{}, err
+	}
 	events, err := (jfr.Parser{}).ParseFile(r.hostRootPath(target.ProcessID, prior.jfrPath))
 	if err != nil {
 		_ = r.start(ctx, key, target.ProcessID, nsPID, now)
@@ -126,6 +139,28 @@ func (r *Runner) HasSession(target domain.TargetIdentity) bool {
 	return ok && session.pid == target.ProcessID
 }
 
+func (r *Runner) RecoverConflict(ctx context.Context, target domain.TargetIdentity) (ConflictRecovery, error) {
+	if r == nil {
+		return ConflictRecovery{}, nil
+	}
+	marker, err := ReadSessionMarker(r.cfg.ProcRoot, target.ProcessID)
+	if err != nil {
+		return ConflictRecovery{}, nil
+	}
+	if marker.CollectorID != r.cfg.OwnerID || marker.PID != target.ProcessID {
+		return ConflictRecovery{}, nil
+	}
+	result := ConflictRecovery{Owned: true}
+	if err := r.stop(ctx, target.ProcessID, ""); err != nil {
+		return result, err
+	}
+	if err := RemoveSessionMarker(r.cfg.ProcRoot, target.ProcessID); err != nil {
+		return result, err
+	}
+	result.Recovered = true
+	return result, nil
+}
+
 func (r *Runner) stageLibrary(pid int) error {
 	data, err := os.ReadFile(r.cfg.LibraryPath)
 	if err != nil {
@@ -148,6 +183,15 @@ func writeFileIfChanged(path string, data []byte) error {
 
 func (r *Runner) start(ctx context.Context, key string, pid int, nsPID int, startedAt time.Time) error {
 	jfrPath := r.jfrPath(nsPID)
+	marker := SessionMarker{
+		CollectorID: r.cfg.OwnerID,
+		PID:         pid,
+		StartedAt:   startedAt,
+		LibraryPath: r.targetLibraryPath(),
+	}
+	if err := WriteSessionMarker(r.cfg.ProcRoot, pid, marker); err != nil {
+		return err
+	}
 	if r.exec != nil && r.cfg.AsprofPath != "" {
 		args := []string{
 			"start",
@@ -162,6 +206,7 @@ func (r *Runner) start(ctx context.Context, key string, pid int, nsPID int, star
 		}
 		args = append(args, strconv.Itoa(pid))
 		if _, err := r.exec.Run(ctx, r.cfg.AsprofPath, args...); err != nil {
+			_ = RemoveSessionMarker(r.cfg.ProcRoot, pid)
 			return err
 		}
 		r.sessions[key] = session{pid: pid, startedAt: startedAt, jfrPath: jfrPath}
@@ -172,6 +217,7 @@ func (r *Runner) start(ctx context.Context, key string, pid int, nsPID int, star
 		args += ",alloc=" + allocationSampleInterval + ",lock=" + lockSampleThreshold
 	}
 	if err := r.attach.LoadNativeAgent(ctx, pid, r.targetLibraryPath(), args); err != nil {
+		_ = RemoveSessionMarker(r.cfg.ProcRoot, pid)
 		return err
 	}
 	r.sessions[key] = session{pid: pid, startedAt: startedAt, jfrPath: jfrPath}

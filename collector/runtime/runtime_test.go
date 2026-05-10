@@ -7,11 +7,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/koolay/java-profiler/collector/internal/pipeline"
+	"github.com/koolay/java-profiler/collector/internal/policy"
+	"github.com/koolay/java-profiler/collector/internal/profiler"
 	profiling "github.com/koolay/java-profiler/contracts/profiling"
 	"github.com/koolay/java-profiler/domain"
 )
@@ -177,5 +180,187 @@ func TestUploadProfileSamplesSendsBoundedMultipartMetadata(t *testing.T) {
 		second.Metadata.DroppedStackCount != 0 ||
 		second.Metadata.Truncated {
 		t.Fatalf("second part repeated window metadata: %#v", second.Metadata)
+	}
+}
+
+func TestRuntimeScanOnceRecoversOwnedStaleProfilerConflictAndDefersProfiling(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeProcess(t, root, 123, true)
+	uid := "11111111-2222-3333-4444-555555555555"
+	if err := os.WriteFile(filepath.Join(root, "123", "cgroup"), []byte("0::/kubepods/pod"+uid+"/container"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := profiler.WriteSessionMarker(root, 123, profiler.SessionMarker{
+		CollectorID: "collector-1",
+		PID:         123,
+		StartedAt:   time.Unix(10, 0).UTC(),
+		LibraryPath: "/tmp/java-profiler/libasyncProfiler.so",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	attach := &recordingRuntimeAttach{}
+	rt := NewCollector(Config{ProcRoot: root, CollectorID: "collector-1"})
+	rt.profiler = profiler.NewRunner(profiler.Config{
+		ProcRoot:     root,
+		OwnerID:      "collector-1",
+		TargetTmpDir: "/tmp/java-profiler",
+	}, attach)
+	rt.podSource = func(context.Context) map[string]podItem {
+		return map[string]podItem{
+			normalizeUID(uid): readyProfiledPod(uid),
+		}
+	}
+
+	if err := rt.ScanOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	statuses := rt.Statuses()
+	if len(statuses) != 1 {
+		t.Fatalf("expected one status, got %d", len(statuses))
+	}
+	status := statuses[0]
+	if status.Reason != domain.StatusReasonOrphanedProfilerSession {
+		t.Fatalf("expected orphaned profiler session reason, got %#v", status)
+	}
+	if !strings.Contains(status.Message, "recovered") || !strings.Contains(status.Message, "next scan") {
+		t.Fatalf("expected recovered/deferred message, got %q", status.Message)
+	}
+	if len(attach.commands) != 1 || attach.commands[0].args != "stop" || attach.commands[0].pid != 123 {
+		t.Fatalf("expected one stop command for owned conflict, got %#v", attach.commands)
+	}
+	if _, err := profiler.ReadSessionMarker(root, 123); !os.IsNotExist(err) {
+		t.Fatalf("expected recovered marker removed, err=%v", err)
+	}
+	if !strings.Contains(rt.Exporter().Snapshot(), "java_profiler_collector_target_status_orphaned_profiler_session 1") {
+		t.Fatalf("expected orphaned status metric, got %q", rt.Exporter().Snapshot())
+	}
+}
+
+func TestRuntimeScanOnceKeepsMissingOrDifferentMarkerProfilerConflict(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, root string)
+	}{
+		{name: "missing marker"},
+		{
+			name: "different marker",
+			setup: func(t *testing.T, root string) {
+				t.Helper()
+				if err := profiler.WriteSessionMarker(root, 123, profiler.SessionMarker{
+					CollectorID: "collector-2",
+					PID:         123,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeRuntimeProcess(t, root, 123, true)
+			uid := "11111111-2222-3333-4444-555555555555"
+			if err := os.WriteFile(filepath.Join(root, "123", "cgroup"), []byte("0::/kubepods/pod"+uid+"/container"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if tc.setup != nil {
+				tc.setup(t, root)
+			}
+			attach := &recordingRuntimeAttach{}
+			rt := NewCollector(Config{ProcRoot: root, CollectorID: "collector-1"})
+			rt.profiler = profiler.NewRunner(profiler.Config{
+				ProcRoot:     root,
+				OwnerID:      "collector-1",
+				TargetTmpDir: "/tmp/java-profiler",
+			}, attach)
+			rt.podSource = func(context.Context) map[string]podItem {
+				return map[string]podItem{
+					normalizeUID(uid): readyProfiledPod(uid),
+				}
+			}
+
+			if err := rt.ScanOnce(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			statuses := rt.Statuses()
+			if len(statuses) != 1 {
+				t.Fatalf("expected one status, got %d", len(statuses))
+			}
+			if statuses[0].Reason != domain.StatusReasonProfilerConflict {
+				t.Fatalf("expected profiler conflict status, got %#v", statuses[0])
+			}
+			if len(attach.commands) != 0 {
+				t.Fatalf("expected external conflict not to be stopped, got %#v", attach.commands)
+			}
+		})
+	}
+}
+
+type recordingRuntimeAttach struct {
+	commands []recordedRuntimeAttach
+}
+
+type recordedRuntimeAttach struct {
+	pid       int
+	agentPath string
+	args      string
+}
+
+func (a *recordingRuntimeAttach) LoadNativeAgent(_ context.Context, pid int, agentPath string, args string) error {
+	a.commands = append(a.commands, recordedRuntimeAttach{pid: pid, agentPath: agentPath, args: args})
+	return nil
+}
+
+func writeRuntimeProcess(t *testing.T, root string, pid int, conflict bool) {
+	t.Helper()
+	pidString := strconv.Itoa(pid)
+	pidDir := filepath.Join(root, pidString)
+	if err := os.Mkdir(pidDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "stat"), []byte("cpu  0 0 0 0 0 0 0 0 0 0\nbtime 1000\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pidDir, "cmdline"), []byte("java\x00-jar\x00app.jar"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pidDir, "stat"), []byte(pidString+" (java) S 1 1 1 0 -1 4194560 0 0 0 0 0 0 0 0 20 0 1 0 200 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	maps := "/usr/lib/jvm/java-17/lib/server/libjvm.so hotspot\n"
+	if conflict {
+		maps += "/tmp/java-profiler/libasyncProfiler.so\n"
+	}
+	if err := os.WriteFile(filepath.Join(pidDir, "maps"), []byte(maps), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readyProfiledPod(uid string) podItem {
+	return podItem{
+		Metadata: podMetadata{
+			Name:      "demo",
+			Namespace: "default",
+			UID:       uid,
+			Labels: map[string]string{
+				"app.kubernetes.io/name": "demo",
+			},
+			Annotations: map[string]string{
+				policy.AnnotationProfileMode: "continuous",
+			},
+			CreationTimestamp: timeWrapper{Time: time.Unix(1, 0).UTC()},
+		},
+		Spec: podSpec{
+			NodeName: "node-a",
+			Containers: []podContainer{
+				{Name: "app"},
+			},
+		},
+		Status: podStatus{
+			Conditions: []podCondition{
+				{Type: "Ready", Status: "True"},
+			},
+		},
 	}
 }
