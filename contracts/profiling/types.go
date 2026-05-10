@@ -18,6 +18,17 @@ type ProfileSample struct {
 	Truncated   bool                  `json:"truncated"`
 }
 
+type ProfileBatchMetadata struct {
+	WindowRawSampleCount        int  `json:"window_raw_sample_count"`
+	WindowAggregatedSampleCount int  `json:"window_aggregated_sample_count"`
+	BatchSampleCount            int  `json:"batch_sample_count"`
+	DroppedSampleCount          int  `json:"dropped_sample_count"`
+	DroppedStackCount           int  `json:"dropped_stack_count"`
+	Truncated                   bool `json:"truncated"`
+	PartIndex                   int  `json:"part_index"`
+	PartCount                   int  `json:"part_count"`
+}
+
 type ThreadSnapshot struct {
 	BatchID         string                `json:"batch_id"`
 	Target          domain.TargetIdentity `json:"target"`

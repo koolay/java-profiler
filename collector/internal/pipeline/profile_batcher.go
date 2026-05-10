@@ -11,19 +11,20 @@ import (
 )
 
 type ProfileBatchPayload struct {
-	BatchID     string                    `json:"BatchID"`
-	CollectorID string                    `json:"CollectorID"`
-	ReceivedAt  time.Time                 `json:"ReceivedAt"`
-	Samples     []profiling.ProfileSample `json:"Samples"`
+	BatchID     string                         `json:"BatchID"`
+	CollectorID string                         `json:"CollectorID"`
+	ReceivedAt  time.Time                      `json:"ReceivedAt"`
+	Samples     []profiling.ProfileSample      `json:"Samples"`
+	Metadata    profiling.ProfileBatchMetadata `json:"metadata"`
 }
 
-func BuildProfileBatch(batchID, collectorID string, samples []profiling.ProfileSample) (Batch, error) {
-	payload := ProfileBatchPayload{BatchID: batchID, CollectorID: collectorID, ReceivedAt: time.Now().UTC(), Samples: samples}
+func BuildProfileBatch(batchID, collectorID string, samples []profiling.ProfileSample, metadata profiling.ProfileBatchMetadata) ([]byte, error) {
+	payload := ProfileBatchPayload{BatchID: batchID, CollectorID: collectorID, ReceivedAt: time.Now().UTC(), Samples: samples, Metadata: metadata}
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return Batch{}, err
+		return nil, err
 	}
-	return Batch{ID: batchID, Type: "profile", Bytes: len(data), CreatedAt: payload.ReceivedAt, Payload: data}, nil
+	return data, nil
 }
 
 type ThreadSnapshotBatchPayload struct {

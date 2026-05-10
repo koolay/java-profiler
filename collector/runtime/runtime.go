@@ -263,9 +263,16 @@ func (r *Runtime) uploadProfileSamples(ctx context.Context, batchID string, samp
 				chunk[sampleIndex].BatchID = chunkBatchID
 			}
 		}
-		batch, err := pipeline.BuildProfileBatch(chunkBatchID, r.collectorID, chunk)
+		payload, err := pipeline.BuildProfileBatch(chunkBatchID, r.collectorID, chunk, profiling.ProfileBatchMetadata{})
 		if err != nil {
 			return err
+		}
+		batch := pipeline.Batch{
+			ID:        chunkBatchID,
+			Type:      "profile",
+			Bytes:     len(payload),
+			CreatedAt: time.Now().UTC(),
+			Payload:   payload,
 		}
 		if err := r.backend.Upload(ctx, batch); err != nil {
 			return err
