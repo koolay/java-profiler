@@ -40,6 +40,8 @@ The repository is transitioning from documentation-only into implementation. The
   - deployment, operations, security, storage, upgrade, and platform troubleshooting manual
 - `docs/operations/performance-analysis-user-manual.md`
   - Java service owner workflow for CPU, memory allocation, lock, deadlock, target status, and ingestion-health analysis
+- `docs/operations/real-profiling-acceptance-standard.md`
+  - mandatory real Kubernetes acceptance standard for collector, ingestion, profile storage, query API, and UI changes
 
 ## Product Direction
 
@@ -118,6 +120,8 @@ Real Kubernetes acceptance, including screenshots/video and target restart-count
 ```bash
 scripts/real-acceptance.sh --help
 ```
+
+For profiling or UI changes, passing real acceptance means proving non-empty CPU, allocation, and lock-delay profile data from the current Kubernetes run window, plus browser UI acceptance against that real backend data. See `docs/operations/real-profiling-acceptance-standard.md`.
 
 ## Working Rule
 
