@@ -43,6 +43,43 @@ func (r *SQLRepository) ApplySchema(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := r.migrateIngestionBatchesEventTable(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *SQLRepository) migrateIngestionBatchesEventTable(ctx context.Context) error {
+	var engine string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT engine
+		FROM system.tables
+		WHERE database = currentDatabase() AND name = 'java_profiler_ingestion_batches'
+		LIMIT 1`).Scan(&engine)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "no rows") {
+			return nil
+		}
+		return err
+	}
+	if engine != "ReplacingMergeTree" {
+		return nil
+	}
+	backupName := "java_profiler_ingestion_batches_replacing_backup_" + time.Now().UTC().Format("20060102150405")
+	statements := []string{
+		"DROP TABLE IF EXISTS java_profiler_ingestion_batches_v2",
+		IngestionBatchesCreateTableStatement("java_profiler_ingestion_batches_v2"),
+		`INSERT INTO java_profiler_ingestion_batches_v2
+			(batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message, raw_sample_count, aggregated_sample_count, batch_sample_count, dropped_sample_count, dropped_stack_count, truncated, status_version, recorded_at, created_at, expires_at)
+			SELECT batch_id, collector_id, batch_type, received_at, status, retryable, payload_hash, message, raw_sample_count, aggregated_sample_count, batch_sample_count, dropped_sample_count, dropped_stack_count, truncated, status_version, recorded_at, created_at, expires_at
+			FROM java_profiler_ingestion_batches`,
+		"RENAME TABLE java_profiler_ingestion_batches TO " + backupName + ", java_profiler_ingestion_batches_v2 TO java_profiler_ingestion_batches",
+	}
+	for _, stmt := range statements {
+		if _, err := r.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

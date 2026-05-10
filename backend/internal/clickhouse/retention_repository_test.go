@@ -24,6 +24,28 @@ func TestInitialSchemaHasBoundedTTL(t *testing.T) {
 	}
 }
 
+func TestInitialSchemaUsesEventTableForIngestionBatches(t *testing.T) {
+	schema, err := InitialSchema()
+	if err != nil {
+		t.Fatalf("read schema: %v", err)
+	}
+	if strings.Contains(schema, "ENGINE = ReplacingMergeTree(received_at)") {
+		t.Fatalf("ingestion batches must not use ReplacingMergeTree(received_at)")
+	}
+	ingestionStart := strings.Index(schema, "CREATE TABLE IF NOT EXISTS java_profiler_ingestion_batches")
+	if ingestionStart < 0 {
+		t.Fatalf("schema missing ingestion batches table")
+	}
+	ingestionEnd := strings.Index(schema[ingestionStart:], "CREATE TABLE IF NOT EXISTS java_profiler_artifact_index")
+	if ingestionEnd < 0 {
+		t.Fatalf("schema missing artifact table after ingestion table")
+	}
+	ingestionSchema := schema[ingestionStart : ingestionStart+ingestionEnd]
+	if !strings.Contains(ingestionSchema, "ENGINE = MergeTree") {
+		t.Fatalf("ingestion batches should be a MergeTree event table:\n%s", ingestionSchema)
+	}
+}
+
 func TestSchemaUpgradesAddIngestionMetadataColumns(t *testing.T) {
 	upgrades := strings.Join(SchemaUpgradeStatements(), "\n")
 	for _, want := range []string{

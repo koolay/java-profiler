@@ -139,9 +139,9 @@ CREATE TABLE IF NOT EXISTS java_profiler_ingestion_batches
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
     expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
 )
-ENGINE = ReplacingMergeTree(received_at)
+ENGINE = MergeTree
 PARTITION BY toDate(received_at)
-ORDER BY (batch_id, batch_type)
+ORDER BY (batch_id, batch_type, status_version, recorded_at)
 TTL expires_at DELETE;
 
 CREATE TABLE IF NOT EXISTS java_profiler_artifact_index

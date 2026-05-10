@@ -145,9 +145,10 @@ func TestProfileBatchIngestorRejectsSameBatchDifferentPayload(t *testing.T) {
 }
 
 func TestProfileBatchIngestorRejectsSameBatchDifferentMetadata(t *testing.T) {
+	ingestion := clickhouse.NewIngestionRepository()
 	ingestor := ProfileBatchIngestor{
 		Profiles:  clickhouse.NewProfileRepository(),
-		Ingestion: clickhouse.NewIngestionRepository(),
+		Ingestion: ingestion,
 	}
 	base := ProfileBatchRequest{
 		BatchID:     "batch-1",
@@ -179,6 +180,19 @@ func TestProfileBatchIngestorRejectsSameBatchDifferentMetadata(t *testing.T) {
 	}
 	if result.Status != clickhouse.IngestionRejected {
 		t.Fatalf("expected changed metadata to reject reused batch id, got %+v", result)
+	}
+	batches, err := ingestion.ListIngestionBatches(context.Background(), clickhouse.IngestionQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if len(batches) != 1 {
+		t.Fatalf("expected one final ingestion state, got %+v", batches)
+	}
+	if batches[0].Status != clickhouse.IngestionRejected {
+		t.Fatalf("expected final rejected state, got %+v", batches[0])
+	}
+	if batches[0].Message != "batch id reused with different payload" {
+		t.Fatalf("expected conflict message, got %+v", batches[0])
 	}
 }
 

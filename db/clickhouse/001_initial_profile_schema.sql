@@ -128,12 +128,20 @@ CREATE TABLE IF NOT EXISTS java_profiler_ingestion_batches
     retryable UInt8,
     payload_hash String,
     message String,
+    raw_sample_count UInt64 DEFAULT 0,
+    aggregated_sample_count UInt64 DEFAULT 0,
+    batch_sample_count UInt64 DEFAULT 0,
+    dropped_sample_count UInt64 DEFAULT 0,
+    dropped_stack_count UInt64 DEFAULT 0,
+    truncated UInt8 DEFAULT 0,
+    status_version UInt8 DEFAULT 0,
+    recorded_at DateTime64(9, 'UTC') DEFAULT now64(9),
     created_at DateTime64(9, 'UTC') DEFAULT now64(9),
     expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
 )
-ENGINE = ReplacingMergeTree(received_at)
+ENGINE = MergeTree
 PARTITION BY toDate(received_at)
-ORDER BY (batch_id, batch_type)
+ORDER BY (batch_id, batch_type, status_version, recorded_at)
 TTL expires_at DELETE;
 
 CREATE TABLE IF NOT EXISTS java_profiler_artifact_index

@@ -119,9 +119,9 @@ func StatusVersionForIngestionStatus(status IngestionStatus) int {
 		return 1
 	case IngestionRetryable:
 		return 2
-	case IngestionRejected:
-		return 3
 	case IngestionAccepted:
+		return 3
+	case IngestionRejected:
 		return 4
 	case IngestionDuplicate:
 		return 5
