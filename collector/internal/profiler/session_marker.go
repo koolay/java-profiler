@@ -9,10 +9,10 @@ import (
 )
 
 type SessionMarker struct {
-	CollectorID string    `json:"CollectorID"`
-	PID         int       `json:"PID"`
-	StartedAt   time.Time `json:"StartedAt"`
-	LibraryPath string    `json:"LibraryPath"`
+	CollectorID string    `json:"collector_id"`
+	PID         int       `json:"pid"`
+	StartedAt   time.Time `json:"started_at"`
+	LibraryPath string    `json:"library_path"`
 }
 
 func markerPath(procRoot string, pid int) string {

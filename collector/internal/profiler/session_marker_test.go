@@ -2,6 +2,7 @@ package profiler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -35,6 +36,19 @@ func TestSessionMarkerRoundTripsUnderTargetTmp(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(procRoot, "42", "root", "tmp", "java-profiler-session.json")); err != nil {
 		t.Fatalf("expected stable marker path: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(procRoot, "42", "root", "tmp", "java-profiler-session.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"collector_id", "pid", "started_at", "library_path"} {
+		if _, ok := raw[key]; !ok {
+			t.Fatalf("expected snake_case marker key %q in %s", key, string(data))
+		}
 	}
 }
 
@@ -109,6 +123,33 @@ func TestRunnerRecoverConflictTreatsMissingDifferentOrInvalidMarkerAsExternal(t 
 			setup: func(t *testing.T, procRoot string) {
 				t.Helper()
 				if err := WriteSessionMarker(procRoot, 42, SessionMarker{CollectorID: "collector-a", PID: 99}); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "missing started at",
+			setup: func(t *testing.T, procRoot string) {
+				t.Helper()
+				if err := WriteSessionMarker(procRoot, 42, SessionMarker{
+					CollectorID: "collector-a",
+					PID:         42,
+					LibraryPath: "/tmp/java-profiler/libasyncProfiler.so",
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "different library path",
+			setup: func(t *testing.T, procRoot string) {
+				t.Helper()
+				if err := WriteSessionMarker(procRoot, 42, SessionMarker{
+					CollectorID: "collector-a",
+					PID:         42,
+					StartedAt:   time.Unix(100, 0).UTC(),
+					LibraryPath: "/tmp/external/libasyncProfiler.so",
+				}); err != nil {
 					t.Fatal(err)
 				}
 			},

@@ -147,7 +147,10 @@ func (r *Runner) RecoverConflict(ctx context.Context, target domain.TargetIdenti
 	if err != nil {
 		return ConflictRecovery{}, nil
 	}
-	if marker.CollectorID != r.cfg.OwnerID || marker.PID != target.ProcessID {
+	if marker.CollectorID != r.cfg.OwnerID ||
+		marker.PID != target.ProcessID ||
+		marker.StartedAt.IsZero() ||
+		marker.LibraryPath != r.targetLibraryPath() {
 		return ConflictRecovery{}, nil
 	}
 	result := ConflictRecovery{Owned: true}
