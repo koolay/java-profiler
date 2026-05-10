@@ -76,6 +76,18 @@ func TestTopStacksKeepsSameSymbolFromDifferentPackagesDistinct(t *testing.T) {
 	}
 }
 
+func TestTopStacksDoesNotPromoteRuntimeOnlyFrames(t *testing.T) {
+	samples := []clickhouse.ProfileSample{
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "libc.so.6.pthread_cond_timedwait", "libjvm.so.PlatformMonitor::wait", "java.lang.Thread.run:1583"}, Value: 21},
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "so.6", "[vdso]", "6.clock_gettime"}, Value: 9},
+	}
+
+	rows := rankTopStacks(samples)
+	if len(rows) != 0 {
+		t.Fatalf("runtime/native-only samples should not produce top table rows: %#v", rows)
+	}
+}
+
 func findTopStackRow(rows []TopStackRow, symbol string) TopStackRow {
 	for _, row := range rows {
 		if row.Symbol == symbol {

@@ -100,10 +100,7 @@ func topTableFrames(frames []string) []string {
 			javaFrames = append(javaFrames, frame)
 		}
 	}
-	if len(javaFrames) > 0 {
-		return javaFrames
-	}
-	return frames
+	return javaFrames
 }
 
 func frameSymbol(frame string) string {
