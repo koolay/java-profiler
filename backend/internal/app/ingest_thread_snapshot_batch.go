@@ -63,7 +63,10 @@ func (i ThreadSnapshotIngestor) Ingest(ctx context.Context, req ThreadSnapshotBa
 		return IngestResult{}, err
 	}
 	if status == clickhouse.IngestionRejected {
-		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch id reused with different payload"}, nil
+		batch.Status = clickhouse.IngestionRejected
+		batch.Message = "batch id reused with different payload"
+		_, _ = i.Ingestion.Record(ctx, batch)
+		return IngestResult{Status: clickhouse.IngestionRejected, Message: batch.Message}, nil
 	}
 	if status == clickhouse.IngestionDuplicate {
 		return IngestResult{Status: clickhouse.IngestionDuplicate, Message: "duplicate batch ignored"}, nil
@@ -77,7 +80,10 @@ func (i ThreadSnapshotIngestor) Ingest(ctx context.Context, req ThreadSnapshotBa
 		return IngestResult{}, err
 	}
 	if status == clickhouse.IngestionRejected {
-		return IngestResult{Status: clickhouse.IngestionRejected, Message: "batch id reused with different payload"}, nil
+		batch.Status = clickhouse.IngestionRejected
+		batch.Message = "batch id reused with different payload"
+		_, _ = i.Ingestion.Record(ctx, batch)
+		return IngestResult{Status: clickhouse.IngestionRejected, Message: batch.Message}, nil
 	}
 	return IngestResult{Status: clickhouse.IngestionAccepted, Message: "accepted"}, nil
 }

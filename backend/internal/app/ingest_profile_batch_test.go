@@ -303,9 +303,10 @@ func TestProfileBatchIngestorAllowsRetryAfterPayloadWriteFailure(t *testing.T) {
 
 func TestTargetStatusBatchIngestorDeduplicatesBeforeWrite(t *testing.T) {
 	statuses := clickhouse.NewStatusRepository()
+	ingestion := clickhouse.NewIngestionRepository()
 	ingestor := TargetStatusIngestor{
 		Statuses:  statuses,
-		Ingestion: clickhouse.NewIngestionRepository(),
+		Ingestion: ingestion,
 	}
 	req := TargetStatusBatchRequest{
 		BatchID:     "status-batch-1",
@@ -340,6 +341,19 @@ func TestTargetStatusBatchIngestorDeduplicatesBeforeWrite(t *testing.T) {
 	if len(got) != 1 || got[0].Target.Pod != "pod-a" || got[0].BatchID != req.BatchID {
 		t.Fatalf("unexpected status rows after duplicate/conflict: %+v", got)
 	}
+	batches, err := ingestion.ListIngestionBatches(context.Background(), clickhouse.IngestionQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("list ingestion failed: %v", err)
+	}
+	if len(batches) != 1 {
+		t.Fatalf("expected one final ingestion state, got %+v", batches)
+	}
+	if batches[0].Status != clickhouse.IngestionRejected {
+		t.Fatalf("expected final rejected ingestion state, got %+v", batches[0])
+	}
+	if batches[0].Message != "batch id reused with different payload" {
+		t.Fatalf("expected conflict message, got %+v", batches[0])
+	}
 }
 
 func TestTargetStatusBatchIngestorRejectsChildBatchConflict(t *testing.T) {
@@ -368,9 +382,10 @@ func TestTargetStatusBatchIngestorRejectsChildBatchConflict(t *testing.T) {
 
 func TestThreadSnapshotBatchIngestorDeduplicatesBeforeWrite(t *testing.T) {
 	threads := clickhouse.NewThreadRepository()
+	ingestion := clickhouse.NewIngestionRepository()
 	ingestor := ThreadSnapshotIngestor{
 		Threads:   threads,
-		Ingestion: clickhouse.NewIngestionRepository(),
+		Ingestion: ingestion,
 	}
 	req := ThreadSnapshotBatchRequest{
 		BatchID:     "thread-batch-1",
@@ -406,5 +421,18 @@ func TestThreadSnapshotBatchIngestorDeduplicatesBeforeWrite(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].ThreadName != "main" || got[0].BatchID != req.BatchID {
 		t.Fatalf("unexpected thread rows after duplicate/conflict: %+v", got)
+	}
+	batches, err := ingestion.ListIngestionBatches(context.Background(), clickhouse.IngestionQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("list ingestion failed: %v", err)
+	}
+	if len(batches) != 1 {
+		t.Fatalf("expected one final ingestion state, got %+v", batches)
+	}
+	if batches[0].Status != clickhouse.IngestionRejected {
+		t.Fatalf("expected final rejected ingestion state, got %+v", batches[0])
+	}
+	if batches[0].Message != "batch id reused with different payload" {
+		t.Fatalf("expected conflict message, got %+v", batches[0])
 	}
 }
