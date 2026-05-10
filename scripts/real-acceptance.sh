@@ -18,6 +18,7 @@ Options:
   --service NAME            Java workload service/name filter. Default: checkout-java.
   --artifact-dir DIR        Evidence directory. Default: /tmp/java-profiler-real-acceptance-<timestamp>.
   --require-full-profiling  Fail if current-run accepted status, profile, thread, or deadlock data is empty.
+  --high-volume             Drive a longer allocation/CPU/lock run and verify bounded profile ingestion metadata.
   --skip-browser            Skip Playwright UI screenshots/video.
   -h, --help                Show this help.
 
@@ -29,6 +30,8 @@ Environment:
   CLICKHOUSE_IMAGE          Default: docker.m.daocloud.io/clickhouse/clickhouse-server:24.8.
   JAVA_WORKLOAD_IMAGE       Default: docker.m.daocloud.io/eclipse-temurin:21-jdk.
   JAVA_WORKLOAD_PREBUILT    Set to 1 when JAVA_WORKLOAD_IMAGE already starts a CPU-busy Java app.
+  JAVA_PROFILER_HIGH_VOLUME_SECONDS
+                            Default: 240 when --high-volume is set.
   UI_TOKEN                  Default: qa-ui-token.
   COLLECTOR_TOKEN           Default: qa-collector-token.
   CLICKHOUSE_USER           Default: default.
@@ -45,6 +48,7 @@ install="false"
 configure_profiler="false"
 load_local_images="false"
 require_full="false"
+high_volume="false"
 skip_browser="false"
 skip_workload_rollout_check="false"
 
@@ -60,6 +64,7 @@ while [[ $# -gt 0 ]]; do
     --service) service_name="$2"; shift 2 ;;
     --artifact-dir) artifact_dir="$2"; shift 2 ;;
     --require-full-profiling) require_full="true"; shift ;;
+    --high-volume) high_volume="true"; require_full="true"; shift ;;
     --skip-browser) skip_browser="true"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
@@ -125,6 +130,12 @@ duration_seconds() {
 drive_workload_load() {
   local local_port="${JAVA_PROFILER_WORKLOAD_PORT:-18182}"
   local duration="${1:-30}"
+  local cpu_alloc_parallel="${JAVA_PROFILER_LOAD_PARALLELISM:-1}"
+  local lock_parallel="${JAVA_PROFILER_LOCK_PARALLELISM:-3}"
+  if [[ "$high_volume" == "true" ]]; then
+    cpu_alloc_parallel="${JAVA_PROFILER_LOAD_PARALLELISM:-4}"
+    lock_parallel="${JAVA_PROFILER_LOCK_PARALLELISM:-8}"
+  fi
   local service_port
   service_port="$(kubectl -n "$namespace" get "svc/$service_name" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true)"
   if [[ -z "$service_port" ]]; then
@@ -143,12 +154,19 @@ drive_workload_load() {
   while [[ "$(date +%s)" -lt "$deadline" ]]; do
     iteration=$((iteration + 1))
     for mode in cpu alloc; do
-      curl -fsS "http://127.0.0.1:${local_port}/work?mode=${mode}&durationMs=3000" >>"$artifact_dir/workload-${mode}-load.log" 2>&1 || true
+      load_pids=()
+      for _ in $(seq 1 "$cpu_alloc_parallel"); do
+        curl -fsS "http://127.0.0.1:${local_port}/work?mode=${mode}&durationMs=3000" >>"$artifact_dir/workload-${mode}-load.log" 2>&1 &
+        load_pids+=("$!")
+      done
+      for load_pid in "${load_pids[@]}"; do
+        wait "$load_pid" || true
+      done
     done
     # Lock profiling needs real contention. A single request can hold and
     # release the monitor without ever blocking another Java thread.
     lock_pids=()
-    for _ in 1 2 3; do
+    for _ in $(seq 1 "$lock_parallel"); do
       curl -fsS "http://127.0.0.1:${local_port}/work?mode=lock&durationMs=3000" >>"$artifact_dir/workload-lock-load.log" 2>&1 &
       lock_pids+=("$!")
     done
@@ -253,6 +271,7 @@ log "- service: $service_name"
 log "- artifact_dir: $artifact_dir"
 log "- configure_profiler: $configure_profiler"
 log "- skip_workload_rollout_check: $skip_workload_rollout_check"
+log "- high_volume: $high_volume"
 log "- acceptance_started_at: $acceptance_started_at"
 log ""
 
@@ -519,6 +538,33 @@ log "## Target Baseline"
 log "- target_selector: $target_selector"
 capture_target_state before
 
+capture_clickhouse_state() {
+  local phase="$1"
+  kubectl -n "$profiler_namespace" get pods -l app=clickhouse -o json >"$artifact_dir/clickhouse-${phase}-pods.json" 2>/dev/null || printf '{"items":[]}\n' >"$artifact_dir/clickhouse-${phase}-pods.json"
+  jq '[.items[] | {pod: .metadata.name, uid: .metadata.uid, phase: .status.phase, restarts: ([.status.containerStatuses[]?.restartCount] | add // 0), oom_killed: ([.status.containerStatuses[]?.lastState.terminated.reason | select(. == "OOMKilled")] | length)}]' "$artifact_dir/clickhouse-${phase}-pods.json" >"$artifact_dir/clickhouse-${phase}-state.json"
+}
+
+compare_clickhouse_state() {
+  local before="$artifact_dir/clickhouse-before-state.json"
+  local after="$artifact_dir/clickhouse-after-state.json"
+  local report="$artifact_dir/clickhouse-restart-comparison.json"
+  jq -n --slurpfile before "$before" --slurpfile after "$after" '
+    ($before[0] // []) as $b |
+    ($after[0] // []) as $a |
+    {
+      replaced_pods: [ $a[] as $afterPod | select([ $b[].uid ] | index($afterPod.uid) | not) | {pod: $afterPod.pod, uid: $afterPod.uid} ],
+      restart_increases: [ $a[] as $afterPod | ($b[] | select(.uid == $afterPod.uid)) as $beforePod | select($afterPod.restarts > $beforePod.restarts) | {pod: $afterPod.pod, before: $beforePod.restarts, after: $afterPod.restarts} ],
+      oom_killed: [ $a[] | select(.oom_killed > 0) | {pod, oom_killed} ]
+    }' >"$report"
+  local issue_count
+  issue_count="$(jq '(.replaced_pods | length) + (.restart_increases | length) + (.oom_killed | length)' "$report")"
+  if [[ "$issue_count" -gt 0 ]]; then
+    jq . "$report" | tee -a "$summary" >/dev/null
+    fail "ClickHouse restarted, was replaced, or reported OOMKilled during high-volume run"
+  fi
+  pass "ClickHouse stayed running without OOM during high-volume profile ingestion"
+}
+
 if [[ "$configure_profiler" == "true" && "$install" != "true" ]]; then
   log "## Configure Profiler Target Filters"
   helm upgrade --install "$release" ./deploy/helm \
@@ -591,12 +637,26 @@ backend_no_auth_code="$(curl -sS -o "$artifact_dir/backend-no-auth.txt" -w '%{ht
 [[ "$backend_no_auth_code" == "401" ]] || fail "backend without UI token returned $backend_no_auth_code, expected 401"
 pass "backend direct UI API rejects missing token"
 
+if [[ "$high_volume" == "true" ]]; then
+  capture_clickhouse_state before
+fi
+
 profile_wait_seconds="${JAVA_PROFILER_ACCEPTANCE_PROFILE_WAIT_SECONDS:-$(( $(duration_seconds "$collector_interval") * 2 + 10 ))}"
+if [[ "$high_volume" == "true" ]]; then
+  high_volume_seconds="${JAVA_PROFILER_HIGH_VOLUME_SECONDS:-240}"
+  if [[ "$profile_wait_seconds" -lt "$high_volume_seconds" ]]; then
+    profile_wait_seconds="$high_volume_seconds"
+  fi
+fi
 drive_workload_load "$profile_wait_seconds" &
 load_pid="$!"
 cleanup_pids+=("$load_pid")
 log "- waiting ${profile_wait_seconds}s for async-profiler start/stop/read cycles"
 wait "$load_pid" || true
+
+if [[ "$high_volume" == "true" ]]; then
+  capture_clickhouse_state after
+fi
 
 start="${JAVA_PROFILER_ACCEPTANCE_START:-$acceptance_started_at}"
 end="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -631,6 +691,10 @@ kubectl -n "$profiler_namespace" exec deploy/clickhouse -- clickhouse-client --q
   >"$artifact_dir/clickhouse-ingestion-batches.txt"
 
 kubectl -n "$profiler_namespace" exec deploy/clickhouse -- clickhouse-client --query \
+  "WITH parseDateTime64BestEffort('${start}', 9, 'UTC') AS run_start SELECT ifNull(sum(dropped_sample_count), 0), ifNull(sum(dropped_stack_count), 0), ifNull(max(truncated), 0), ifNull(max(batch_sample_count), 0), countIf(batch_type='profile' AND status='accepted'), countIf(batch_type='profile' AND status='rejected') FROM java_profiler.java_profiler_ingestion_batches WHERE received_at >= run_start FORMAT TSV" \
+  >"$artifact_dir/clickhouse-profile-ingestion-metadata.tsv"
+
+kubectl -n "$profiler_namespace" exec deploy/clickhouse -- clickhouse-client --query \
   "SHOW CREATE TABLE java_profiler.java_profiler_profile_samples FORMAT TSVRaw" \
   >"$artifact_dir/clickhouse-profile-samples-ddl.sql"
 kubectl -n "$profiler_namespace" exec deploy/clickhouse -- clickhouse-client --query \
@@ -646,6 +710,7 @@ ingestion_batches="$(awk '$1=="ingestion_batches"{print $2}' "$artifact_dir/clic
 flamegraph_value="$(jq -r '.root.value // 0' "$artifact_dir/backend-flamegraph-cpu.json")"
 alloc_flamegraph_value="$(jq -r '.root.value // 0' "$artifact_dir/backend-flamegraph-alloc-bytes.json")"
 lock_flamegraph_value="$(jq -r '.root.value // 0' "$artifact_dir/backend-flamegraph-lock-delay.json")"
+read -r dropped_sample_count dropped_stack_count max_truncated max_batch_sample_count accepted_profile_batches rejected_profile_batches <"$artifact_dir/clickhouse-profile-ingestion-metadata.tsv"
 
 [[ "${target_status:-0}" -gt 0 ]] || fail "ClickHouse target_status is empty"
 [[ "${ingestion_batches:-0}" -gt 0 ]] || fail "ClickHouse ingestion_batches is empty"
@@ -685,6 +750,27 @@ if [[ "$ingestion_code" == "200" ]]; then
   pass "backend ingestion UI API exists"
 else
   gap "backend /api/ui/v1/ingestion returned HTTP ${ingestion_code}; UI ingestion view cannot be backed by a real query API yet"
+fi
+
+if [[ "$high_volume" == "true" ]]; then
+  log "## High Volume Ingestion"
+  log "- dropped_sample_count: ${dropped_sample_count:-0}"
+  log "- dropped_stack_count: ${dropped_stack_count:-0}"
+  log "- max_truncated: ${max_truncated:-0}"
+  log "- max_batch_sample_count: ${max_batch_sample_count:-0}"
+  log "- accepted_profile_batches: ${accepted_profile_batches:-0}"
+  log "- rejected_profile_batches: ${rejected_profile_batches:-0}"
+
+  [[ "${accepted_profile_batches:-0}" -gt 0 ]] || fail "high-volume run did not accept any profile batches"
+  [[ "${rejected_profile_batches:-0}" -eq 0 ]] || fail "high-volume run rejected profile batches; inspect clickhouse-ingestion-batches.txt"
+  [[ "${max_batch_sample_count:-0}" -le 10000 ]] || fail "profile batch exceeded collector max samples per batch: ${max_batch_sample_count}"
+  if [[ "${max_truncated:-0}" -gt 0 || "${dropped_sample_count:-0}" -gt 0 || "${dropped_stack_count:-0}" -gt 0 ]]; then
+    pass "high-volume run exercised bounded profile ingestion metadata"
+  else
+    pass "high-volume run stayed below limits with accepted profile batches"
+  fi
+
+  compare_clickhouse_state
 fi
 
 if grep -q 'TTL expires_at' "$artifact_dir/clickhouse-profile-samples-ddl.sql" && grep -q 'toIntervalDay(7)' "$artifact_dir/clickhouse-profile-samples-ddl.sql"; then

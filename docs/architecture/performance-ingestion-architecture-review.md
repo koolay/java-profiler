@@ -87,11 +87,15 @@ The real Kubernetes acceptance loop exposed production-relevant failure modes:
 The current implementation includes short-term stabilizers:
 
 - collector-side profile batch splitting
+- collector-side stack aggregation before upload
+- explicit persisted profile batch metadata for raw sample count, aggregated count, accepted batch size, drops, and truncation state
 - higher allocation sampling interval
 - concurrent lock workload in real acceptance
 - real acceptance wait for target-status rows
 - larger ClickHouse memory limit for the real acceptance installation
 - strict acceptance checks for non-empty CPU, allocation, and lock-delay flamegraphs
+- high-volume acceptance mode for bounded ingestion metadata and ClickHouse OOM/restart checks
+- collector-owned async-profiler session marker recovery so stale local sessions are not confused with external profiler conflicts
 
 These are necessary, but they are not the final performance architecture.
 
@@ -229,6 +233,8 @@ Extend `docs/operations/real-profiling-acceptance-standard.md` with a high-volum
 - non-empty CPU/allocation/lock-delay profiles
 - no ClickHouse OOM
 - ingestion UI reports any truncation/drop explicitly
+
+Implementation status: the acceptance script now exposes `--high-volume`, increases CPU/allocation/lock load parallelism, verifies accepted profile ingestion batches, checks collector batch size metadata, records drop/truncation metadata, and fails if ClickHouse restarts, is replaced, or reports OOMKilled during the run.
 
 ## Architectural Decision
 

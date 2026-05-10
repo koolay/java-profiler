@@ -67,6 +67,8 @@ Use `scripts/real-acceptance.sh --require-full-profiling` for strict acceptance.
 - wait for target status rows instead of assuming they exist immediately after rollout or table truncation
 - drive CPU, allocation, and concurrent lock load for the full profiling wait window
 - fail when CPU, allocation, or lock-delay profile data is empty
+- support `--high-volume` for ingestion hardening changes; this mode must extend the profiling window, increase CPU/allocation/lock load parallelism, and verify bounded profile batch metadata
+- fail high-volume acceptance when profile batches are rejected, when a profile batch exceeds the collector batch limit, or when ClickHouse restarts/OOMKills during the run
 - run Playwright UI acceptance unless `--skip-browser` is explicitly justified
 - write evidence under `/tmp/java-profiler-real-acceptance-*`
 
@@ -88,6 +90,8 @@ Treat these as acceptance blockers:
 - CPU, allocation, or lock-delay flamegraph root value is zero
 - backend rejects profile payloads because batch size is too large
 - ClickHouse OOMs under the real acceptance workload
+- high-volume ingestion has no accepted profile batches
+- collector/backend ingestion metadata hides dropped, truncated, split, or rejected profile batches
 - UI tests pass with mocked data but fail against real backend data
 - search, focus, Back, Reset, or view-mode interactions do not affect the real UI state
 
