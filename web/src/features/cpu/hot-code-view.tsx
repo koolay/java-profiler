@@ -34,7 +34,7 @@ export function HotCodeView({ root, metadata, topRows }: Props) {
   const sortedFrames = useMemo(() => sortHotFrames(visibleFrames, sortKey), [visibleFrames, sortKey]);
   const selected = selectedName ? hotFrames.find((frame) => frame.name === selectedName) : undefined;
   const fallbackSelected = sortedFrames[0];
-  const highlightQuery = selected ? selected.symbol : "";
+  const highlightQuery = selected ? selected.fullSymbol || selected.name || selected.symbol : "";
   const insight = selected ? describeHotFrame(selected) : undefined;
 
   if (hotFrames.length === 0) {

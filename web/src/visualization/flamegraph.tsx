@@ -174,10 +174,10 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
 function layout(root: FlamegraphNode, zoomPath: string, query: string, highlightQuery: string): Frame[] {
   const zoomRoot = findByPath(root, zoomPath) ?? root;
   const currentRootValue = Math.max(1, zoomRoot.value);
-  const normalizedQuery = query.trim().toLowerCase();
-  const normalizedHighlight = highlightQuery.trim().toLowerCase();
+  const normalizedQuery = normalizeFrameSearch(query);
+  const normalizedHighlight = normalizeFrameSearch(highlightQuery);
   const activeMatch = normalizedQuery || normalizedHighlight;
-  const matches = (node: FlamegraphNode) => activeMatch.length > 0 && node.name.toLowerCase().includes(activeMatch);
+  const matches = (node: FlamegraphNode) => activeMatch.length > 0 && normalizeFrameSearch(node.name).includes(activeMatch);
   const frames: Frame[] = [];
   const visit = (node: FlamegraphNode, depth: number, path: string, left: number, width: number) => {
     const matched = matches(node);
@@ -207,6 +207,10 @@ function layout(root: FlamegraphNode, zoomPath: string, query: string, highlight
   };
   visit(zoomRoot, 0, zoomPath, 0, 100);
   return frames;
+}
+
+function normalizeFrameSearch(value: string) {
+  return value.trim().replaceAll("/", ".").toLowerCase();
 }
 
 function FrameInspector({ frame }: { frame: Frame }) {

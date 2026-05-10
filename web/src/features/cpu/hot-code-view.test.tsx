@@ -148,6 +148,48 @@ test("selecting a backend top row highlights matching flame graph frames", () =>
   expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
 });
 
+test("selecting backend rows highlights by full package location", () => {
+  render(
+    <HotCodeView
+      root={{
+        name: "root",
+        value: 10,
+        children: [
+          { name: "com/foo/CheckoutService.priceCart:10", value: 6 },
+          { name: "org/acme/CheckoutService.priceCart:42", value: 4 },
+        ],
+      }}
+      metadata={{ partial: false }}
+      topRows={[
+        {
+          symbol: "CheckoutService.priceCart",
+          location: "com.foo.CheckoutService.priceCart:10",
+          profile_type: "java_cpu_nanoseconds",
+          self: 6,
+          total: 6,
+          self_percent: "60.0%",
+          total_percent: "60.0%",
+        },
+        {
+          symbol: "CheckoutService.priceCart",
+          location: "org.acme.CheckoutService.priceCart:42",
+          profile_type: "java_cpu_nanoseconds",
+          self: 4,
+          total: 4,
+          self_percent: "40.0%",
+          total_percent: "40.0%",
+        },
+      ]}
+    />,
+  );
+
+  const topTable = screen.getByRole("region", { name: "Top table" });
+  fireEvent.click(within(topTable).getByRole("button", { name: /CheckoutService:10/ }));
+
+  expect(screen.getByRole("button", { name: /CheckoutService\.priceCart:10/ })).toHaveClass("flame-row-match");
+  expect(screen.getByRole("button", { name: /CheckoutService\.priceCart:42/ })).not.toHaveClass("flame-row-match");
+});
+
 test("uses flamegraph fallback top table when backend top rows are empty", () => {
   render(<HotCodeView root={root} metadata={{ partial: false }} topRows={[]} />);
 
