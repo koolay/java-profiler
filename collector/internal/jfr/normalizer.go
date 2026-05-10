@@ -40,7 +40,7 @@ func NormalizeWindow(batchID string, target domain.TargetIdentity, events []Even
 			Truncated:   len(event.Frames) > len(frames),
 		})
 	}
-	return samples
+	return AggregateSamples(samples)
 }
 
 func profileTypeForEvent(event string) (domain.ProfileType, bool) {

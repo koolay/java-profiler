@@ -26,10 +26,35 @@ func TestNormalizeMapsRequiredProfileTypes(t *testing.T) {
 			t.Fatalf("invalid sample: %+v", sample)
 		}
 	}
-	if samples[0].ProfileType != domain.ProfileTypeCPU || samples[0].Value != DefaultCPUExecutionSampleValueNS {
-		t.Fatalf("expected CPU sample value in nanoseconds, got %+v", samples[0])
+	byType := make(map[domain.ProfileType]uint64, len(samples))
+	for _, sample := range samples {
+		byType[sample.ProfileType] = sample.Value
 	}
-	if samples[1].Value != 2 || samples[2].Value != 3 || samples[3].Value != 4 || samples[4].Value != 5 {
+	if byType[domain.ProfileTypeCPU] != DefaultCPUExecutionSampleValueNS {
+		t.Fatalf("expected CPU sample value in nanoseconds, got %+v", samples)
+	}
+	if byType[domain.ProfileTypeAllocBytes] != 2 ||
+		byType[domain.ProfileTypeAllocObjects] != 3 ||
+		byType[domain.ProfileTypeLockContention] != 4 ||
+		byType[domain.ProfileTypeLockDelay] != 5 {
 		t.Fatalf("non-CPU sample values should remain unchanged: %+v", samples)
+	}
+}
+
+func TestNormalizeWindowAggregatesDuplicateCPUStacks(t *testing.T) {
+	target := domain.TargetIdentity{Namespace: "prod", Service: "checkout", ProcessID: 1, JVMStartTime: time.Unix(1, 0)}
+	startedAt := time.Unix(100, 0)
+	endedAt := time.Unix(160, 0)
+	samples := NormalizeWindow("batch-1", target, []Event{
+		{Type: "execution_sample", Value: 2, Frames: []string{"root", "Checkout.handle:42"}},
+		{Type: "execution_sample", Value: 3, Frames: []string{"root", "Checkout.handle:42"}},
+	}, startedAt, endedAt)
+
+	if len(samples) != 1 {
+		t.Fatalf("expected one aggregated sample, got %+v", samples)
+	}
+	want := uint64(5 * DefaultCPUExecutionSampleValueNS)
+	if samples[0].Value != want {
+		t.Fatalf("value = %d, want %d", samples[0].Value, want)
 	}
 }
