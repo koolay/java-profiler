@@ -7,6 +7,9 @@ type Props = {
   emptyMessage?: string;
   highlightQuery?: string;
   insight?: string;
+  searchQuery?: string;
+  onSearchQueryChange?: (query: string) => void;
+  onReset?: () => void;
 };
 
 type Frame = FlamegraphNode & {
@@ -24,12 +27,19 @@ type Frame = FlamegraphNode & {
 
 type FrameCategory = "application" | "runtime" | "native";
 
-export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight }: Props) {
-  const [query, setQuery] = useState("");
+export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight, searchQuery, onSearchQueryChange, onReset }: Props) {
+  const [internalQuery, setInternalQuery] = useState("");
   const [zoomPath, setZoomPath] = useState("root");
   const [selectedPath, setSelectedPath] = useState("root");
   const [hoveredPath, setHoveredPath] = useState<string | undefined>();
   const [zoomHistory, setZoomHistory] = useState<string[]>([]);
+  const query = searchQuery ?? internalQuery;
+  const setQuery = (nextQuery: string) => {
+    if (searchQuery === undefined) {
+      setInternalQuery(nextQuery);
+    }
+    onSearchQueryChange?.(nextQuery);
+  };
   const frames = useMemo(() => layout(root, zoomPath, query, highlightQuery), [root, highlightQuery, query, zoomPath]);
   const depth = Math.max(0, ...frames.map((frame) => frame.depth));
   const rowHeight = 32;
@@ -45,6 +55,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
     setSelectedPath("root");
     setHoveredPath(undefined);
     setZoomHistory([]);
+    onReset?.();
   };
   const zoomToPath = (path: string) => {
     if (path === zoomPath) return;

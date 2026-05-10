@@ -155,6 +155,33 @@ test("uses flamegraph fallback top table when backend top rows are empty", () =>
   expect(screen.getByRole("row", { name: /DemoHttpService\.burnCpu/ })).toBeInTheDocument();
 });
 
+test("search filters top table rows and highlights matching flame graph frames", () => {
+  render(<HotCodeView root={root} metadata={{ partial: false }} />);
+
+  fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "handlework" } });
+
+  const topTable = screen.getByRole("region", { name: "Top table" });
+  expect(within(topTable).getByRole("row", { name: /DemoHttpService\.handleWork/ })).toBeInTheDocument();
+  expect(within(topTable).queryByRole("row", { name: /DemoHttpService\.burnCpu/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
+});
+
+test("reset clears search and selected top table row state", () => {
+  render(<HotCodeView root={root} metadata={{ partial: false }} />);
+
+  const topTable = screen.getByRole("region", { name: "Top table" });
+  fireEvent.click(within(topTable).getByRole("button", { name: /DemoHttpService\.handleWork/ }));
+  expect(screen.getByText(/High total, low self: start from DemoHttpService\.handleWork/)).toBeInTheDocument();
+  expect(within(topTable).getByRole("row", { name: /DemoHttpService\.handleWork/ })).toHaveClass("active");
+
+  fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "handlework" } });
+  fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+
+  expect(screen.getByLabelText("Search flamegraph frames")).toHaveValue("");
+  expect(screen.queryByText(/High total, low self: start from DemoHttpService\.handleWork/)).not.toBeInTheDocument();
+  expect(within(topTable).getByRole("row", { name: /DemoHttpService\.handleWork/ })).not.toHaveClass("active");
+});
+
 test("sorts the top table by total by default and supports self sorting", () => {
   render(<HotCodeView root={root} metadata={{ partial: false }} />);
 

@@ -27,11 +27,14 @@ export function HotCodeView({ root, metadata, topRows }: Props) {
   const fallbackFrames = useMemo(() => collectHotJavaFrames(root), [root]);
   const hotFrames = useMemo(() => (topRows && topRows.length > 0 ? topRows.map(topRowToHotFrame) : fallbackFrames), [fallbackFrames, topRows]);
   const [selectedName, setSelectedName] = useState<string | undefined>();
+  const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("both");
   const [sortKey, setSortKey] = useState<SortKey>("total");
-  const sortedFrames = useMemo(() => sortHotFrames(hotFrames, sortKey), [hotFrames, sortKey]);
-  const selected = hotFrames.find((frame) => frame.name === selectedName) ?? sortedFrames[0];
-  const highlightQuery = selected?.symbol ?? "";
+  const visibleFrames = useMemo(() => filterHotFrames(hotFrames, searchQuery), [hotFrames, searchQuery]);
+  const sortedFrames = useMemo(() => sortHotFrames(visibleFrames, sortKey), [visibleFrames, sortKey]);
+  const selected = selectedName ? hotFrames.find((frame) => frame.name === selectedName) : undefined;
+  const fallbackSelected = sortedFrames[0];
+  const highlightQuery = selected ? selected.symbol : "";
   const insight = selected ? describeHotFrame(selected) : undefined;
 
   if (hotFrames.length === 0) {
@@ -60,10 +63,18 @@ export function HotCodeView({ root, metadata, topRows }: Props) {
         </div>
       </div>
       <div className={viewMode === "both" ? "profile-grid" : "profile-stack"}>
-        {viewMode !== "flame-graph" && <TopTable frames={sortedFrames} selected={selected} sortKey={sortKey} onSort={setSortKey} onSelect={setSelectedName} />}
+        {viewMode !== "flame-graph" && <TopTable frames={sortedFrames} selected={selected ?? fallbackSelected} explicitSelection={Boolean(selected)} sortKey={sortKey} onSort={setSortKey} onSelect={setSelectedName} />}
         {viewMode !== "top-table" && (
           <div className="profile-flamegraph">
-            <Flamegraph root={root} metadata={metadata} highlightQuery={highlightQuery} insight={insight} />
+            <Flamegraph
+              root={root}
+              metadata={metadata}
+              highlightQuery={highlightQuery}
+              insight={insight}
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
+              onReset={() => setSelectedName(undefined)}
+            />
           </div>
         )}
       </div>
@@ -169,15 +180,27 @@ function sortHotFrames(frames: HotFrame[], sortKey: SortKey) {
   });
 }
 
+function filterHotFrames(frames: HotFrame[], query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return frames;
+  return frames.filter((frame) =>
+    [frame.symbol, frame.fullSymbol, frame.name, frame.className]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase().includes(normalizedQuery)),
+  );
+}
+
 function TopTable({
   frames,
   selected,
+  explicitSelection,
   sortKey,
   onSort,
   onSelect,
 }: {
   frames: HotFrame[];
   selected?: HotFrame;
+  explicitSelection?: boolean;
   sortKey: SortKey;
   onSort: (sortKey: SortKey) => void;
   onSelect: (name: string) => void;
@@ -194,7 +217,7 @@ function TopTable({
         </thead>
         <tbody>
           {frames.slice(0, 20).map((frame) => (
-            <tr key={frame.name} className={frame.name === selected?.name ? "active" : ""}>
+            <tr key={frame.name} className={explicitSelection && frame.name === selected?.name ? "active" : ""}>
               <td>
                 <button onClick={() => onSelect(frame.name)}>
                   <span>{frame.symbol}</span>
