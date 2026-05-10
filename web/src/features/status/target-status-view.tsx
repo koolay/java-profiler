@@ -78,7 +78,7 @@ function stateClass(state: string) {
 function actionFor(reason: string) {
   switch (reason) {
     case "accepted":
-      return "Open CPU, memory, locks, or thread views for the same target and time range.";
+      return "Open CPU, memory, locks, or thread evidence for the same target and time range.";
     case "disabled_by_metadata":
       return "Add profiling metadata or confirm explicit disable is intended.";
     case "temporary_expired":

@@ -8,7 +8,7 @@ The target problem is narrower than a general observability platform:
 - use node-local collection
 - control enablement through Kubernetes metadata
 - store results in ClickHouse
-- present a small, service-centric UI for profile and thread-diagnosis investigation
+- present a small, service-centric service-diagnosis UI for profile, target status, and ingestion investigation
 
 ## Current State
 
@@ -41,7 +41,7 @@ The repository is transitioning from documentation-only into implementation. The
 - `docs/operations/deployment-operations-admin-manual.md`
   - deployment, operations, security, storage, upgrade, and platform troubleshooting manual
 - `docs/operations/performance-analysis-user-manual.md`
-  - Java service owner workflow for CPU, memory allocation, lock, deadlock, target status, and ingestion-health analysis
+  - Java service owner workflow for the service-diagnosis page, including CPU, memory allocation, lock, deadlock, target status, and ingestion analysis
 - `docs/operations/real-profiling-acceptance-standard.md`
   - mandatory real Kubernetes acceptance standard for collector, ingestion, profile storage, query API, and UI changes
 

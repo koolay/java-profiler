@@ -35,5 +35,5 @@ test("keeps long pod names and user actions inspectable", () => {
   );
 
   expect(screen.getByText("async-profiler-lab-845cc49cc-plpf6")).toHaveAttribute("title", "async-profiler-lab-845cc49cc-plpf6");
-  expect(screen.getByText("Open CPU, memory, locks, or thread views for the same target and time range.")).toBeInTheDocument();
+  expect(screen.getByText("Open CPU, memory, locks, or thread evidence for the same target and time range.")).toBeInTheDocument();
 });

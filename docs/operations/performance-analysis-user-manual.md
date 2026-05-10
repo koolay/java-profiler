@@ -160,7 +160,7 @@ Owner / approver:
 4. 如果没有权限启用 profiling，把 namespace、service、Pod 和时间范围发给服务 owner 或平台管理员。
 5. 如果 UI 无权访问目标 namespace，不要申请全集群权限；申请对应 namespace 或 service 的最小访问权限。
 6. 如果目标不是 accepted，按 reason 处理；需要权限、attach 或平台问题时联系管理员。
-7. 如果目标 accepted，按症状进入 `cpu`、`memory`、`locks`、`deadlocks` 或线程视图。
+7. 如果目标 accepted，按症状进入 `cpu`、`memory`、`locks`、`deadlocks` 或线程证据。
 8. 如果视图为空，打开 `ingestion` 判断上传、存储或 retention 问题。
 9. 记录 top stack、thread evidence、target status 和 ingestion health。
 10. 事件结束后停止 temporary profiling 或确认 continuous 是否仍需要保留。
@@ -172,9 +172,9 @@ Owner / approver:
 1. 选择 namespace。
 2. 选择 service。
 3. 选择时间范围。
-4. 如已知问题实例，缩小到 Pod、container 或 JVM。
-5. 先打开 `status`。
-6. 状态正常后，再看 `cpu`、`memory`、`locks`、`deadlocks` 或线程诊断视图。
+4. 先打开 `status`。
+5. 如果同一服务下有多个 Pod 或 JVM，先用 `status` 表中的 Pod、PID、Seen 和 Reason 缩小到具体目标。
+6. 状态正常后，再看 `cpu`、`memory`、`locks`、`deadlocks` 或线程证据。
 7. 如果数据为空，打开 `ingestion` 判断上传和存储是否正常。
 
 所有诊断视图共享同一组选择器。发生 rollout、重启或扩缩容时，要核对 Pod、PID 和 JVM start time，避免把旧实例、新实例或无关副本混在一起解释。
@@ -183,16 +183,16 @@ Owner / approver:
 
 `Service diagnosis` 是服务级诊断页面。它把同一个 namespace、service、Pod 和时间范围下的证据放在一起，便于从“目标是否可采”切换到 CPU、内存分配、锁、死锁和 ingestion 链路。
 
-页面顶部搜索框用于快速定位 `namespace / service / pod`。如果你已经知道异常 Pod，优先搜索或过滤到该 Pod；如果只知道服务名，先按 service 进入，再用 `status` 判断是否只有单个 Pod 异常。
+页面左侧竖栏提供主视图快捷入口，分别进入 `status`、`cpu`、`memory`、`locks`、`deadlocks` 和 `ingestion`。它不是搜索框，也不是筛选器；真正的查询条件在页面顶部的上下文条里。
 
-左侧上下文栏显示当前查询条件：
+顶部上下文条显示当前查询条件：
 
 - `Namespace`：当前命名空间。截图示例是 `java-profiler-qa`。
 - `Service`：当前服务。截图示例是 `jdk17-http-demo`。
 - `Range`：当前分析时间范围。截图示例是 `Last 1h`。
-- `UTC`：当前时间显示时区。跨地区协作时，记录事件时间时要同时写明时区。
+- `UTC`：当前时间显示时区。跨地区协作时，记录事件时间时要同时写明时区；本界面固定以 UTC 呈现时间戳。
 
-左侧提示语强调：Prometheus 仍然负责指标趋势图；本 UI 只展示 profiles、线程证据、目标状态和 ingestion health。也就是说，先用现有监控确认“CPU 高、GC 高、延迟高”这类症状，再回到本页面找 Java 栈证据。
+上下文条下方的说明强调：Prometheus 仍然负责指标趋势图；本 UI 只展示 profiles、线程证据、目标状态和 ingestion health。也就是说，先用现有监控确认“CPU 高、GC 高、延迟高”这类症状，再回到本页面找 Java 栈证据。
 
 顶部标签页含义：
 
@@ -203,7 +203,7 @@ Owner / approver:
 | `Locks` | 查看 lock wait 或 contention profile。 | 请求卡住、线程 BLOCKED、锁竞争。 |
 | `Deadlocks` | 查看 JVM 结构化死锁事件。 | 疑似死锁或线程永久互等。 |
 | `Status` | 查看每个目标 JVM 是否可采、为什么不可采、用户下一步动作。 | 所有排查都先打开。 |
-| `Ingestion` | 查看 collector 上传、backend 接受、ClickHouse 写入和丢弃/拒绝状态。 | profile 或线程视图为空、数据不完整或怀疑链路问题。 |
+| `Ingestion` | 查看 collector 上传、backend 接受、ClickHouse 写入和丢弃/拒绝状态。 | profile 或线程证据为空、数据不完整或怀疑链路问题。 |
 
 `Status` 标签页中的 `Target status` 表格逐行表示一个目标 JVM 或一次目标状态记录。截图中的关键列按如下方式阅读：
 
@@ -219,7 +219,7 @@ Owner / approver:
 
 对截图中的三类状态，可以这样解读：
 
-- `State=temporary` 且 `Reason=accepted`：该 HotSpot 兼容 JVM 的临时 profiling 已生效，可以进入 `Cpu`、`Memory`、`Locks` 或线程视图查看同一目标和时间范围内的数据。
+- `State=temporary` 且 `Reason=accepted`：该 HotSpot 兼容 JVM 的临时 profiling 已生效，可以进入 `Cpu`、`Memory`、`Locks` 或线程证据查看同一目标和时间范围内的数据。
 - `State=disabled` 且 `Reason=disabled_by_metadata`：profiling 被 metadata 禁用，或没有启用所需 metadata。需要添加 profiling metadata，或确认显式禁用是预期行为。
 - `State=unsupported` 且 `Reason=unsupported_jvm`：collector 判断该 JVM 不适合当前 v1 HotSpot profiling。先确认它是否为业务 JVM、是否 HotSpot 兼容、是否选错 container 或 PID。
 
@@ -231,7 +231,7 @@ Owner / approver:
 
 | reason | 含义 | 你的动作 |
 | --- | --- | --- |
-| `accepted` | 目标可被采集。 | 进入 CPU、memory、locks 或线程视图。 |
+| `accepted` | 目标可被采集。 | 进入 CPU、memory、locks 或线程证据。 |
 | `disabled_by_metadata` | 没有启用 metadata，或被显式禁用。 | 添加 profiling metadata，或确认禁用符合预期。 |
 | `temporary_expired` | 临时窗口已过期。 | 如事件仍在发生，重新开启临时 profiling。 |
 | `invalid_duration` | duration 配置错误。 | 修正为 `10m`、`1h`、`30s` 这类格式。 |
@@ -269,7 +269,7 @@ Owner / approver:
 
 ### Locks
 
-`locks` 视图用于看 lock wait time 或 lock contention count。结合线程诊断视图一起看：
+`locks` 视图用于看 lock wait time 或 lock contention count。结合线程快照一起看：
 
 - lock flamegraph 解释时间范围内的锁成本。
 - 线程快照解释采样时刻的线程状态。
@@ -298,7 +298,7 @@ RUNNABLE 是线程状态，不是 CPU 百分比。UI 若标记为 sampled 或 pr
 
 ### Ingestion
 
-当 profile 或线程视图为空时，看 `ingestion` 只为回答三个问题：
+当 profile 或线程证据为空时，看 `ingestion` 只为回答三个问题：
 
 - collector 有没有上传数据。
 - backend 有没有接受数据。

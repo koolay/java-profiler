@@ -20,25 +20,28 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .app-shell { display: grid; grid-template-columns: 56px 1fr; min-height: 100vh; }
 .rail { background: #162221; color: white; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px 8px; }
 .brand { width: 34px; height: 34px; display: grid; place-items: center; background: #c8f3e5; color: #14211f; font-weight: 800; }
-.rail button { width: 36px; height: 36px; border: 0; background: transparent; color: #dbe6df; }
+.rail button { width: 36px; height: 36px; border: 0; background: transparent; color: #dbe6df; border-radius: 8px; display: grid; place-items: center; }
 .rail button:hover { background: #243635; }
+.rail button.active { background: #c8f3e5; color: #14211f; }
 .workspace { padding: 14px; }
 .topbar { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
 .topbar-copy { display: grid; gap: 2px; }
 .eyebrow { margin: 0; color: var(--muted); text-transform: uppercase; font-size: 12px; letter-spacing: .08em; }
 h1, h2, h3, p { margin-top: 0; }
 .topbar h1 { font-size: 26px; margin-bottom: 0; }
-.global-search { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); padding: 9px 11px; min-width: min(360px, 100%); }
-.global-search input, .context-panel input, .context-panel select, .flamegraph-tools input { border: 0; background: transparent; color: var(--ink); width: 100%; }
+.context-panel input, .context-panel select, .flamegraph-tools input { border: 0; background: transparent; color: var(--ink); width: 100%; }
 .service-layout { display: grid; gap: 12px; }
 .context-strip, .diagnosis-panel { background: var(--surface); border: 1px solid var(--line); padding: 11px; }
 .context-strip { display: grid; gap: 8px; }
-.context-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-items: end; }
-.context-fields label, .context-chip { display: grid; gap: 4px; }
+.context-fields { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(220px, 0.95fr) minmax(190px, 0.95fr); gap: 10px; align-items: stretch; }
+.context-field, .context-chip { display: grid; gap: 4px; }
 .context-fields span, .context-chip span { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
-.context-fields input, .context-fields select, .flamegraph-tools input { border: 1px solid var(--line); background: #fff; color: var(--ink); width: 100%; padding: 7px 9px; }
-.context-chip { background: #e9eee7; border: 1px solid var(--line); padding: 7px 9px; align-content: center; }
-.context-chip strong { font-size: 14px; }
+.context-fields input, .context-fields select, .flamegraph-tools input { border: 1px solid var(--line); background: #fff; color: var(--ink); width: 100%; min-height: 44px; padding: 10px 11px; }
+.context-range select { appearance: none; padding-right: 38px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 18px) calc(50% + 1px), calc(100% - 12px) calc(50% + 1px); background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; }
+.context-chip { background: linear-gradient(180deg, #eef2ec 0%, #e7ece7 100%); border: 1px solid var(--line); padding: 10px 11px; align-content: center; box-shadow: inset 0 1px 0 rgba(255,255,255,.65); }
+.context-timezone { grid-template-rows: auto auto auto; align-content: center; }
+.context-chip strong { font-size: 14px; line-height: 1.1; }
+.context-timezone small { color: var(--muted); font-size: 12px; line-height: 1.35; }
 .scope-note { color: var(--muted); line-height: 1.4; font-size: 13px; }
 .muted { color: var(--muted); }
 .tab-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 8px; }
@@ -162,4 +165,5 @@ th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
   .flamegraph-detail { grid-template-columns: 1fr; }
   .flamegraph-tooltip { grid-template-columns: 1fr; }
   .flamegraph-tooltip button { grid-column: 1; grid-row: auto; justify-self: start; align-self: auto; }
+  .context-fields { grid-template-columns: 1fr; }
 }

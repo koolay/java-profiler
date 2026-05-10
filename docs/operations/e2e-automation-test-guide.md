@@ -1,6 +1,6 @@
 # E2E 自动化测试说明
 
-本文说明如何按照 [Java 服务性能分析用户手册](./performance-analysis-user-manual.md) 执行 `java-profiler` 的端到端自动化测试。目标是验证服务负责人在 UI 中能完成真实诊断流程：先确认目标状态，再查看 CPU、memory、locks、deadlocks、threads 和 ingestion 证据。
+本文说明如何按照 [Java 服务性能分析用户手册](./performance-analysis-user-manual.md) 执行 `java-profiler` 的端到端自动化测试。目标是验证服务负责人在 UI 中能完成真实诊断流程：先确认目标状态，再查看 CPU、memory、locks、deadlocks、线程证据和 ingestion 证据。
 
 本文只覆盖自动化测试执行和验收证据。部署、权限、ClickHouse、collector DaemonSet、token 和 Web 代理问题按 [部署运维管理员手册](./deployment-operations-admin-manual.md) 处理。
 
@@ -11,7 +11,7 @@ E2E 测试应证明：
 - Web UI 可以加载并完成服务诊断入口流程。
 - 用户可以选择 namespace、service 和时间范围。
 - `status` 能解释目标是否可采集。
-- `cpu`、`memory`、`locks`、`deadlocks` 和线程相关视图能展示对应诊断证据，或给出可解释的空状态。
+- `cpu`、`memory`、`locks`、`deadlocks` 和线程证据能展示对应诊断证据，或给出可解释的空状态。
 - `ingestion` 能说明 collector 上传、backend 接受、存储拒绝、重试或丢弃情况。
 - 真实 Kubernetes 环境中，目标 Java workload 启用 profiling 后，UI、backend、ClickHouse 和 collector 数据链路一致。
 - 测试过程保存截图、视频、浏览器 console、ClickHouse 查询结果、collector/backend 日志和目标 Pod restart count。
@@ -54,13 +54,13 @@ cd web && npx playwright install --with-deps chromium
 | --- | --- | --- |
 | 使用前确认 | 环境预检 | `kubectl` 当前 context、namespace、Pod、Service、Helm release 可访问。 |
 | 启用 profiling | 安装或配置测试 workload | Pod template 存在 `java-profiler.io/profile-mode`，目标 Pod 无新增 restart。 |
-| UI 使用顺序 | Playwright service diagnosis flow | 页面加载，namespace/service/range 可填写，tab 可切换。 |
+| UI 使用顺序 | Playwright service diagnosis flow | 页面加载，左侧主视图导航可见，namespace/service/range 可填写，tab 可切换。 |
 | 理解目标状态 | `status` 视图 | 至少出现 `accepted`、`disabled_by_metadata`、`temporary_expired` 或其他稳定 reason。 |
 | CPU 升高 | `cpu` 视图 | flamegraph 搜索框可见，root frame 和非 root 栈可见。 |
 | GC 压力或 allocation rate | `memory` 视图 | allocation flamegraph 或可解释空状态可见。 |
 | 锁竞争导致请求慢 | `locks` 视图 | lock flamegraph、contention 证据或可解释空状态可见。 |
 | 疑似死锁 | `deadlocks` 视图 | deadlock cycle 可见；若为空，必须结合 status/ingestion 解释。 |
-| 线程池耗尽或忙线程 | 线程诊断视图 | busy/slow/thread state 证据可见，或可解释空状态可见。 |
+| 线程池耗尽或忙线程 | 线程证据 | busy/slow/thread state 证据可见，或可解释空状态可见。 |
 | UI 没有数据 | `ingestion` 视图 | accepted、retryable、dropped 或 rejected 证据可见。 |
 | 真实 profile 数据链路确认 | strict real acceptance | 当前运行窗口内 profile batch 被接受，UI 展示真实方法栈。 |
 
@@ -79,7 +79,7 @@ npm run test:browser
 - Vite 启动在 `http://127.0.0.1:5173`。
 - Playwright 执行 `web/tests/profiling-flow.spec.ts`。
 - 页面出现 `Service diagnosis` 标题。
-- 至少一个诊断 tab 按钮可见。
+- 至少一个诊断 tab 按钮可见，左侧主视图导航图标可见。
 
 失败处理：
 
