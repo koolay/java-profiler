@@ -1,4 +1,4 @@
-import type { DeadlockEvent, FlamegraphResponse, IngestionHealth, TargetStatus, ThreadDiagnosis } from "./types";
+import type { DeadlockEvent, FlamegraphResponse, IngestionHealth, TargetStatus, ThreadDiagnosis, TopStackRow } from "./types";
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 
@@ -12,6 +12,10 @@ async function getJSON<T>(path: string): Promise<T> {
 
 export function getFlamegraph(params: URLSearchParams) {
   return getJSON<FlamegraphResponse>(`/api/ui/v1/flamegraph?${params}`);
+}
+
+export function getTopStacks(params: URLSearchParams) {
+  return getJSON<TopStackRow[]>(`/api/ui/v1/top-stacks?${params}`);
 }
 
 export function getThreadDiagnosis(params: URLSearchParams) {

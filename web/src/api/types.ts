@@ -23,6 +23,16 @@ export type FlamegraphResponse = {
   metadata: PartialMetadata;
 };
 
+export type TopStackRow = {
+  symbol: string;
+  location: string;
+  profile_type: ProfileType | string;
+  self: number;
+  total: number;
+  self_percent: string;
+  total_percent: string;
+};
+
 export type TargetStatusReason =
   | "disabled_by_metadata"
   | "temporary_expired"

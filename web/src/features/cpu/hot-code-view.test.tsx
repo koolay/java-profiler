@@ -90,6 +90,64 @@ test("renders top table and flame graph in both mode", () => {
   expect(screen.getByText(/High total, low self: start from DemoHttpService\.handleWork/)).toBeInTheDocument();
 });
 
+test("renders backend top rows with self and total CPU values", () => {
+  render(
+    <HotCodeView
+      root={root}
+      metadata={{ partial: false }}
+      topRows={[
+        {
+          symbol: "DemoHttpService.handleWork",
+          location: "com/ebpfjava/examples/httpdemo/DemoHttpService.handleWork:93",
+          profile_type: "java_cpu_nanoseconds",
+          self: 0,
+          total: 10,
+          self_percent: "0.0%",
+          total_percent: "100.0%",
+        },
+        {
+          symbol: "DemoHttpService.burnCpu",
+          location: "com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188",
+          profile_type: "java_cpu_nanoseconds",
+          self: 8,
+          total: 8,
+          self_percent: "80.0%",
+          total_percent: "80.0%",
+        },
+      ]}
+    />,
+  );
+
+  const handleRow = screen.getByRole("row", { name: /DemoHttpService\.handleWork/ });
+  expect(handleRow).toHaveTextContent("0 0.0%");
+  expect(handleRow).toHaveTextContent("10 100.0%");
+});
+
+test("selecting a backend top row highlights matching flame graph frames", () => {
+  render(
+    <HotCodeView
+      root={root}
+      metadata={{ partial: false }}
+      topRows={[
+        {
+          symbol: "DemoHttpService.handleWork",
+          location: "com/ebpfjava/examples/httpdemo/DemoHttpService.handleWork:93",
+          profile_type: "java_cpu_nanoseconds",
+          self: 0,
+          total: 10,
+          self_percent: "0.0%",
+          total_percent: "100.0%",
+        },
+      ]}
+    />,
+  );
+
+  fireEvent.click(within(screen.getByRole("region", { name: "Top table" })).getByRole("button", { name: /DemoHttpService\.handleWork/ }));
+
+  expect(screen.getByPlaceholderText("Search frame")).toHaveValue("");
+  expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
+});
+
 test("sorts the top table by total by default and supports self sorting", () => {
   render(<HotCodeView root={root} metadata={{ partial: false }} />);
 

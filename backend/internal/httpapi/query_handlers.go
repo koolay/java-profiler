@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/koolay/java-profiler/backend/internal/app"
+	"github.com/koolay/java-profiler/backend/internal/clickhouse"
 	"github.com/koolay/java-profiler/domain"
 )
 
@@ -35,6 +36,15 @@ func (h QueryHandlers) Flamegraph(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
+func (h QueryHandlers) TopStacks(w http.ResponseWriter, r *http.Request) {
+	result, err := app.QueryTopStacks(r.Context(), h.Profiles, profileQueryFromRequest(r, 1000))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, result)
+}
+
 func (h QueryHandlers) ThreadDiagnosis(w http.ResponseWriter, r *http.Request) {
 	result, err := app.QueryThreadDiagnosis(r.Context(), h.Threads, r.URL.Query().Get("namespace"), r.URL.Query().Get("service"))
 	if err != nil {
@@ -42,6 +52,18 @@ func (h QueryHandlers) ThreadDiagnosis(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, result)
+}
+
+func profileQueryFromRequest(r *http.Request, limit int) clickhouse.ProfileQuery {
+	return clickhouse.ProfileQuery{
+		Namespace:   r.URL.Query().Get("namespace"),
+		Service:     r.URL.Query().Get("service"),
+		Pod:         r.URL.Query().Get("pod"),
+		ProfileType: domain.ProfileType(r.URL.Query().Get("profile_type")),
+		Start:       parseQueryTime(r.URL.Query().Get("start")),
+		End:         parseQueryTime(r.URL.Query().Get("end")),
+		Limit:       limit,
+	}
 }
 
 func (h QueryHandlers) Deadlocks(w http.ResponseWriter, r *http.Request) {

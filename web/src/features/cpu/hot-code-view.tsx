@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import type { FlamegraphNode, PartialMetadata } from "../../api/types";
+import type { FlamegraphNode, PartialMetadata, TopStackRow } from "../../api/types";
 import { Flamegraph } from "../../visualization/flamegraph";
 
 type Props = {
   root: FlamegraphNode;
   metadata?: PartialMetadata;
+  topRows?: TopStackRow[];
 };
 
 type HotFrame = {
@@ -15,15 +16,16 @@ type HotFrame = {
   line?: number;
   self: number;
   total: number;
-  selfPercent: number;
-  totalPercent: number;
+  selfPercent: number | string;
+  totalPercent: number | string;
 };
 
 type ViewMode = "top-table" | "flame-graph" | "both";
 type SortKey = "total" | "self" | "symbol";
 
-export function HotCodeView({ root, metadata }: Props) {
-  const hotFrames = useMemo(() => collectHotJavaFrames(root), [root]);
+export function HotCodeView({ root, metadata, topRows }: Props) {
+  const fallbackFrames = useMemo(() => collectHotJavaFrames(root), [root]);
+  const hotFrames = useMemo(() => (topRows ? topRows.map(topRowToHotFrame) : fallbackFrames), [fallbackFrames, topRows]);
   const [selectedName, setSelectedName] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<ViewMode>("both");
   const [sortKey, setSortKey] = useState<SortKey>("total");
@@ -199,8 +201,8 @@ function TopTable({
                   <small>{frame.line ? `${frame.className}:${frame.line}` : frame.fullSymbol}</small>
                 </button>
               </td>
-              <td>{formatSamples(frame.self)} <small>{frame.selfPercent.toFixed(1)}%</small></td>
-              <td>{formatSamples(frame.total)} <small>{frame.totalPercent.toFixed(1)}%</small></td>
+              <td>{formatSamples(frame.self)} <small>{formatPercent(frame.selfPercent)}</small></td>
+              <td>{formatSamples(frame.total)} <small>{formatPercent(frame.totalPercent)}</small></td>
             </tr>
           ))}
         </tbody>
@@ -211,6 +213,27 @@ function TopTable({
 
 function formatSamples(value: number) {
   return value.toLocaleString();
+}
+
+function formatPercent(value: number | string) {
+  return typeof value === "string" ? value : `${value.toFixed(1)}%`;
+}
+
+function topRowToHotFrame(row: TopStackRow): HotFrame {
+  const parsed = parseJavaFrame(row.location) ?? parseJavaFrame(row.symbol);
+  const symbol = row.symbol || parsed?.name || row.location;
+  const className = parsed?.className ?? symbol.split(".").slice(-2, -1)[0] ?? symbol;
+  return {
+    name: row.location || symbol,
+    symbol,
+    fullSymbol: parsed ? `${parsed.fullClassName}.${parsed.method}` : row.location || symbol,
+    className,
+    line: parsed?.line,
+    self: row.self,
+    total: row.total,
+    selfPercent: row.self_percent,
+    totalPercent: row.total_percent,
+  };
 }
 
 function describeHotFrame(frame: HotFrame) {
