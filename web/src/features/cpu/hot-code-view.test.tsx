@@ -148,6 +148,13 @@ test("selecting a backend top row highlights matching flame graph frames", () =>
   expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
 });
 
+test("uses flamegraph fallback top table when backend top rows are empty", () => {
+  render(<HotCodeView root={root} metadata={{ partial: false }} topRows={[]} />);
+
+  expect(screen.getByRole("region", { name: "Top table" })).toBeInTheDocument();
+  expect(screen.getByRole("row", { name: /DemoHttpService\.burnCpu/ })).toBeInTheDocument();
+});
+
 test("sorts the top table by total by default and supports self sorting", () => {
   render(<HotCodeView root={root} metadata={{ partial: false }} />);
 

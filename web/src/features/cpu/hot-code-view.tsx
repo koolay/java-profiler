@@ -25,7 +25,7 @@ type SortKey = "total" | "self" | "symbol";
 
 export function HotCodeView({ root, metadata, topRows }: Props) {
   const fallbackFrames = useMemo(() => collectHotJavaFrames(root), [root]);
-  const hotFrames = useMemo(() => (topRows ? topRows.map(topRowToHotFrame) : fallbackFrames), [fallbackFrames, topRows]);
+  const hotFrames = useMemo(() => (topRows && topRows.length > 0 ? topRows.map(topRowToHotFrame) : fallbackFrames), [fallbackFrames, topRows]);
   const [selectedName, setSelectedName] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<ViewMode>("both");
   const [sortKey, setSortKey] = useState<SortKey>("total");

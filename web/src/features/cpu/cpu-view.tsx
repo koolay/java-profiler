@@ -8,11 +8,12 @@ export function CpuView({ params }: { params: URLSearchParams }) {
 	const { data, error } = useAPI(() => getFlamegraph(params), [params.toString()], fallback);
 	const { data: topRows, error: topRowsError } = useAPI(() => getTopStacks(params), [params.toString()], []);
 	const root = data?.root ?? fallback.root;
+	const usableTopRows = !topRowsError && topRows && topRows.length > 0 ? topRows : undefined;
 	return (
 		<section>
 			{error && <p className="warning">Backend unavailable: {error}</p>}
 			{topRowsError && <p className="warning">Top table unavailable: {topRowsError}</p>}
-			<HotCodeView root={root} metadata={data?.metadata} topRows={topRowsError ? undefined : topRows} />
+			<HotCodeView root={root} metadata={data?.metadata} topRows={usableTopRows} />
 		</section>
 	);
 }

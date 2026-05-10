@@ -37,7 +37,7 @@ func rankTopStacks(samples []clickhouse.ProfileSample) []TopStackRow {
 	}
 
 	var totalSamples uint64
-	bySymbol := make(map[string]contribution)
+	byLocation := make(map[string]contribution)
 	for _, sample := range samples {
 		if sample.Value == 0 || len(sample.Frames) == 0 {
 			continue
@@ -49,26 +49,27 @@ func rankTopStacks(samples []clickhouse.ProfileSample) []TopStackRow {
 		}
 
 		leaf := sample.Frames[len(sample.Frames)-1]
+		leafLocation := frameLocation(leaf)
 		for _, frame := range included {
-			symbol := frameSymbol(frame)
-			if symbol == "" {
+			location := frameLocation(frame)
+			if location == "" {
 				continue
 			}
-			current := bySymbol[symbol]
-			current.location = bestLocation(current.location, frame)
+			current := byLocation[location]
+			current.location = location
 			current.profileType = sample.ProfileType
 			current.total += sample.Value
-			if frame == leaf {
+			if location == leafLocation {
 				current.self += sample.Value
 			}
-			bySymbol[symbol] = current
+			byLocation[location] = current
 		}
 	}
 
-	rows := make([]TopStackRow, 0, len(bySymbol))
-	for symbol, contribution := range bySymbol {
+	rows := make([]TopStackRow, 0, len(byLocation))
+	for location, contribution := range byLocation {
 		rows = append(rows, TopStackRow{
-			Symbol:       symbol,
+			Symbol:       frameSymbol(location),
 			Location:     contribution.location,
 			ProfileType:  string(contribution.profileType),
 			Self:         contribution.self,
@@ -84,7 +85,10 @@ func rankTopStacks(samples []clickhouse.ProfileSample) []TopStackRow {
 		if rows[i].Self != rows[j].Self {
 			return rows[i].Self > rows[j].Self
 		}
-		return rows[i].Symbol < rows[j].Symbol
+		if rows[i].Symbol != rows[j].Symbol {
+			return rows[i].Symbol < rows[j].Symbol
+		}
+		return rows[i].Location < rows[j].Location
 	})
 	return rows
 }
@@ -103,7 +107,7 @@ func topTableFrames(frames []string) []string {
 }
 
 func frameSymbol(frame string) string {
-	normalized := strings.ReplaceAll(frame, "/", ".")
+	normalized := frameLocation(frame)
 	if lineIndex := strings.LastIndex(normalized, ":"); lineIndex > -1 {
 		if isDigits(normalized[lineIndex+1:]) {
 			normalized = normalized[:lineIndex]
@@ -116,22 +120,30 @@ func frameSymbol(frame string) string {
 	return normalized
 }
 
+func frameLocation(frame string) string {
+	return strings.ReplaceAll(frame, "/", ".")
+}
+
 func isApplicationJavaFrame(frame string) bool {
 	symbol := frameSymbol(frame)
 	if symbol == "" || strings.Contains(frame, "$$Lambda") {
 		return false
 	}
-	normalized := strings.ToLower(strings.ReplaceAll(frame, "/", "."))
-	methodSeparator := strings.LastIndex(frameWithoutLine(normalized), ".")
+	location := frameLocation(frame)
+	locationWithoutLine := frameWithoutLine(location)
+	methodSeparator := strings.LastIndex(locationWithoutLine, ".")
 	if methodSeparator < 0 {
 		return false
 	}
-	method := frameWithoutLine(normalized)[methodSeparator+1:]
-	className := frameWithoutLine(normalized)[:methodSeparator]
+	method := locationWithoutLine[methodSeparator+1:]
+	className := locationWithoutLine[:methodSeparator]
 	simpleClass := className
 	if dot := strings.LastIndex(simpleClass, "."); dot > -1 {
 		simpleClass = simpleClass[dot+1:]
 	}
+	normalized := strings.ToLower(location)
+	normalizedClass := strings.ToLower(className)
+	normalizedMethod := strings.ToLower(method)
 	if simpleClass == "" || method == "" {
 		return false
 	}
@@ -143,7 +155,7 @@ func isApplicationJavaFrame(frame string) bool {
 	}
 	excludedPrefixes := []string{"java.", "javax.", "jdk.", "sun.", "com.sun.", "org.graalvm.", "lib"}
 	for _, prefix := range excludedPrefixes {
-		if strings.HasPrefix(className, prefix) {
+		if strings.HasPrefix(normalizedClass, prefix) {
 			return false
 		}
 	}
@@ -156,7 +168,7 @@ func isApplicationJavaFrame(frame string) bool {
 	excludedMethods := map[string]struct{}{
 		"read": {}, "write": {}, "open": {}, "close": {}, "poll": {}, "select": {}, "epoll": {}, "recv": {}, "send": {}, "accept": {}, "connect": {}, "syscall": {}, "nanosleep": {},
 	}
-	_, excluded := excludedMethods[method]
+	_, excluded := excludedMethods[normalizedMethod]
 	return !excluded
 }
 
@@ -177,13 +189,6 @@ func isDigits(value string) bool {
 		}
 	}
 	return true
-}
-
-func bestLocation(current, candidate string) string {
-	if current == "" || candidate < current {
-		return candidate
-	}
-	return current
 }
 
 func percent(value, total uint64) string {

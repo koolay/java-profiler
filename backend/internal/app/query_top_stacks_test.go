@@ -52,9 +52,42 @@ func TestTopStacksKeepsJavaRowsWhenRuntimeFramesExist(t *testing.T) {
 	}
 }
 
+func TestTopStacksKeepsSameSymbolFromDifferentPackagesDistinct(t *testing.T) {
+	samples := []clickhouse.ProfileSample{
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "com.foo.CheckoutService.priceCart:10"}, Value: 6},
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "org.acme.CheckoutService.priceCart:42"}, Value: 4},
+	}
+
+	rows := rankTopStacks(samples)
+	if len(rows) != 2 {
+		t.Fatalf("row count = %d, want 2 distinct package rows: %#v", len(rows), rows)
+	}
+	foo := findTopStackRowByLocation(rows, "com.foo.CheckoutService.priceCart:10")
+	acme := findTopStackRowByLocation(rows, "org.acme.CheckoutService.priceCart:42")
+
+	if foo.Symbol != "CheckoutService.priceCart" || acme.Symbol != "CheckoutService.priceCart" {
+		t.Fatalf("unexpected display symbols: foo=%q acme=%q", foo.Symbol, acme.Symbol)
+	}
+	if foo.Total != 6 || foo.Self != 6 {
+		t.Fatalf("foo total/self = %d/%d, want 6/6", foo.Total, foo.Self)
+	}
+	if acme.Total != 4 || acme.Self != 4 {
+		t.Fatalf("acme total/self = %d/%d, want 4/4", acme.Total, acme.Self)
+	}
+}
+
 func findTopStackRow(rows []TopStackRow, symbol string) TopStackRow {
 	for _, row := range rows {
 		if row.Symbol == symbol {
+			return row
+		}
+	}
+	return TopStackRow{}
+}
+
+func findTopStackRowByLocation(rows []TopStackRow, location string) TopStackRow {
+	for _, row := range rows {
+		if row.Location == location {
 			return row
 		}
 	}
