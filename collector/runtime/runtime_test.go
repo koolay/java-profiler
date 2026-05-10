@@ -2,12 +2,16 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/koolay/java-profiler/collector/internal/pipeline"
 	profiling "github.com/koolay/java-profiler/contracts/profiling"
 	"github.com/koolay/java-profiler/domain"
 )
@@ -89,5 +93,82 @@ func TestChunkProfileSamplesCopiesAndPreservesSmallBatches(t *testing.T) {
 	chunks[0][0].BatchID = "changed"
 	if samples[0].BatchID != "batch" {
 		t.Fatalf("chunk mutation leaked into source sample: %#v", samples[0])
+	}
+}
+
+func TestUploadProfileSamplesSendsBoundedMultipartMetadata(t *testing.T) {
+	var uploads []pipeline.ProfileBatchPayload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var payload pipeline.ProfileBatchPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode upload: %v", err)
+		}
+		uploads = append(uploads, payload)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	rt := NewCollector(Config{
+		CollectorID: "collector-a",
+		BackendURL:  server.URL,
+	})
+	rt.profileLimits = pipeline.ProfileBatchLimits{
+		MaxSamplesPerWindow: 3,
+		MaxSamplesPerBatch:  2,
+	}
+
+	err := rt.uploadProfileSamples(context.Background(), "batch-a", []profiling.ProfileSample{
+		{BatchID: "batch-a", StackID: "a", Value: 1},
+		{BatchID: "batch-a", StackID: "b", Value: 1},
+		{BatchID: "batch-a", StackID: "c", Value: 1},
+		{BatchID: "batch-a", StackID: "d", Value: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(uploads) != 2 {
+		t.Fatalf("uploads = %d", len(uploads))
+	}
+
+	first := uploads[0]
+	if first.BatchID != "batch-a-part-0001" {
+		t.Fatalf("first batch id = %q", first.BatchID)
+	}
+	if len(first.Samples) != 2 {
+		t.Fatalf("first sample count = %d", len(first.Samples))
+	}
+	if first.Samples[0].BatchID != first.BatchID || first.Samples[1].BatchID != first.BatchID {
+		t.Fatalf("first sample batch ids = %#v", first.Samples)
+	}
+	if first.Metadata.WindowRawSampleCount != 4 {
+		t.Fatalf("first raw sample count = %d", first.Metadata.WindowRawSampleCount)
+	}
+	if first.Metadata.WindowAggregatedSampleCount != 4 {
+		t.Fatalf("first aggregated sample count = %d", first.Metadata.WindowAggregatedSampleCount)
+	}
+	if first.Metadata.DroppedSampleCount != 1 || first.Metadata.DroppedStackCount != 1 {
+		t.Fatalf("first dropped counts = %#v", first.Metadata)
+	}
+	if !first.Metadata.Truncated {
+		t.Fatalf("first metadata should be truncated")
+	}
+	if first.Metadata.PartIndex != 1 || first.Metadata.PartCount != 2 || first.Metadata.BatchSampleCount != 2 {
+		t.Fatalf("first part metadata = %#v", first.Metadata)
+	}
+
+	second := uploads[1]
+	if second.BatchID != "batch-a-part-0002" {
+		t.Fatalf("second batch id = %q", second.BatchID)
+	}
+	if len(second.Samples) != 1 {
+		t.Fatalf("second sample count = %d", len(second.Samples))
+	}
+	if second.Samples[0].BatchID != second.BatchID {
+		t.Fatalf("second sample batch id = %#v", second.Samples[0])
+	}
+	if second.Metadata.PartIndex != 2 || second.Metadata.PartCount != 2 || second.Metadata.BatchSampleCount != 1 {
+		t.Fatalf("second part metadata = %#v", second.Metadata)
 	}
 }

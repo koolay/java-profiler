@@ -36,18 +36,19 @@ type Config struct {
 }
 
 type Runtime struct {
-	scanner      discovery.ProcessScanner
-	detector     discovery.HotSpotDetector
-	statuses     *collectorStatus.Store
-	exporter     *collectorMetrics.Exporter
-	backend      pipeline.BackendClient
-	collectorID  string
-	nodeName     string
-	cluster      string
-	pollInterval time.Duration
-	profiler     *profiler.Runner
-	targetNS     string
-	targetSvc    string
+	scanner       discovery.ProcessScanner
+	detector      discovery.HotSpotDetector
+	statuses      *collectorStatus.Store
+	exporter      *collectorMetrics.Exporter
+	backend       pipeline.BackendClient
+	collectorID   string
+	nodeName      string
+	cluster       string
+	pollInterval  time.Duration
+	profiler      *profiler.Runner
+	profileLimits pipeline.ProfileBatchLimits
+	targetNS      string
+	targetSvc     string
 }
 
 const maxProfileSamplesPerBatch = 10_000
@@ -84,8 +85,9 @@ func NewCollector(cfg Config) *Runtime {
 			TargetTmpDir:         os.Getenv("JAVA_PROFILER_TARGET_TMP_DIR"),
 			AllocationAndLockJFR: strings.EqualFold(os.Getenv("JAVA_PROFILER_ENABLE_ALLOC_LOCK_JFR"), "true"),
 		}, profiler.HotSpotAttachController{ProcRoot: procRoot}),
-		targetNS:  os.Getenv("JAVA_PROFILER_TARGET_NAMESPACE"),
-		targetSvc: os.Getenv("JAVA_PROFILER_TARGET_SERVICE"),
+		profileLimits: pipeline.DefaultProfileBatchLimits(),
+		targetNS:      os.Getenv("JAVA_PROFILER_TARGET_NAMESPACE"),
+		targetSvc:     os.Getenv("JAVA_PROFILER_TARGET_SERVICE"),
 	}
 }
 
@@ -251,8 +253,15 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 }
 
 func (r *Runtime) uploadProfileSamples(ctx context.Context, batchID string, samples []profiling.ProfileSample) error {
-	chunks := chunkProfileSamples(samples, maxProfileSamplesPerBatch)
-	if len(chunks) == 0 {
+	boundedSamples, metadata := pipeline.BoundProfileSamples(samples, r.profileLimits)
+	maxPerBatch := r.profileLimits.MaxSamplesPerBatch
+	if maxPerBatch <= 0 {
+		maxPerBatch = maxProfileSamplesPerBatch
+	}
+	chunks := chunkProfileSamples(boundedSamples, maxPerBatch)
+	partCount := (len(boundedSamples) + maxPerBatch - 1) / maxPerBatch
+	if partCount == 0 {
+		partCount = 1
 		chunks = [][]profiling.ProfileSample{nil}
 	}
 	for index, chunk := range chunks {
@@ -263,7 +272,12 @@ func (r *Runtime) uploadProfileSamples(ctx context.Context, batchID string, samp
 				chunk[sampleIndex].BatchID = chunkBatchID
 			}
 		}
-		payload, err := pipeline.BuildProfileBatch(chunkBatchID, r.collectorID, chunk, profiling.ProfileBatchMetadata{})
+		payload, err := pipeline.BuildProfileBatch(
+			chunkBatchID,
+			r.collectorID,
+			chunk,
+			pipeline.BatchMetadataForPart(metadata, index+1, partCount, len(chunk)),
+		)
 		if err != nil {
 			return err
 		}
