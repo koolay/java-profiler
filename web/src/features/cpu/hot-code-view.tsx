@@ -51,8 +51,8 @@ export function HotCodeView({ root, metadata, topRows }: Props) {
 
   return (
     <section className="profile-analysis" aria-label="CPU profile analysis">
-      <div className="profile-toolbar">
-        <div>
+      <div className="profile-toolbar profile-toolbar-compact">
+        <div className="profile-toolbar-copy">
           <h2>CPU profile</h2>
           <p>Top table ranks Java symbols by self and total CPU samples. The flame graph shows sampled stack context, not source call order.</p>
         </div>
@@ -62,7 +62,7 @@ export function HotCodeView({ root, metadata, topRows }: Props) {
           <button className={viewMode === "both" ? "active" : ""} onClick={() => setViewMode("both")}>Both</button>
         </div>
       </div>
-      <div className={viewMode === "both" ? "profile-grid" : "profile-stack"}>
+      <div className={viewMode === "both" ? "profile-grid profile-grid-wide" : "profile-stack"}>
         {viewMode !== "flame-graph" && <TopTable frames={sortedFrames} selected={selected ?? fallbackSelected} explicitSelection={Boolean(selected)} sortKey={sortKey} onSort={setSortKey} onSelect={setSelectedName} />}
         {viewMode !== "top-table" && (
           <div className="profile-flamegraph">

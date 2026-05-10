@@ -8,13 +8,15 @@ export function MemoryView({ params }: { params: URLSearchParams }) {
 	const fallback: FlamegraphResponse = { root: { name: service, value: 0, children: [] }, metadata: { partial: false } };
 	const { data, error, loading } = useAPI(() => getFlamegraph(params), [params.toString()], fallback);
 	return (
-		<section className="view-grid">
-			<div className="view-copy">
-				<h2>Allocation sources</h2>
-				<p>Allocation profiles identify code paths creating objects. This view only has data when allocation profiling is enabled for the collector.</p>
-				{loading && <p className="muted">Loading profile evidence.</p>}
-				{error && <p className="warning">Backend unavailable: {error}</p>}
+		<section className="profile-analysis profile-analysis-wide" aria-label="Allocation profile analysis">
+			<div className="profile-toolbar profile-toolbar-tight">
+				<div>
+					<h2>Allocation sources</h2>
+					<p>Allocation profiles identify code paths creating objects. This view only has data when allocation profiling is enabled for the collector.</p>
+				</div>
 			</div>
+			{loading && <p className="muted">Loading profile evidence.</p>}
+			{error && <p className="warning">Backend unavailable: {error}</p>}
 			<Flamegraph
 				root={data?.root ?? fallback.root}
 				metadata={data?.metadata}

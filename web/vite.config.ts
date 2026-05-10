@@ -9,6 +9,11 @@ export default defineConfig({
           "/api": {
             target: process.env.VITE_DEV_BACKEND_URL,
             changeOrigin: true,
+            headers: process.env.JAVA_PROFILER_UI_TOKEN
+              ? {
+                  Authorization: `Bearer ${process.env.JAVA_PROFILER_UI_TOKEN}`,
+                }
+              : undefined,
           },
         }
       : undefined,
@@ -17,6 +22,6 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    globals: true
-  }
+    globals: true,
+  },
 });

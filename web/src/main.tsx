@@ -17,7 +17,7 @@ function App() {
       </aside>
       <section className="workspace">
         <header className="topbar">
-          <div>
+          <div className="topbar-copy">
             <p className="eyebrow">Kubernetes Java profiling</p>
             <h1>Service diagnosis</h1>
           </div>

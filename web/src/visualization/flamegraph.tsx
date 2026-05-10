@@ -63,11 +63,6 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
     setZoomPath(path);
     setSelectedPath(path);
   };
-  const zoomToSelected = () => {
-    if (selectedFrame) {
-      zoomToPath(selectedFrame.path);
-    }
-  };
   const backZoom = () => {
     setZoomHistory((history) => {
       const previous = history.at(-1);
@@ -107,8 +102,8 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
           ))}
         </nav>
       )}
-      {hasSamples && inspectedFrame && (
-        <FrameInspector frame={inspectedFrame} />
+      {hasSamples && inspectedFrame && selectedFrame && (
+        <FrameInspector frame={inspectedFrame} onFocus={() => zoomToPath(selectedFrame.path)} />
       )}
       {hasSamples ? (
         <div className="flamegraph-stack" style={{ height: Math.max(1, depth + 1) * rowHeight }}>
@@ -164,7 +159,6 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
               <dd>{selectedFrame.depth}</dd>
             </div>
           </dl>
-          <button onClick={zoomToSelected}>Focus selected</button>
         </div>
       )}
     </section>
@@ -213,7 +207,7 @@ function normalizeFrameSearch(value: string) {
   return value.trim().replaceAll("/", ".").toLowerCase();
 }
 
-function FrameInspector({ frame }: { frame: Frame }) {
+function FrameInspector({ frame, onFocus }: { frame: Frame; onFocus: () => void }) {
   return (
     <div className={`flamegraph-tooltip flamegraph-tooltip-${frame.category}`} id="flamegraph-frame-inspector" role="status">
       <div>
@@ -234,6 +228,7 @@ function FrameInspector({ frame }: { frame: Frame }) {
           <dd>{frame.depth}</dd>
         </div>
       </dl>
+      <button type="button" onClick={onFocus}>Focus selected</button>
     </div>
   );
 }

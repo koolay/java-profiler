@@ -24,18 +24,18 @@ export function ServiceOverview() {
 
   return (
     <div className="service-layout">
-      <section className="context-panel" aria-label="Service context">
-        <label>
-          Namespace
-          <input value={namespace} onChange={(event) => setNamespace(event.target.value)} />
-        </label>
-        <label>
-          Service
-          <input value={service} onChange={(event) => setService(event.target.value)} />
-        </label>
-        <div className="time-grid">
+      <section className="context-strip" aria-label="Service context">
+        <div className="context-fields">
           <label>
-            Range
+            <span>Namespace</span>
+            <input value={namespace} onChange={(event) => setNamespace(event.target.value)} />
+          </label>
+          <label>
+            <span>Service</span>
+            <input value={service} onChange={(event) => setService(event.target.value)} />
+          </label>
+          <label>
+            <span>Range</span>
             <select value={rangeMinutes} onChange={(event) => setRangeMinutes(Number(event.target.value))}>
               <option value={15}>Last 15m</option>
               <option value={30}>Last 30m</option>
@@ -43,24 +43,31 @@ export function ServiceOverview() {
               <option value={360}>Last 6h</option>
             </select>
           </label>
-          <span>UTC</span>
+          <div className="context-chip" aria-label="Timezone">
+            <span>Timezone</span>
+            <strong>UTC</strong>
+          </div>
         </div>
-        <p className="scope-note">Metric charts stay in Prometheus. This console shows profiles, thread evidence, target state, and ingestion health.</p>
+        <p className="scope-note">Profiles, thread evidence, target state, and ingestion health stay here. Metric trend charts remain in Prometheus.</p>
       </section>
       <section className="diagnosis-panel">
-        <nav className="tabs" aria-label="Diagnosis views">
-          {tabs.map((item) => (
-            <button key={item} className={item === tab ? "active" : ""} onClick={() => setTab(item)}>
-              {item}
-            </button>
-          ))}
-        </nav>
-        {tab === "memory" && <MemoryView params={params} />}
-        {tab === "cpu" && <CpuView params={params} />}
-        {tab === "locks" && <LocksView params={params} />}
-        {tab === "deadlocks" && <DeadlocksView params={params} />}
-        {tab === "status" && <TargetStatusView params={params} />}
-        {tab === "ingestion" && <IngestionHealthView />}
+        <div className="tab-row">
+          <nav className="tabs" aria-label="Diagnosis views">
+            {tabs.map((item) => (
+              <button key={item} className={item === tab ? "active" : ""} onClick={() => setTab(item)}>
+                {item}
+              </button>
+            ))}
+          </nav>
+        </div>
+        <div className="diagnosis-content">
+          {tab === "memory" && <MemoryView params={params} />}
+          {tab === "cpu" && <CpuView params={params} />}
+          {tab === "locks" && <LocksView params={params} />}
+          {tab === "deadlocks" && <DeadlocksView params={params} />}
+          {tab === "status" && <TargetStatusView params={params} />}
+          {tab === "ingestion" && <IngestionHealthView />}
+        </div>
       </section>
     </div>
   );

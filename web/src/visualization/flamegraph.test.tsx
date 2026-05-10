@@ -59,6 +59,28 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
   expect(screen.getByRole("button", { name: /Thread\.run/ })).toBeInTheDocument();
 });
 
+test("focuses the selected frame even when hover has moved to a different frame", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 100,
+        children: [
+          { name: "SelectedFrame.method:10", value: 40, children: [{ name: "SelectedFrame.child:11", value: 40 }] },
+          { name: "HoveredFrame.method:20", value: 60, children: [{ name: "HoveredFrame.child:21", value: 60 }] },
+        ],
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /SelectedFrame\.method:10/ }));
+  fireEvent.mouseEnter(screen.getByRole("button", { name: /HoveredFrame\.method:20/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
+
+  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("SelectedFrame.method:10");
+  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).not.toHaveTextContent("HoveredFrame.method:20");
+});
+
 test("returns to the previous zoom level with Back", () => {
   render(
     <Flamegraph
