@@ -58,3 +58,22 @@ func TestNormalizeWindowAggregatesDuplicateCPUStacks(t *testing.T) {
 		t.Fatalf("value = %d, want %d", samples[0].Value, want)
 	}
 }
+
+func TestNormalizeWindowWithStatsPreservesRawCountBeforeAggregation(t *testing.T) {
+	target := domain.TargetIdentity{Namespace: "prod", Service: "checkout", ProcessID: 1, JVMStartTime: time.Unix(1, 0)}
+	startedAt := time.Unix(100, 0)
+	endedAt := time.Unix(160, 0)
+
+	result := NormalizeWindowWithStats("batch-1", target, []Event{
+		{Type: "execution_sample", Value: 2, Frames: []string{"root", "Checkout.handle:42"}},
+		{Type: "execution_sample", Value: 3, Frames: []string{"root", "Checkout.handle:42"}},
+		{Type: "unknown_event", Value: 100, Frames: []string{"ignored"}},
+	}, startedAt, endedAt)
+
+	if result.RawSampleCount != 2 {
+		t.Fatalf("raw sample count = %d", result.RawSampleCount)
+	}
+	if len(result.Samples) != 1 {
+		t.Fatalf("expected one aggregated sample, got %+v", result.Samples)
+	}
+}

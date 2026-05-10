@@ -12,17 +12,28 @@ import (
 
 const DefaultCPUExecutionSampleValueNS uint64 = 10_000_000
 
+type NormalizedWindow struct {
+	Samples        []profiling.ProfileSample
+	RawSampleCount int
+}
+
 func Normalize(batchID string, target domain.TargetIdentity, events []Event) []profiling.ProfileSample {
 	return NormalizeWindow(batchID, target, events, time.Time{}, time.Time{})
 }
 
 func NormalizeWindow(batchID string, target domain.TargetIdentity, events []Event, startedAt, endedAt time.Time) []profiling.ProfileSample {
+	return NormalizeWindowWithStats(batchID, target, events, startedAt, endedAt).Samples
+}
+
+func NormalizeWindowWithStats(batchID string, target domain.TargetIdentity, events []Event, startedAt, endedAt time.Time) NormalizedWindow {
 	var samples []profiling.ProfileSample
+	rawSampleCount := 0
 	for _, event := range events {
 		profileType, ok := profileTypeForEvent(event.Type)
 		if !ok {
 			continue
 		}
+		rawSampleCount++
 		value := event.Value
 		if profileType == domain.ProfileTypeCPU {
 			value = event.Value * DefaultCPUExecutionSampleValueNS
@@ -40,7 +51,7 @@ func NormalizeWindow(batchID string, target domain.TargetIdentity, events []Even
 			Truncated:   len(event.Frames) > len(frames),
 		})
 	}
-	return AggregateSamples(samples)
+	return NormalizedWindow{Samples: AggregateSamples(samples), RawSampleCount: rawSampleCount}
 }
 
 func profileTypeForEvent(event string) (domain.ProfileType, bool) {

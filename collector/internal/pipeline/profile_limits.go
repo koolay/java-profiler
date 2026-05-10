@@ -14,9 +14,9 @@ func DefaultProfileBatchLimits() ProfileBatchLimits {
 	}
 }
 
-func BoundProfileSamples(samples []profiling.ProfileSample, limits ProfileBatchLimits) ([]profiling.ProfileSample, profiling.ProfileBatchMetadata) {
+func BoundProfileSamples(samples []profiling.ProfileSample, rawSampleCount int, limits ProfileBatchLimits) ([]profiling.ProfileSample, profiling.ProfileBatchMetadata) {
 	metadata := profiling.ProfileBatchMetadata{
-		WindowRawSampleCount:        len(samples),
+		WindowRawSampleCount:        rawSampleCount,
 		WindowAggregatedSampleCount: len(samples),
 	}
 	if limits.MaxSamplesPerWindow <= 0 || len(samples) <= limits.MaxSamplesPerWindow {
@@ -32,6 +32,13 @@ func BoundProfileSamples(samples []profiling.ProfileSample, limits ProfileBatchL
 }
 
 func BatchMetadataForPart(base profiling.ProfileBatchMetadata, partIndex, partCount, batchSampleCount int) profiling.ProfileBatchMetadata {
+	if partIndex > 1 {
+		base.WindowRawSampleCount = 0
+		base.WindowAggregatedSampleCount = 0
+		base.DroppedSampleCount = 0
+		base.DroppedStackCount = 0
+		base.Truncated = false
+	}
 	base.PartIndex = partIndex
 	base.PartCount = partCount
 	base.BatchSampleCount = batchSampleCount

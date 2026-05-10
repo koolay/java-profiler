@@ -42,6 +42,11 @@ type Runner struct {
 	sessions map[string]session
 }
 
+type CollectionResult struct {
+	Samples        []profiling.ProfileSample
+	RawSampleCount int
+}
+
 type session struct {
 	pid       int
 	startedAt time.Time
@@ -70,43 +75,47 @@ func NewRunner(cfg Config, attach AttachController) *Runner {
 	return runner
 }
 
-func (r *Runner) Collect(ctx context.Context, batchID string, target domain.TargetIdentity) ([]profiling.ProfileSample, error) {
+func (r *Runner) Collect(ctx context.Context, batchID string, target domain.TargetIdentity) (CollectionResult, error) {
 	if r == nil || r.attach == nil {
-		return nil, nil
+		return CollectionResult{}, nil
 	}
 	if target.ProcessID <= 0 {
-		return nil, fmt.Errorf("target process id is required")
+		return CollectionResult{}, fmt.Errorf("target process id is required")
 	}
 	if r.cfg.LibraryPath == "" {
-		return nil, fmt.Errorf("async-profiler library path is required")
+		return CollectionResult{}, fmt.Errorf("async-profiler library path is required")
 	}
 	if err := r.stageLibrary(target.ProcessID); err != nil {
-		return nil, err
+		return CollectionResult{}, err
 	}
 	nsPID, err := r.nsPID(target.ProcessID)
 	if err != nil {
-		return nil, err
+		return CollectionResult{}, err
 	}
 	key := target.Key()
 	now := r.cfg.Now().UTC()
 	prior, hasPrior := r.sessions[key]
 	if !hasPrior || prior.pid != target.ProcessID {
-		return nil, r.start(ctx, key, target.ProcessID, nsPID, now)
+		return CollectionResult{}, r.start(ctx, key, target.ProcessID, nsPID, now)
 	}
 	if err := r.stop(ctx, target.ProcessID, prior.jfrPath); err != nil {
-		return nil, err
+		return CollectionResult{}, err
 	}
 	events, err := (jfr.Parser{}).ParseFile(r.hostRootPath(target.ProcessID, prior.jfrPath))
 	if err != nil {
 		_ = r.start(ctx, key, target.ProcessID, nsPID, now)
-		return nil, err
+		return CollectionResult{}, err
 	}
 	_ = os.Remove(r.hostRootPath(target.ProcessID, prior.jfrPath))
-	samples := jfr.NormalizeWindow(batchID, target, events, prior.startedAt, now)
-	if err := r.start(ctx, key, target.ProcessID, nsPID, now); err != nil {
-		return samples, err
+	normalized := jfr.NormalizeWindowWithStats(batchID, target, events, prior.startedAt, now)
+	result := CollectionResult{
+		Samples:        normalized.Samples,
+		RawSampleCount: normalized.RawSampleCount,
 	}
-	return samples, nil
+	if err := r.start(ctx, key, target.ProcessID, nsPID, now); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 func (r *Runner) HasSession(target domain.TargetIdentity) bool {

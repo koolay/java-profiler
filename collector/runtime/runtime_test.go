@@ -123,7 +123,7 @@ func TestUploadProfileSamplesSendsBoundedMultipartMetadata(t *testing.T) {
 		{BatchID: "batch-a", StackID: "b", Value: 1},
 		{BatchID: "batch-a", StackID: "c", Value: 1},
 		{BatchID: "batch-a", StackID: "d", Value: 1},
-	})
+	}, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestUploadProfileSamplesSendsBoundedMultipartMetadata(t *testing.T) {
 	if first.Samples[0].BatchID != first.BatchID || first.Samples[1].BatchID != first.BatchID {
 		t.Fatalf("first sample batch ids = %#v", first.Samples)
 	}
-	if first.Metadata.WindowRawSampleCount != 4 {
+	if first.Metadata.WindowRawSampleCount != 7 {
 		t.Fatalf("first raw sample count = %d", first.Metadata.WindowRawSampleCount)
 	}
 	if first.Metadata.WindowAggregatedSampleCount != 4 {
@@ -170,5 +170,12 @@ func TestUploadProfileSamplesSendsBoundedMultipartMetadata(t *testing.T) {
 	}
 	if second.Metadata.PartIndex != 2 || second.Metadata.PartCount != 2 || second.Metadata.BatchSampleCount != 1 {
 		t.Fatalf("second part metadata = %#v", second.Metadata)
+	}
+	if second.Metadata.WindowRawSampleCount != 0 ||
+		second.Metadata.WindowAggregatedSampleCount != 0 ||
+		second.Metadata.DroppedSampleCount != 0 ||
+		second.Metadata.DroppedStackCount != 0 ||
+		second.Metadata.Truncated {
+		t.Fatalf("second part repeated window metadata: %#v", second.Metadata)
 	}
 }

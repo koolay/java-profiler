@@ -156,7 +156,7 @@ func TestRunnerUsesHotSpotAttachStopsParsesAndRestartsAsyncProfilerJFR(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first) != 0 {
+	if len(first.Samples) != 0 {
 		t.Fatalf("first collection starts profiler only, got samples: %+v", first)
 	}
 	if len(attach.commands) != 1 {
@@ -173,12 +173,16 @@ func TestRunnerUsesHotSpotAttachStopsParsesAndRestartsAsyncProfilerJFR(t *testin
 		t.Fatal(err)
 	}
 
-	samples, err := runner.Collect(context.Background(), "batch-2", target)
+	result, err := runner.Collect(context.Background(), "batch-2", target)
 	if err != nil {
 		t.Fatal(err)
 	}
+	samples := result.Samples
 	if len(samples) != 2 {
 		t.Fatalf("expected parsed JFR samples, got %+v", samples)
+	}
+	if result.RawSampleCount != 2 {
+		t.Fatalf("raw sample count = %d", result.RawSampleCount)
 	}
 	if samples[0].Frames[0] != "com.ebpfjava.examples.httpdemo.DemoHttpService.allocateObjects" || samples[0].Target.Service != "jdk17-http-demo" {
 		t.Fatalf("expected real JFR stack and target identity, got %+v", samples[0])

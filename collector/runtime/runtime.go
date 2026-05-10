@@ -237,11 +237,11 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 			return err
 		}
 		batchID := fmt.Sprintf("%s-profile-%d", r.collectorID, started.UnixNano())
-		samples, profileErr := r.collectProfiles(ctx, batchID, acceptedTargets)
+		samples, rawSampleCount, profileErr := r.collectProfiles(ctx, batchID, acceptedTargets)
 		if profileErr != nil {
 			r.exporter.Inc("java_profiler_collector_profiler_failures")
 		}
-		if err := r.uploadProfileSamples(ctx, batchID, samples); err != nil {
+		if err := r.uploadProfileSamples(ctx, batchID, samples, rawSampleCount); err != nil {
 			r.exporter.Inc("java_profiler_collector_upload_failures")
 			r.exporter.Inc("java_profiler_collector_upload_retryable")
 			log.Printf("profile batch upload failed: batch=%s samples=%d: %v", batchID, len(samples), err)
@@ -252,8 +252,8 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runtime) uploadProfileSamples(ctx context.Context, batchID string, samples []profiling.ProfileSample) error {
-	boundedSamples, metadata := pipeline.BoundProfileSamples(samples, r.profileLimits)
+func (r *Runtime) uploadProfileSamples(ctx context.Context, batchID string, samples []profiling.ProfileSample, rawSampleCount int) error {
+	boundedSamples, metadata := pipeline.BoundProfileSamples(samples, rawSampleCount, r.profileLimits)
 	maxPerBatch := r.profileLimits.MaxSamplesPerBatch
 	if maxPerBatch <= 0 {
 		maxPerBatch = maxProfileSamplesPerBatch
@@ -310,11 +310,12 @@ func chunkProfileSamples(samples []profiling.ProfileSample, maxPerBatch int) [][
 	return chunks
 }
 
-func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets []domain.TargetIdentity) ([]profiling.ProfileSample, error) {
+func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets []domain.TargetIdentity) ([]profiling.ProfileSample, int, error) {
 	out := make([]profiling.ProfileSample, 0)
+	rawSampleCount := 0
 	var firstErr error
 	for _, target := range targets {
-		samples, err := r.profiler.Collect(ctx, batchID, target)
+		result, err := r.profiler.Collect(ctx, batchID, target)
 		if err != nil {
 			log.Printf("async-profiler collection failed for %s/%s pod=%s pid=%d: %v", target.Namespace, target.Service, target.Pod, target.ProcessID, err)
 			if firstErr == nil {
@@ -322,9 +323,10 @@ func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets [
 			}
 			continue
 		}
-		out = append(out, samples...)
+		out = append(out, result.Samples...)
+		rawSampleCount += result.RawSampleCount
 	}
-	return out, firstErr
+	return out, rawSampleCount, firstErr
 }
 
 func (r *Runtime) targetAllowed(target domain.TargetIdentity) bool {
