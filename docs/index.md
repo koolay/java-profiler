@@ -9,6 +9,7 @@
 ### architecture/
 
 - **[java-profiler-architecture.md](./architecture/java-profiler-architecture.md)** - Java profiling system architecture
+- **[performance-ingestion-architecture-review.md](./architecture/performance-ingestion-architecture-review.md)** - Performance architecture review for OOM, batch upload, ingestion limits, and query pressure
 
 ### brainstorms/
 

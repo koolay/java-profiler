@@ -32,6 +32,8 @@ The repository is transitioning from documentation-only into implementation. The
 - `docs/architecture/java-profiler-architecture.md`
   - software architecture
   - collector, backend, ClickHouse, query, and UI boundaries
+- `docs/architecture/performance-ingestion-architecture-review.md`
+  - performance architecture review for OOM, batch upload, ingestion limits, and ClickHouse query pressure
 - `docs/research/coroot-node-agent-java-agent.md`
   - research notes on Coroot's Java agent and async-profiler-related behavior
 - `docs/operations/java-profiling-runbook.md`
