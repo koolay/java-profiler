@@ -1,0 +1,17 @@
+.mermaid {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1.5rem 0.5rem;
+  margin: 1rem 0;
+  position: relative;
+  scrollbar-gutter: stable;
+}
+
+.mermaid svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  transform-origin: center center;
+}
