@@ -139,7 +139,8 @@ drive_workload_load() {
   local service_port
   service_port="$(kubectl -n "$namespace" get "svc/$service_name" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true)"
   if [[ -z "$service_port" ]]; then
-    log "- workload service ${namespace}/${service_name} has no Service; assuming in-pod load is already active"
+    log "- workload service ${namespace}/${service_name} has no Service; assuming in-pod load is already active for ${duration}s"
+    sleep "$duration"
     return 0
   fi
   kubectl -n "$namespace" port-forward --address 127.0.0.1 "svc/$service_name" "${local_port}:${service_port}" >"$artifact_dir/port-forward-workload.log" 2>&1 &
@@ -387,6 +388,8 @@ spec:
         app: ${service_name}
         java-profiler.io/profile-mode: temporary
       annotations:
+        java-profiler.io/acceptance-run: "${acceptance_started_at}"
+        java-profiler.io/profile-disabled: "false"
         java-profiler.io/profile-mode: temporary
         java-profiler.io/profile-duration: 1h
         java-profiler.io/startup-delay: 0s
@@ -422,6 +425,8 @@ spec:
         app: ${service_name}
         java-profiler.io/profile-mode: temporary
       annotations:
+        java-profiler.io/acceptance-run: "${acceptance_started_at}"
+        java-profiler.io/profile-disabled: "false"
         java-profiler.io/profile-mode: temporary
         java-profiler.io/profile-duration: 1h
         java-profiler.io/startup-delay: 0s

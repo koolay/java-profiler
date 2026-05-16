@@ -59,12 +59,13 @@ Profiling 默认关闭。你需要在目标 Pod 或 workload Pod template 上添
 metadata:
   annotations:
     java-profiler.io/profile-mode: temporary
+    java-profiler.io/profile-disabled: "false"
     java-profiler.io/profile-duration: 10m
     java-profiler.io/startup-delay: 0s
     java-profiler.io/snapshot-interval: 10s
 ```
 
-当前临时窗口按目标 Pod/JVM 的生命周期判断。对已经运行很久的 Pod 直接添加 `10m` temporary metadata，可能立即显示 `temporary_expired`；更稳妥的做法是在 workload Pod template 上添加 metadata 后滚动重启，或按管理员确认的方式重开目标 Pod。
+当前临时窗口按目标 Pod/JVM 的生命周期判断。对已经运行很久的 Pod 直接添加 `10m` temporary metadata，可能立即显示 `temporary_expired`；更稳妥的做法是在 workload Pod template 上添加 metadata 后滚动重启，或按管理员确认的方式重开目标 Pod。重复验收时可以添加一次性 annotation，例如 `java-profiler.io/acceptance-run: "20260516225619"`，强制 Deployment 滚动出新的窗口。
 
 临时模式可以短时间提高线程快照频率，但不要长期运行高频快照。
 
@@ -80,6 +81,7 @@ metadata:
 metadata:
   annotations:
     java-profiler.io/profile-mode: continuous
+    java-profiler.io/profile-disabled: "false"
     java-profiler.io/startup-delay: 30s
     java-profiler.io/snapshot-interval: 5m
 ```
@@ -94,7 +96,7 @@ metadata:
     java-profiler.io/profile-disabled: "true"
 ```
 
-事件结束后应移除临时 annotation，或保留显式禁用作为止血控制。
+事件结束后应移除临时 annotation，或保留显式禁用作为止血控制。后续重新启用时，必须删除旧的 `profile-disabled: "true"`，或在 Pod template 上显式设置 `profile-disabled: "false"`；只改 `profile-mode` 不会覆盖禁用标记。
 
 ## 控制字段
 
@@ -108,7 +110,7 @@ metadata:
 
 时间字段使用 Go duration 格式，例如 `30s`、`10m`、`1h`。
 
-控制字段和 status reason 的稳定合同由平台维护，见 [profiling contracts](../../contracts/profiling/)；本手册只解释服务 owner 如何使用这些字段。
+控制字段和 status reason 的稳定合同由平台维护，见 [profiling contracts](../reference/profiling-contracts.md)；本手册只解释服务 owner 如何使用这些字段。
 
 ## 无法自行启用 profiling 时
 
@@ -149,6 +151,7 @@ Owner / approver:
 | accepted = 已经有 profile 数据 | accepted 只说明目标可采，非空 profile 才说明数据链路可用。 |
 | allocation 高 = retained heap 高 | allocation 只说明分配来源。 |
 | RUNNABLE = 正在消耗 CPU | RUNNABLE 是线程状态，需要结合 CPU profile。 |
+| 选中 Top Table 行 = 直接过滤成单行图 | 默认不是。选中应高亮匹配帧并显示详情；搜索是单独动作。 |
 | 多副本 service 直接混看 | 先确认是否只有某个 Pod 异常。 |
 | 发布窗口混合新旧 Pod | 用 Pod、PID、JVM start time 分开看。 |
 
@@ -160,8 +163,8 @@ Owner / approver:
 4. 如果没有权限启用 profiling，把 namespace、service、Pod 和时间范围发给服务 owner 或平台管理员。
 5. 如果 UI 无权访问目标 namespace，不要申请全集群权限；申请对应 namespace 或 service 的最小访问权限。
 6. 如果目标不是 accepted，按 reason 处理；需要权限、attach 或平台问题时联系管理员。
-7. 如果目标 accepted，按症状进入 `cpu`、`memory`、`locks`、`deadlocks` 或线程证据。
-8. 如果视图为空，打开 `ingestion` 判断上传、存储或 retention 问题。
+7. 如果目标 accepted，按症状进入 `cpu`、`memory`、`locks`、`deadlocks` 或线程证据；accepted 只说明控制面允许采集，不等于已经有 profile 数据。
+8. 如果视图为空，打开 `ingestion` 判断上传、存储或 retention 问题，并确认对应时间窗口有 accepted profile batch。
 9. 记录 top stack、thread evidence、target status 和 ingestion health。
 10. 事件结束后停止 temporary profiling 或确认 continuous 是否仍需要保留。
 
@@ -236,7 +239,7 @@ Owner / approver:
 | `temporary_expired` | 临时窗口已过期。 | 如事件仍在发生，重新开启临时 profiling。 |
 | `invalid_duration` | duration 配置错误。 | 修正为 `10m`、`1h`、`30s` 这类格式。 |
 | `unsupported_jvm` | JVM 不兼容 HotSpot，或不是目标业务 JVM。 | 确认 JVM 类型、Pod 内容器和 PID。 |
-| `profiler_conflict` | 已有其他 profiler 占用目标 JVM。 | 停止冲突工具，或跳过该 JVM。 |
+| `profiler_conflict` | 已有其他 profiler 占用目标 JVM，或前一次运行留下 async-profiler 状态。 | 停止冲突工具；如是验收残留，在管理员确认后滚动目标 Pod 再重试。 |
 | `attach_failed` | collector 无法 attach 到 JVM。 | 联系平台管理员检查权限、容器安全策略或 JVM 参数。 |
 | `upload_retryable` | 上传暂时失败，可恢复。 | 查看 `ingestion`，必要时联系管理员。 |
 | `upload_dropped` | collector 已丢弃部分批次。 | 该时间窗口证据不完整，联系管理员。 |
@@ -251,6 +254,22 @@ Owner / approver:
 ### CPU
 
 `cpu` flamegraph 展示时间窗口内被采样到的 Java 调用栈。
+
+如果页面同时显示 Top Table 和 flame graph，Top Table 里的 `Symbol`、`Self`、`Total` 应该一起读：
+
+- `Self` 和 `Total` 都要可见，并且都可以排序。
+- `Self` 说明这个函数自己消耗了多少 CPU。
+- `Total` 说明这个函数加上它的子调用一共消耗了多少 CPU。
+- 排查瓶颈时，通常先看 `Total` 找到最重的业务入口，再结合 `Self` 判断是不是函数本身在烧 CPU。
+
+交互方式要保留完整 stack context：
+
+- 选中表格行时，应高亮完整 flame graph 中的匹配帧，并显示选中帧详情。
+- 选中行为不应把主图替换成单行过滤结果。
+- 搜索是显式动作；只有用户主动搜索时，才对非匹配帧做高亮或淡化。
+- 点击火焰图块进入 `focus` 后，当前块会变成新的根，子树按新的根重新缩放。
+- `Back` 用于回到上一级 focus，`Reset` 用于回到完整上下文。
+- 选中帧详情应包含符号、样本、类别，以及 `Self` / `Total` 的解读。
 
 阅读方式：
 
@@ -624,21 +643,26 @@ RUNNABLE 是线程状态，不是 CPU 百分比。UI 若标记为 sampled 或 pr
 
 步骤：
 
-1. 对有稳定 CPU 负载的 HotSpot Java 服务启用 profiling。
-2. 确认 `status` 为 accepted。
-3. 等待至少一个 profile batch 被接受。
-4. 打开 `cpu`，确认 flamegraph 有非 root 栈。
-5. 在有 allocation 或 lock 负载时，分别确认 `memory` 和 `locks` 有非空栈。
-6. 改变时间范围，确认查询结果随时间窗口变化。
+1. 对 JDK17 demo 或有稳定 CPU、allocation、lock contention 负载的 HotSpot Java 服务启用 profiling。
+2. 确认 `status` 在当前运行窗口内为 accepted。
+3. 等待至少一个 profile batch 被 backend accepted。
+4. 打开 `cpu`，确认 Top Table 和 flamegraph 都有非 root 栈。
+5. 打开 `memory` 和 `locks`，确认 allocation 与 lock-delay 都有非空栈。
+6. 在 `cpu` 里执行搜索、选中 frame、查看详情、Focus、Back、Reset。
+7. 打开 `ingestion`，确认 profile batch accepted，且没有 unexplained rejected/dropped/truncated 证据。
+8. 改变时间范围，确认查询结果随时间窗口变化。
+9. 如果这是验收而非日常排障，还要保存 ClickHouse sample/stack 行数、TTL、浏览器截图和目标 Pod restart count 前后对比。
 
 预期证据：
 
 - UI 中出现真实方法栈和样本值。
 - `ingestion` 显示对应 profile batch 被接受。
+- CPU、allocation、lock-delay 都非空，才能证明核心 profile 链路完整。
 
 容易误判：
 
 - 只有 target status accepted 只能证明控制面可用，不能证明 profile 数据链路完整可用。
+- thread snapshot 和 deadlock event 是补充证据；如果本次不是排查线程或死锁，它们为空应记录为 gap，而不是否定 CPU/memory/lock profile 验收。
 
 ## 安全和开销建议
 

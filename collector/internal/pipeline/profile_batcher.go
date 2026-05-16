@@ -11,10 +11,10 @@ import (
 )
 
 type ProfileBatchPayload struct {
-	BatchID     string                         `json:"BatchID"`
-	CollectorID string                         `json:"CollectorID"`
-	ReceivedAt  time.Time                      `json:"ReceivedAt"`
-	Samples     []profiling.ProfileSample      `json:"Samples"`
+	BatchID     string                         `json:"batch_id"`
+	CollectorID string                         `json:"collector_id"`
+	ReceivedAt  time.Time                      `json:"received_at"`
+	Samples     []profiling.ProfileSample      `json:"samples"`
 	Metadata    profiling.ProfileBatchMetadata `json:"metadata"`
 }
 

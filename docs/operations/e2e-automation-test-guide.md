@@ -106,6 +106,16 @@ scripts/real-acceptance.sh \
   --artifact-dir /tmp/java-profiler-real-acceptance
 ```
 
+验收当前工作区代码时，先构建本地镜像，再让验收脚本部署这些 tag：
+
+```bash
+export BACKEND_IMAGE=java-profiler-backend:qa-$(date +%Y%m%d%H%M%S)
+export COLLECTOR_IMAGE=java-profiler-collector:qa-$(date +%Y%m%d%H%M%S)
+export WEB_IMAGE=java-profiler-web:qa-$(date +%Y%m%d%H%M%S)
+
+bash scripts/build-real-acceptance-images.sh
+```
+
 复用已有 Java workload，仅更新 profiler 目标过滤：
 
 ```bash
@@ -124,10 +134,13 @@ KUBECONFIG=/path/to/kubeconfig \
 scripts/real-acceptance.sh \
   --configure-profiler \
   --namespace java-profiler-qa \
-  --service checkout-java \
+  --service jdk17-http-demo \
   --require-full-profiling \
-  --artifact-dir /tmp/java-profiler-real-acceptance
+  --high-volume \
+  --artifact-dir /tmp/java-profiler-real-acceptance-$(date +%Y%m%d%H%M%S)
 ```
+
+严格验收推荐使用 `jdk17-http-demo`，因为它能稳定产生 CPU、allocation 和 lock contention。若复用已有 workload，必须确认该 workload 在 profiling 窗口内能持续产生对应负载。
 
 关键环境变量：
 
@@ -141,6 +154,9 @@ scripts/real-acceptance.sh \
 | `JAVA_WORKLOAD_PREBUILT` | `0` | 设为 `1` 表示 workload 镜像已经自带 CPU-busy Java app。 |
 | `UI_TOKEN` | `qa-ui-token` | UI 调 backend 的 token。 |
 | `COLLECTOR_TOKEN` | `qa-collector-token` | collector 调 backend 的 token。 |
+| `JAVA_PROFILER_HIGH_VOLUME_SECONDS` | `180` | `--high-volume` 下的负载和采集窗口秒数。 |
+| `JAVA_PROFILER_LOAD_PARALLELISM` | `4` | high-volume CPU/allocation 请求并发度。 |
+| `JAVA_PROFILER_LOCK_PARALLELISM` | `6` | high-volume lock contention 请求并发度。 |
 
 ## 使用 JDK 17 Demo 服务作为目标
 
@@ -211,10 +227,14 @@ metadata:
     java-profiler.io/profile-mode: temporary
   annotations:
     java-profiler.io/profile-mode: temporary
+    java-profiler.io/profile-disabled: "false"
     java-profiler.io/profile-duration: 1h
     java-profiler.io/startup-delay: 0s
     java-profiler.io/snapshot-interval: 10s
+    java-profiler.io/acceptance-run: "20260516225619"
 ```
+
+`profile-disabled: "false"` 用于覆盖旧的禁用标记；`acceptance-run` 应使用每次运行唯一值，强制 Deployment 滚动出新的 profiling 窗口。
 
 产生负载：
 
@@ -235,8 +255,11 @@ scripts/real-acceptance.sh \
   --namespace java-profiler-qa \
   --service jdk17-http-demo \
   --require-full-profiling \
+  --high-volume \
   --artifact-dir /tmp/java-profiler-jdk17-demo-e2e
 ```
+
+如果状态变成 `profiler_conflict`，通常是前一次运行已把 async-profiler 加载进同一个 JVM，而 collector/backend 又重启过。滚动目标 demo Pod 后重新运行严格验收。
 
 ## Playwright 真实 UI 验收
 
@@ -258,10 +281,12 @@ npx playwright test --config=playwright.config.ts tests/real-acceptance.spec.ts
 2. 填写 namespace 和 service。
 3. 选择最近 60 分钟。
 4. 打开 `status` 并截图。
-5. 打开 `cpu` 并截图。
-6. 打开 `deadlocks` 并截图。
-7. 打开 `ingestion` 并截图。
-8. 附加浏览器 console 信息。
+5. 打开 `cpu`，切换 Top Table、Flame Graph、Both，并截图。
+6. 搜索应用符号，确认 flamegraph 高亮/弱化命中项。
+7. 选中 Top Table 行和 flamegraph frame，确认详情、Focus、Back、Reset。
+8. 打开 `deadlocks` 并截图。
+9. 打开 `ingestion`，确认有 accepted 上传证据并截图。
+10. 附加浏览器 console 信息。
 
 ## 验收证据
 
@@ -306,8 +331,11 @@ npx playwright test --config=playwright.config.ts tests/real-acceptance.spec.ts
 | reason 是 `temporary_expired` | 临时窗口是否已过期，是否需要滚动重启或重新开启窗口。 |
 | reason 是 `unsupported_jvm` | JVM 是否 HotSpot 兼容，是否选中了 sidecar/helper Java 进程。 |
 | reason 是 `attach_failed` | collector 权限、容器安全策略、JVM attach 参数。 |
+| reason 是 `profiler_conflict` | 上一次运行留下 async-profiler 状态，先滚动目标 Pod，再重跑严格验收。 |
 | profile 为空但 status accepted | 负载不足、时间范围错误、profile batch 未上传、retention 过期。 |
-| ingestion rejected | backend 合同、ClickHouse schema、payload 版本。 |
+| ingestion rejected | backend 合同、ClickHouse schema、payload 版本；若提示 `batch_id` / `collector_id` 缺失，重新构建并部署当前工作区 collector/backend 镜像。 |
+| no-Service 合成 workload 很快结束 | 使用更新后的脚本；验收脚本必须等待完整 profiling 窗口。 |
+| Playwright strict locator 报重复 frame | 重复栈帧是合法数据；测试应按用户可见角色/文本定位，并在必要时选择第一个匹配项。 |
 | 目标 Pod 重启 | 先停止扩大采集范围，检查 attach 安全性和资源压力。 |
 
 ## CI 建议

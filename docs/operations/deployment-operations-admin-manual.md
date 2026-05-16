@@ -41,7 +41,7 @@
 
 不要把它扩展成通用日志、 tracing、service map、非 Java profiling 或长期指标平台。
 
-稳定 payload 和配置词汇以 [`contracts/profiling/`](../../contracts/profiling/) 为准；本手册解释管理员如何部署、验证和恢复这些合同。
+稳定 payload 和配置词汇以 [profiling contracts](../reference/profiling-contracts.md) 为准；本手册解释管理员如何部署、验证和恢复这些合同。
 
 ## 组件
 
@@ -81,6 +81,8 @@
 - 带 profiling annotation 的测试 workload 在 UI `status` 中出现。
 - target status 至少能显示 accepted、disabled 或 unsupported 这类明确状态。
 - collector upload success 增长，upload retryable 和 dropped batch 没有持续增长。
+- 对 collector profiling、ingestion、ClickHouse、backend query、Kubernetes deployment、JDK17 demo 或 profile UI 的变更，使用当前工作区镜像运行严格真实验收：`scripts/build-real-acceptance-images.sh` 后执行 `scripts/real-acceptance.sh --service jdk17-http-demo --configure-profiler --require-full-profiling --high-volume`。
+- 严格验收 artifact 目录保存在 `/tmp/java-profiler-real-acceptance-*`，并包含 status、profile、ingestion、ClickHouse TTL、Browser UI 和目标 Pod restart count 证据。
 - rollback 后重复 backend、Web API proxy、collector upload 和 UI target status 检查。
 
 ## Tag-driven Release Workflow
@@ -103,6 +105,7 @@
 | collector 发现 | 测试节点上有 Java 进程时 discovered processes 大于 0；没有 Java 进程时要明确记录测试前提。 | DaemonSet 节点覆盖、host proc、RBAC。 |
 | target status | 测试 workload 出现 accepted、disabled、unsupported 或其他明确 reason。 | Pod metadata、JVM 类型、collector 日志。 |
 | 上传链路 | upload success 增长；retryable 和 dropped batch 不持续增长。 | backend、网络、token、collector buffer。 |
+| 真实 profile 验收 | JDK17 demo target accepted；CPU、allocation、lock-delay profile 非空；profile batch accepted；Browser UI 真实数据流通过。 | 目标 metadata、async-profiler conflict、collector/backend payload 合同、ClickHouse schema、负载窗口。 |
 | retention | schema TTL 不超过 7 天；raw artifact 不超过 24 小时。 | ClickHouse schema、TTL 表达式、清理任务。 |
 
 ## Helm 配置基线
@@ -422,7 +425,7 @@ metadata:
 
 处理：
 
-- 修正 metadata。
+- 修正 metadata。重新启用时必须删除旧的 `java-profiler.io/profile-disabled: "true"`，或在 Pod template 上显式设置 `java-profiler.io/profile-disabled: "false"`；只设置 `profile-mode` 不会覆盖 truthy 禁用标记。
 - 必要时 rollout workload。
 
 ### 案例 5：目标是 `unsupported_jvm`
@@ -458,6 +461,7 @@ metadata:
 
 - 停止冲突工具，或跳过该 JVM。
 - 不要同时对同一个 JVM 运行多个 profiler。
+- 如果冲突来自前一次验收已经加载到 JVM 内的 `libasyncProfiler.so`，在重新运行严格验收前滚动目标 Pod，避免复用旧 JVM 状态。
 
 ### 案例 7：目标是 `attach_failed`
 
@@ -543,18 +547,21 @@ metadata:
 
 验收：
 
-1. 部署带稳定 CPU 负载的 HotSpot Java 测试服务。
-2. 启用 temporary profiling。
-3. 确认 target status accepted。
-4. 等待 profile batch 上传并被 backend accepted。
-5. 查询 ClickHouse profile sample 和 stack 行数。
-6. 打开 UI `cpu`，确认 flamegraph 有非 root 栈。
-7. 如有 allocation 或 lock 负载，分别确认 `memory` 和 `locks` 有非空栈。
+1. 使用当前工作区镜像部署 backend、collector 和 web。
+2. 部署 JDK17 demo 或等价的 HotSpot Java 测试服务，并在 Pod template 上启用 temporary profiling。
+3. 在 profiling 窗口内持续驱动 CPU、allocation 和并发 lock contention。
+4. 确认 target status 在当前时间窗口内 accepted。
+5. 等待 profile batch 上传并被 backend accepted；high-volume 验收还要确认 rejected、dropped、truncated、oversized batch 为 0。
+6. 查询 ClickHouse profile sample 和 stack 行数，并确认 TTL 不超过 7 天。
+7. 打开 UI `cpu`、`memory`、`locks`，确认 CPU、allocation、lock-delay 都有非空栈。
+8. 执行 Browser UI 真实数据流：Top Table、Flame Graph、Both、搜索、详情、Focus、Back、Reset、ingestion。
+9. 对比目标 Pod 测试前后 restart count，不能增加。
 
 结论：
 
 - 只有 target status accepted 只能证明控制面可用。
 - 非空 CPU/allocation/lock profile 才能证明性能分析数据链路可用。
+- thread snapshot 和 deadlock event 是有价值的补充证据；除非本次变更目标就是这两项，否则为空应记录为 gap，而不是判定 profile 验收失败。
 
 ### 案例 12：retention 验收
 

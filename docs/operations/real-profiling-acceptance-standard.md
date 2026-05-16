@@ -19,6 +19,23 @@ Acceptance must prove that a user can locate a real Java performance bottleneck 
 - The deployed backend, collector, and web pods must run the image tags built from the current workspace.
 - Prefer approved base images from the project/user-provided mirror list. For the real acceptance collector image, the default runtime base image is `ghcr.io/koolay/library/alpine:3.18.0`.
 
+Recommended current-workspace setup:
+
+```bash
+export BACKEND_IMAGE=java-profiler-backend:qa-$(date +%Y%m%d%H%M%S)
+export COLLECTOR_IMAGE=java-profiler-collector:qa-$(date +%Y%m%d%H%M%S)
+export WEB_IMAGE=java-profiler-web:qa-$(date +%Y%m%d%H%M%S)
+
+bash scripts/build-real-acceptance-images.sh
+
+scripts/real-acceptance.sh \
+  --service jdk17-http-demo \
+  --configure-profiler \
+  --require-full-profiling \
+  --high-volume \
+  --artifact-dir /tmp/java-profiler-real-acceptance-$(date +%Y%m%d%H%M%S)
+```
+
 ## Required Data Evidence
 
 Every full acceptance run must collect and verify all of the following from the current run window:
@@ -65,10 +82,14 @@ The UI can include native/JVM frames in the flamegraph, but it must make their m
 Use `scripts/real-acceptance.sh --require-full-profiling` for strict acceptance. The script must:
 
 - wait for target status rows instead of assuming they exist immediately after rollout or table truncation
+- explicitly clear stale disable metadata with `java-profiler.io/profile-disabled: "false"` when configuring a target
+- force a fresh workload rollout for acceptance by adding run-specific metadata such as `java-profiler.io/acceptance-run`
 - drive CPU, allocation, and concurrent lock load for the full profiling wait window
+- keep no-Service synthetic workload runs alive until the full profiling wait window has elapsed
 - fail when CPU, allocation, or lock-delay profile data is empty
 - support `--high-volume` for ingestion hardening changes; this mode must extend the profiling window, increase CPU/allocation/lock load parallelism, and verify bounded profile batch metadata
 - fail high-volume acceptance when profile batches are rejected, when a profile batch exceeds the collector batch limit, or when ClickHouse restarts/OOMKills during the run
+- verify collector/backend profile payload compatibility in tests; profile batch JSON must match the backend contract
 - run Playwright UI acceptance unless `--skip-browser` is explicitly justified
 - write evidence under `/tmp/java-profiler-real-acceptance-*`
 
@@ -89,6 +110,10 @@ Treat these as acceptance blockers:
 - no accepted target status for the current run window
 - CPU, allocation, or lock-delay flamegraph root value is zero
 - backend rejects profile payloads because batch size is too large
+- backend rejects profile payloads because required fields such as `batch_id` or `collector_id` are missing; this means collector/backend payload versions or JSON tags do not match
+- target status is `disabled_by_metadata` because a stale truthy `profile-disabled` annotation was left on the Pod template
+- target status is `profiler_conflict` after a previous run; roll the target Pod before retrying strict acceptance
+- no-Service synthetic workload exits before the profiling window has elapsed
 - ClickHouse OOMs under the real acceptance workload
 - high-volume ingestion has no accepted profile batches
 - collector/backend ingestion metadata hides dropped, truncated, split, or rejected profile batches

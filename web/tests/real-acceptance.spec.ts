@@ -55,10 +55,10 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await expect(page.getByRole("columnheader", { name: "Self CPU" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Total CPU" })).toBeVisible();
   const topTable = page.getByRole("region", { name: "Top table" });
-  await expect(topTable.getByRole("button", { name: /DemoHttpService\.handleWork/ })).toBeVisible();
+  await expect(topTable.getByRole("button", { name: /DemoHttpService\.handleWork/ }).first()).toBeVisible();
   const firstDataRow = topTable.locator("tbody tr").first();
   await expect(firstDataRow).not.toContainText(/(^|\b)(so\.6|libjvm|pthread|clock_gettime|\[vdso\])(\b|$)/i);
-  await topTable.getByRole("button", { name: /DemoHttpService\.burnCpu/ }).click();
+  await topTable.getByRole("button", { name: /DemoHttpService\.burnCpu/ }).first().click();
   await expect(page.getByPlaceholder("Search frame")).toBeVisible();
   await expect(page.getByPlaceholder("Search frame")).toHaveValue("");
   await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();

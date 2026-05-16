@@ -18,12 +18,16 @@ The collector waits for the startup delay, verifies HotSpot compatibility, check
 ```yaml
 metadata:
   annotations:
+    java-profiler.io/profile-disabled: "false"
     java-profiler.io/profile-mode: temporary
     java-profiler.io/profile-duration: 10m
+    java-profiler.io/startup-delay: 0s
     java-profiler.io/snapshot-interval: 10s
 ```
 
 Temporary profiling stops automatically when the duration expires. High-frequency thread snapshots are only intended for temporary windows.
+
+Temporary windows are evaluated from the target Pod/JVM lifecycle. If you add temporary metadata to a long-running Pod, it may immediately report `temporary_expired`. For a clean incident window, update the Pod template and roll the workload, or add a run-specific annotation such as `java-profiler.io/acceptance-run: "<timestamp>"` so Kubernetes creates a fresh Pod.
 
 ## Disable Profiling
 
@@ -34,6 +38,8 @@ metadata:
 ```
 
 Explicit disable wins over continuous and temporary enablement.
+
+When re-enabling a workload that was previously disabled, remove the key or set `java-profiler.io/profile-disabled: "false"` on the Pod template. A stale truthy `profile-disabled` annotation keeps the target in `disabled_by_metadata` even when `profile-mode` is `temporary` or `continuous`.
 
 ## Validate an Existing Workload
 
@@ -52,15 +58,41 @@ scripts/real-acceptance.sh \
 
 The script records target Pod state before and after the run and fails if the selected workload's restart count increases. With `--require-full-profiling`, only data created after the acceptance run starts can satisfy the check; historical profile rows from earlier Pods or earlier runs do not count. Use `--skip-workload-rollout-check` only when `--service` is a label-level filter rather than a Deployment name.
 
+For strict acceptance after collector/backend/web changes, first build images from the current workspace and deploy those exact tags:
+
+```bash
+export BACKEND_IMAGE=java-profiler-backend:qa-$(date +%Y%m%d%H%M%S)
+export COLLECTOR_IMAGE=java-profiler-collector:qa-$(date +%Y%m%d%H%M%S)
+export WEB_IMAGE=java-profiler-web:qa-$(date +%Y%m%d%H%M%S)
+
+bash scripts/build-real-acceptance-images.sh
+
+KUBECONFIG=/path/to/kubeconfig \
+BACKEND_IMAGE="$BACKEND_IMAGE" \
+COLLECTOR_IMAGE="$COLLECTOR_IMAGE" \
+WEB_IMAGE="$WEB_IMAGE" \
+scripts/real-acceptance.sh \
+  --service jdk17-http-demo \
+  --configure-profiler \
+  --require-full-profiling \
+  --high-volume \
+  --artifact-dir /tmp/java-profiler-real-acceptance-$(date +%Y%m%d%H%M%S)
+```
+
+If a previous run left async-profiler loaded in the target JVM and the status becomes `profiler_conflict`, roll the target Pod before retrying strict acceptance.
+
 ## Failure Statuses
 
 - `disabled_by_metadata`: workload has no opt-in metadata or has explicit disable
 - `unsupported_jvm`: process is not HotSpot-compatible
 - `profiler_conflict`: another async-profiler user is detected
+- `temporary_expired`: temporary profile window has expired; roll the Pod or start a fresh temporary window
 - `attach_failed`: collector could not attach to the JVM
 - `upload_retryable`: backend or network failure can be retried
 - `upload_dropped`: collector buffer overflow dropped old batches
 - `storage_rejected`: backend rejected invalid or conflicting data
+
+If status is accepted but profile data stays empty, check backend ingestion health before changing the workload. Rejected profile batches commonly indicate a collector/backend payload contract mismatch or ClickHouse schema drift.
 
 ## Retention
 
