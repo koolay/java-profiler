@@ -22,6 +22,7 @@
 | --- | --- |
 | 第一次安装 | 安装前检查、Helm 配置基线、部署验收流程 |
 | 升级或回滚 | 上线前验收清单、升级和回滚、验收通过标准 |
+| 发布新版本 | Tag-driven release workflow、上线前验收清单 |
 | Web UI 能打开但 API 不通 | Web API 代理、故障排查案例 2 |
 | collector 没发现目标 | RBAC 和权限、故障排查案例 3 |
 | ClickHouse 或 backend 异常 | ClickHouse 管理、故障排查案例 1 |
@@ -81,6 +82,17 @@
 - target status 至少能显示 accepted、disabled 或 unsupported 这类明确状态。
 - collector upload success 增长，upload retryable 和 dropped batch 没有持续增长。
 - rollback 后重复 backend、Web API proxy、collector upload 和 UI target status 检查。
+
+## Tag-driven Release Workflow
+
+发布新版本时，维护者创建 `vX.Y.Z` 形式的 tag。仓库的 release workflow 会在 tag push 后自动：
+
+- 构建并推送 backend、collector、web 的多架构版本化镜像到 GHCR。
+- 按 tag 版本打包 Helm chart。
+- 为镜像生成 SBOM 和 provenance attestation。
+- 创建或更新同名 GitHub Release，并附上 Helm chart 包、`SHA256SUMS`、`release-manifest.txt`，以及包含镜像 digest 的 release notes。
+
+如果 tag 对应的验证失败，workflow 不会发布 release。发布后的 release 页面应作为这个版本的入口，而不是手工拼出来的版本说明。
 
 ## 验收通过标准
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/koolay/java-profiler/backend/internal/app"
 	"github.com/koolay/java-profiler/backend/internal/clickhouse"
+	"github.com/koolay/java-profiler/backend/internal/metrics"
 	"github.com/koolay/java-profiler/domain"
 )
 
@@ -16,18 +17,21 @@ type QueryHandlers struct {
 	Threads        app.ThreadStore
 	Statuses       app.TargetStatusQueryStore
 	IngestionStore app.IngestionQueryStore
+	Metrics        *metrics.Exporter
 }
 
 func (h QueryHandlers) Flamegraph(w http.ResponseWriter, r *http.Request) {
-	result, err := (app.FlamegraphQuerier{Profiles: h.Profiles}).Query(r.Context(), app.FlamegraphQuery{
-		Namespace:   r.URL.Query().Get("namespace"),
-		Service:     r.URL.Query().Get("service"),
-		Pod:         r.URL.Query().Get("pod"),
-		ProfileType: domain.ProfileType(r.URL.Query().Get("profile_type")),
-		Start:       parseQueryTime(r.URL.Query().Get("start")),
-		End:         parseQueryTime(r.URL.Query().Get("end")),
-		Limit:       1000,
-		NodeLimit:   2048,
+	result, err := h.observe("java_profiler_http_query_flamegraph", func() (any, error) {
+		return (app.FlamegraphQuerier{Profiles: h.Profiles, Metrics: h.Metrics}).Query(r.Context(), app.FlamegraphQuery{
+			Namespace:   r.URL.Query().Get("namespace"),
+			Service:     r.URL.Query().Get("service"),
+			Pod:         r.URL.Query().Get("pod"),
+			ProfileType: domain.ProfileType(r.URL.Query().Get("profile_type")),
+			Start:       parseQueryTime(r.URL.Query().Get("start")),
+			End:         parseQueryTime(r.URL.Query().Get("end")),
+			Limit:       1000,
+			NodeLimit:   2048,
+		})
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -37,7 +41,9 @@ func (h QueryHandlers) Flamegraph(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h QueryHandlers) TopStacks(w http.ResponseWriter, r *http.Request) {
-	result, err := app.QueryTopStacks(r.Context(), h.Profiles, profileQueryFromRequest(r, 1000))
+	result, err := h.observe("java_profiler_http_query_top_stacks", func() (any, error) {
+		return app.QueryTopStacks(r.Context(), h.Profiles, profileQueryFromRequest(r, 1000), h.Metrics)
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -46,7 +52,15 @@ func (h QueryHandlers) TopStacks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h QueryHandlers) ThreadDiagnosis(w http.ResponseWriter, r *http.Request) {
-	result, err := app.QueryThreadDiagnosis(r.Context(), h.Threads, r.URL.Query().Get("namespace"), r.URL.Query().Get("service"))
+	result, err := h.observe("java_profiler_http_query_thread_diagnosis", func() (any, error) {
+		return app.QueryThreadDiagnosis(
+			r.Context(),
+			h.Threads,
+			r.URL.Query().Get("namespace"),
+			r.URL.Query().Get("service"),
+			parseQueryLimit(r, app.DefaultThreadDiagnosisLimit, app.MaxThreadDiagnosisLimit),
+		)
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -67,7 +81,15 @@ func profileQueryFromRequest(r *http.Request, limit int) clickhouse.ProfileQuery
 }
 
 func (h QueryHandlers) Deadlocks(w http.ResponseWriter, r *http.Request) {
-	result, err := app.QueryDeadlocks(r.Context(), h.Threads, r.URL.Query().Get("namespace"), r.URL.Query().Get("service"))
+	result, err := h.observe("java_profiler_http_query_deadlocks", func() (any, error) {
+		return app.QueryDeadlocks(
+			r.Context(),
+			h.Threads,
+			r.URL.Query().Get("namespace"),
+			r.URL.Query().Get("service"),
+			parseQueryLimit(r, app.DefaultDeadlockLimit, app.MaxDeadlockLimit),
+		)
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -76,14 +98,17 @@ func (h QueryHandlers) Deadlocks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h QueryHandlers) TargetStatus(w http.ResponseWriter, r *http.Request) {
-	result, err := app.QueryTargetStatus(
-		r.Context(),
-		h.Statuses,
-		r.URL.Query().Get("namespace"),
-		r.URL.Query().Get("service"),
-		parseQueryTime(r.URL.Query().Get("start")),
-		parseQueryTime(r.URL.Query().Get("end")),
-	)
+	result, err := h.observe("java_profiler_http_query_target_status", func() (any, error) {
+		return app.QueryTargetStatus(
+			r.Context(),
+			h.Statuses,
+			r.URL.Query().Get("namespace"),
+			r.URL.Query().Get("service"),
+			parseQueryTime(r.URL.Query().Get("start")),
+			parseQueryTime(r.URL.Query().Get("end")),
+			parseQueryLimit(r, app.DefaultTargetStatusLimit, app.MaxTargetStatusLimit),
+		)
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -92,12 +117,42 @@ func (h QueryHandlers) TargetStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h QueryHandlers) Ingestion(w http.ResponseWriter, r *http.Request) {
-	result, err := app.QueryIngestionHealth(r.Context(), h.IngestionStore)
+	result, err := h.observe("java_profiler_http_query_ingestion", func() (any, error) {
+		return app.QueryIngestionHealth(r.Context(), h.IngestionStore, h.Metrics)
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	writeJSON(w, result)
+}
+
+func (h QueryHandlers) observe(metricPrefix string, fn func() (any, error)) (any, error) {
+	started := time.Now()
+	result, err := fn()
+	recordMetric(h.Metrics, metricPrefix+"_requests_total", 1)
+	recordMetric(h.Metrics, metricPrefix+"_duration_seconds_total", time.Since(started).Seconds())
+	if err != nil {
+		recordMetric(h.Metrics, metricPrefix+"_errors_total", 1)
+		return result, err
+	}
+	switch v := result.(type) {
+	case []clickhouse.DeadlockEvent:
+		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v)))
+	case []clickhouse.TargetStatus:
+		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v)))
+	case app.ThreadDiagnosis:
+		recordMetric(h.Metrics, metricPrefix+"_busy_threads_total", float64(len(v.BusyThreads)))
+		recordMetric(h.Metrics, metricPrefix+"_slow_threads_total", float64(len(v.SlowThreads)))
+		if v.Partial {
+			recordMetric(h.Metrics, metricPrefix+"_partial_total", 1)
+		}
+	case app.IngestionHealth:
+		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v.Batches)))
+	case []app.TopStackRow:
+		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v)))
+	}
+	return result, err
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -117,4 +172,18 @@ func parseQueryTime(value string) time.Time {
 		return time.Time{}
 	}
 	return parsed
+}
+
+func parseQueryLimit(r *http.Request, fallback, maximum int) int {
+	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+	if err != nil {
+		return fallback
+	}
+	if limit <= 0 {
+		return fallback
+	}
+	if limit > maximum {
+		return maximum
+	}
+	return limit
 }

@@ -2,12 +2,10 @@ package domain
 
 import (
 	"testing"
-
-	"github.com/koolay/java-profiler/backend/internal/clickhouse"
 )
 
 func TestBuildFlamegraphAggregatesStacks(t *testing.T) {
-	got := BuildFlamegraph([]clickhouse.ProfileSample{
+	got := BuildFlamegraph([]FlamegraphSample{
 		{Frames: []string{"A", "B"}, Value: 10},
 		{Frames: []string{"A", "C"}, Value: 5},
 	}, 10)
@@ -17,7 +15,7 @@ func TestBuildFlamegraphAggregatesStacks(t *testing.T) {
 }
 
 func TestBuildFlamegraphMarksPartial(t *testing.T) {
-	got := BuildFlamegraph([]clickhouse.ProfileSample{{Frames: []string{"A", "B", "C"}, Value: 1}}, 2)
+	got := BuildFlamegraph([]FlamegraphSample{{Frames: []string{"A", "B", "C"}, Value: 1}}, 2)
 	if !got.Metadata.Partial || got.Metadata.OmittedNodes == 0 {
 		t.Fatalf("expected partial metadata: %+v", got.Metadata)
 	}

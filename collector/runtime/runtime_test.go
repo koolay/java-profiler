@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -297,6 +298,61 @@ func TestRuntimeScanOnceKeepsMissingOrDifferentMarkerProfilerConflict(t *testing
 	}
 }
 
+func TestCollectProfilesUsesLimitedConcurrency(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan int, 16)
+	rt := &Runtime{
+		profiler: &blockingProfileCollector{
+			release: release,
+			started: started,
+		},
+	}
+	targets := make([]domain.TargetIdentity, 5)
+	for i := range targets {
+		targets[i] = domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "pod", ProcessID: i + 1}
+	}
+
+	done := make(chan struct{})
+	var samples []profiling.ProfileSample
+	var rawCount int
+	var err error
+	go func() {
+		samples, rawCount, err = rt.collectProfiles(context.Background(), "batch-1", targets)
+		close(done)
+	}()
+
+	seen := map[int]struct{}{}
+	timeout := time.After(2 * time.Second)
+	for len(seen) < maxConcurrentProfiles {
+		select {
+		case pid := <-started:
+			seen[pid] = struct{}{}
+		case <-timeout:
+			t.Fatal("timed out waiting for concurrent collection start")
+		}
+	}
+
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for collection to finish")
+	}
+
+	if err != nil {
+		t.Fatalf("collectProfiles failed: %v", err)
+	}
+	if rawCount != len(targets) {
+		t.Fatalf("rawCount = %d, want %d", rawCount, len(targets))
+	}
+	if len(samples) != len(targets) {
+		t.Fatalf("samples = %d, want %d", len(samples), len(targets))
+	}
+	if got := rt.profiler.(*blockingProfileCollector).maxActive; got != maxConcurrentProfiles {
+		t.Fatalf("max active = %d, want %d", got, maxConcurrentProfiles)
+	}
+}
+
 type recordingRuntimeAttach struct {
 	commands []recordedRuntimeAttach
 }
@@ -363,4 +419,44 @@ func readyProfiledPod(uid string) podItem {
 			},
 		},
 	}
+}
+
+type blockingProfileCollector struct {
+	release   <-chan struct{}
+	started   chan<- int
+	mu        sync.Mutex
+	active    int
+	maxActive int
+}
+
+func (c *blockingProfileCollector) Collect(_ context.Context, _ string, target domain.TargetIdentity) (profiler.CollectionResult, error) {
+	c.mu.Lock()
+	c.active++
+	if c.active > c.maxActive {
+		c.maxActive = c.active
+	}
+	c.mu.Unlock()
+	c.started <- target.ProcessID
+	<-c.release
+	c.mu.Lock()
+	c.active--
+	c.mu.Unlock()
+	return profiler.CollectionResult{
+		Samples: []profiling.ProfileSample{{
+			BatchID:     "batch-1",
+			Target:      target,
+			ProfileType: domain.ProfileTypeCPU,
+			StartedAt:   time.Unix(1, 0),
+			EndedAt:     time.Unix(2, 0),
+			StackID:     "stack",
+			Value:       1,
+		}},
+		RawSampleCount: 1,
+	}, nil
+}
+
+func (c *blockingProfileCollector) HasSession(domain.TargetIdentity) bool { return false }
+
+func (c *blockingProfileCollector) RecoverConflict(context.Context, domain.TargetIdentity) (profiler.ConflictRecovery, error) {
+	return profiler.ConflictRecovery{}, nil
 }

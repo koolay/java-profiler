@@ -3,8 +3,9 @@ package app
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
+	"hash"
 	"time"
 
 	"github.com/koolay/java-profiler/backend/internal/clickhouse"
@@ -38,6 +39,8 @@ type ProfileStore interface {
 type ProfileQueryStore interface {
 	ProfileStore
 	QuerySamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.ProfileSample, error)
+	QueryFlamegraphSamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.FlamegraphSample, error)
+	QueryTopStackSamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.TopStackSample, error)
 }
 
 type IngestionStore interface {
@@ -116,12 +119,85 @@ func (i ProfileBatchIngestor) Ingest(ctx context.Context, req ProfileBatchReques
 }
 
 func payloadHash(samples []clickhouse.ProfileSample, metadata profiling.ProfileBatchMetadata) string {
-	data, _ := json.Marshal(struct {
-		Samples  []clickhouse.ProfileSample     `json:"samples"`
-		Metadata profiling.ProfileBatchMetadata `json:"metadata"`
-	}{Samples: samples, Metadata: metadata})
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	hasher := sha256.New()
+	writeProfileBatchMetadata(hasher, metadata)
+	for _, sample := range samples {
+		writeProfileSample(hasher, sample)
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+func writeProfileBatchMetadata(h hash.Hash, metadata profiling.ProfileBatchMetadata) {
+	writeInt(h, metadata.WindowRawSampleCount)
+	writeInt(h, metadata.WindowAggregatedSampleCount)
+	writeInt(h, metadata.BatchSampleCount)
+	writeInt(h, metadata.DroppedSampleCount)
+	writeInt(h, metadata.DroppedStackCount)
+	writeBool(h, metadata.Truncated)
+	writeInt(h, metadata.PartIndex)
+	writeInt(h, metadata.PartCount)
+}
+
+func writeProfileSample(h hash.Hash, sample clickhouse.ProfileSample) {
+	writeString(h, sample.Target.Cluster)
+	writeString(h, sample.Target.Namespace)
+	writeString(h, sample.Target.Workload)
+	writeString(h, sample.Target.Pod)
+	writeString(h, sample.Target.Container)
+	writeString(h, sample.Target.Node)
+	writeString(h, sample.Target.PodUID)
+	writeInt(h, sample.Target.ProcessID)
+	writeUnixNano(h, sample.Target.JVMStartTime)
+	writeString(h, sample.Target.RuntimeVendor)
+	writeString(h, sample.Target.RuntimeVersion)
+	writeString(h, sample.Target.Service)
+	writeString(h, sample.ProfileType.String())
+	writeUnixNano(h, sample.StartedAt)
+	writeUnixNano(h, sample.EndedAt)
+	writeString(h, sample.StackID)
+	writeStrings(h, sample.Frames)
+	writeUint64(h, sample.Value)
+	writeBool(h, sample.Truncated)
+}
+
+func writeStrings(h hash.Hash, values []string) {
+	writeInt(h, len(values))
+	for _, value := range values {
+		writeString(h, value)
+	}
+}
+
+func writeString(h hash.Hash, value string) {
+	writeUint64(h, uint64(len(value)))
+	_, _ = h.Write([]byte(value))
+}
+
+func writeInt(h hash.Hash, value int) {
+	writeInt64(h, int64(value))
+}
+
+func writeInt64(h hash.Hash, value int64) {
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutVarint(buf[:], value)
+	_, _ = h.Write(buf[:n])
+}
+
+func writeUint64(h hash.Hash, value uint64) {
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], value)
+	_, _ = h.Write(buf[:n])
+}
+
+func writeBool(h hash.Hash, value bool) {
+	if value {
+		_, _ = h.Write([]byte{1})
+		return
+	}
+	_, _ = h.Write([]byte{0})
+}
+
+func writeUnixNano(h hash.Hash, value time.Time) {
+	writeInt64(h, value.UnixNano())
 }
 
 func firstNonZero(value, fallback time.Time) time.Time {

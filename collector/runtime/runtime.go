@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/koolay/java-profiler/collector/internal/discovery"
@@ -24,6 +25,12 @@ import (
 	profiling "github.com/koolay/java-profiler/contracts/profiling"
 	"github.com/koolay/java-profiler/domain"
 )
+
+type profileCollector interface {
+	Collect(context.Context, string, domain.TargetIdentity) (profiler.CollectionResult, error)
+	HasSession(domain.TargetIdentity) bool
+	RecoverConflict(context.Context, domain.TargetIdentity) (profiler.ConflictRecovery, error)
+}
 
 type Config struct {
 	ProcRoot     string
@@ -45,7 +52,7 @@ type Runtime struct {
 	nodeName      string
 	cluster       string
 	pollInterval  time.Duration
-	profiler      *profiler.Runner
+	profiler      profileCollector
 	profileLimits pipeline.ProfileBatchLimits
 	targetNS      string
 	targetSvc     string
@@ -53,6 +60,7 @@ type Runtime struct {
 }
 
 const maxProfileSamplesPerBatch = 10_000
+const maxConcurrentProfiles = 4
 
 func NewCollector(cfg Config) *Runtime {
 	procRoot := cfg.ProcRoot
@@ -328,20 +336,49 @@ func chunkProfileSamples(samples []profiling.ProfileSample, maxPerBatch int) [][
 }
 
 func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets []domain.TargetIdentity) ([]profiling.ProfileSample, int, error) {
+	if len(targets) == 0 {
+		return nil, 0, nil
+	}
+	limit := maxConcurrentProfiles
+	if len(targets) < limit {
+		limit = len(targets)
+	}
+	type profileResult struct {
+		samples []profiling.ProfileSample
+		raw     int
+		err     error
+	}
+	results := make([]profileResult, len(targets))
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+	for index, target := range targets {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, target domain.TargetIdentity) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			result, err := r.profiler.Collect(ctx, batchID, target)
+			if err != nil {
+				log.Printf("async-profiler collection failed for %s/%s pod=%s pid=%d: %v", target.Namespace, target.Service, target.Pod, target.ProcessID, err)
+				results[i].err = err
+				return
+			}
+			results[i] = profileResult{samples: result.Samples, raw: result.RawSampleCount}
+		}(index, target)
+	}
+	wg.Wait()
 	out := make([]profiling.ProfileSample, 0)
 	rawSampleCount := 0
 	var firstErr error
-	for _, target := range targets {
-		result, err := r.profiler.Collect(ctx, batchID, target)
-		if err != nil {
-			log.Printf("async-profiler collection failed for %s/%s pod=%s pid=%d: %v", target.Namespace, target.Service, target.Pod, target.ProcessID, err)
+	for _, result := range results {
+		if result.err != nil {
 			if firstErr == nil {
-				firstErr = err
+				firstErr = result.err
 			}
 			continue
 		}
-		out = append(out, result.Samples...)
-		rawSampleCount += result.RawSampleCount
+		out = append(out, result.samples...)
+		rawSampleCount += result.raw
 	}
 	return out, rawSampleCount, firstErr
 }

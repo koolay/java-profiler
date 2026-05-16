@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,7 +43,8 @@ func TestQueryAllowsUITokenCookie(t *testing.T) {
 }
 
 func TestTopStacksRouteReturnsSelfAndTotalRows(t *testing.T) {
-	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
+	exporter := metrics.NewExporter()
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, exporter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,5 +116,12 @@ func TestTopStacksRouteReturnsSelfAndTotalRows(t *testing.T) {
 	}
 	if rows[0].Self != 0 || rows[0].Total != 10 || rows[0].TotalPercent != "100.0%" {
 		t.Fatalf("unexpected handleWork row: %#v", rows[0])
+	}
+	snapshot := exporter.Snapshot()
+	if !strings.Contains(snapshot, "java_profiler_http_query_top_stacks_requests_total 1") {
+		t.Fatalf("missing top stacks request metric: %s", snapshot)
+	}
+	if !strings.Contains(snapshot, "java_profiler_query_top_stacks_rows_total 3") {
+		t.Fatalf("missing top stacks row metric: %s", snapshot)
 	}
 }

@@ -24,6 +24,14 @@ The repository is transitioning from documentation-only into implementation. The
 - `web`
 - `deploy`
 
+Release delivery is automated from tag pushes:
+
+- release tags use the `vX.Y.Z` pattern
+- the release workflow publishes backend, collector, and web images to GHCR as multi-arch manifests
+- the workflow emits SBOM and provenance attestations for the images
+- the workflow packages the Helm chart and creates the matching GitHub Release
+- the release assets include the Helm chart package, `SHA256SUMS`, `release-manifest.txt`, and release notes with image digests
+
 ## Core Documents
 
 - `docs/brainstorms/java-profiler-requirements.md`
@@ -106,7 +114,7 @@ docs/
 go test ./...
 javac --release 11 java-helper/thread-diagnostics/src/main/java/com/ebpfjava/threads/*.java
 cd examples/jdk17-http-demo && mvn test
-cd web && npm install && npm test && npm run build
+cd web && npm ci && npm test && npm run build
 ```
 
 Optional local ClickHouse-compatible smoke check using chDB:

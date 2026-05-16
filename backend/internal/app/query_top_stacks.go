@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/koolay/java-profiler/backend/internal/clickhouse"
+	"github.com/koolay/java-profiler/backend/internal/metrics"
 	"github.com/koolay/java-profiler/domain"
 )
 
@@ -20,15 +22,41 @@ type TopStackRow struct {
 	TotalPercent string `json:"total_percent"`
 }
 
-func QueryTopStacks(ctx context.Context, repo ProfileQueryStore, q clickhouse.ProfileQuery) ([]TopStackRow, error) {
-	samples, err := repo.QuerySamples(ctx, q)
+var topStackExcludedMethods = map[string]struct{}{
+	"read": {}, "write": {}, "open": {}, "close": {}, "poll": {}, "select": {}, "epoll": {}, "recv": {}, "send": {}, "accept": {}, "connect": {}, "syscall": {}, "nanosleep": {},
+}
+
+var topStackExcludedPrefixes = []string{"java.", "javax.", "jdk.", "sun.", "com.sun.", "org.graalvm.", "lib"}
+
+var topStackExcludedFragments = []string{".so", "[vdso]", "pthread", "clock_gettime", "adapter", "stubroutine", "vtablestub", "itable stub"}
+
+func QueryTopStacks(ctx context.Context, repo ProfileQueryStore, q clickhouse.ProfileQuery, exporter *metrics.Exporter) ([]TopStackRow, error) {
+	fetchStarted := time.Now()
+	samples, err := repo.QueryTopStackSamples(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	return rankTopStacks(samples), nil
+	recordMetric(exporter, "java_profiler_query_top_stacks_fetch_seconds_total", time.Since(fetchStarted).Seconds())
+	rankStarted := time.Now()
+	rows, stats := buildTopStacks(samples)
+	recordMetric(exporter, "java_profiler_query_top_stacks_rank_seconds_total", time.Since(rankStarted).Seconds())
+	recordMetric(exporter, "java_profiler_query_top_stacks_samples_total", float64(stats.samples))
+	recordMetric(exporter, "java_profiler_query_top_stacks_frames_total", float64(stats.frames))
+	recordMetric(exporter, "java_profiler_query_top_stacks_rows_total", float64(len(rows)))
+	return rows, nil
 }
 
-func rankTopStacks(samples []clickhouse.ProfileSample) []TopStackRow {
+func rankTopStacks(samples []clickhouse.TopStackSample) []TopStackRow {
+	rows, _ := buildTopStacks(samples)
+	return rows
+}
+
+type topStackStats struct {
+	samples int
+	frames  int
+}
+
+func buildTopStacks(samples []clickhouse.TopStackSample) ([]TopStackRow, topStackStats) {
 	type contribution struct {
 		location    string
 		profileType domain.ProfileType
@@ -36,22 +64,22 @@ func rankTopStacks(samples []clickhouse.ProfileSample) []TopStackRow {
 		total       uint64
 	}
 
+	classifier := newTopStackFrameClassifier()
 	var totalSamples uint64
+	stats := topStackStats{samples: len(samples)}
 	byLocation := make(map[string]contribution)
 	for _, sample := range samples {
 		if sample.Value == 0 || len(sample.Frames) == 0 {
 			continue
 		}
+		stats.frames += len(sample.Frames)
 		totalSamples += sample.Value
-		included := topTableFrames(sample.Frames)
-		if len(included) == 0 {
-			continue
-		}
-
-		leaf := sample.Frames[len(sample.Frames)-1]
-		leafLocation := frameLocation(leaf)
-		for _, frame := range included {
-			location := frameLocation(frame)
+		leafLocation := classifier.location(sample.Frames[len(sample.Frames)-1])
+		for _, frame := range sample.Frames {
+			location, ok := classifier.classify(frame)
+			if !ok {
+				continue
+			}
 			if location == "" {
 				continue
 			}
@@ -69,7 +97,7 @@ func rankTopStacks(samples []clickhouse.ProfileSample) []TopStackRow {
 	rows := make([]TopStackRow, 0, len(byLocation))
 	for location, contribution := range byLocation {
 		rows = append(rows, TopStackRow{
-			Symbol:       frameSymbol(location),
+			Symbol:       classifier.symbol(location),
 			Location:     contribution.location,
 			ProfileType:  string(contribution.profileType),
 			Self:         contribution.self,
@@ -90,21 +118,37 @@ func rankTopStacks(samples []clickhouse.ProfileSample) []TopStackRow {
 		}
 		return rows[i].Location < rows[j].Location
 	})
-	return rows
+	return rows, stats
 }
 
-func topTableFrames(frames []string) []string {
-	javaFrames := make([]string, 0, len(frames))
-	for _, frame := range frames {
-		if isApplicationJavaFrame(frame) {
-			javaFrames = append(javaFrames, frame)
-		}
+type topStackFrameClassifier struct {
+	locationCache map[string]string
+	symbolCache   map[string]string
+	javaCache     map[string]bool
+}
+
+func newTopStackFrameClassifier() *topStackFrameClassifier {
+	return &topStackFrameClassifier{
+		locationCache: map[string]string{},
+		symbolCache:   map[string]string{},
+		javaCache:     map[string]bool{},
 	}
-	return javaFrames
 }
 
-func frameSymbol(frame string) string {
-	normalized := frameLocation(frame)
+func (c *topStackFrameClassifier) location(frame string) string {
+	if cached, ok := c.locationCache[frame]; ok {
+		return cached
+	}
+	normalized := strings.ReplaceAll(frame, "/", ".")
+	c.locationCache[frame] = normalized
+	return normalized
+}
+
+func (c *topStackFrameClassifier) symbol(frame string) string {
+	if cached, ok := c.symbolCache[frame]; ok {
+		return cached
+	}
+	normalized := c.location(frame)
 	if lineIndex := strings.LastIndex(normalized, ":"); lineIndex > -1 {
 		if isDigits(normalized[lineIndex+1:]) {
 			normalized = normalized[:lineIndex]
@@ -112,25 +156,30 @@ func frameSymbol(frame string) string {
 	}
 	parts := strings.Split(normalized, ".")
 	if len(parts) >= 2 {
-		return strings.Join(parts[len(parts)-2:], ".")
+		normalized = strings.Join(parts[len(parts)-2:], ".")
 	}
+	c.symbolCache[frame] = normalized
 	return normalized
 }
 
-func frameLocation(frame string) string {
-	return strings.ReplaceAll(frame, "/", ".")
-}
-
-func isApplicationJavaFrame(frame string) bool {
-	symbol := frameSymbol(frame)
-	if symbol == "" || strings.Contains(frame, "$$Lambda") {
-		return false
+func (c *topStackFrameClassifier) classify(frame string) (string, bool) {
+	if cached, ok := c.javaCache[frame]; ok {
+		if !cached {
+			return "", false
+		}
+		return c.locationCache[frame], true
 	}
-	location := frameLocation(frame)
+	symbol := c.symbol(frame)
+	if symbol == "" || strings.Contains(frame, "$$Lambda") {
+		c.javaCache[frame] = false
+		return "", false
+	}
+	location := c.location(frame)
 	locationWithoutLine := frameWithoutLine(location)
 	methodSeparator := strings.LastIndex(locationWithoutLine, ".")
 	if methodSeparator < 0 {
-		return false
+		c.javaCache[frame] = false
+		return "", false
 	}
 	method := locationWithoutLine[methodSeparator+1:]
 	className := locationWithoutLine[:methodSeparator]
@@ -142,31 +191,35 @@ func isApplicationJavaFrame(frame string) bool {
 	normalizedClass := strings.ToLower(className)
 	normalizedMethod := strings.ToLower(method)
 	if simpleClass == "" || method == "" {
-		return false
+		c.javaCache[frame] = false
+		return "", false
 	}
 	if strings.ContainsAny(method, " \t") || strings.ContainsAny(simpleClass, " \t") {
-		return false
+		c.javaCache[frame] = false
+		return "", false
 	}
 	if first := simpleClass[0]; first < 'A' || first > 'Z' {
-		return false
+		c.javaCache[frame] = false
+		return "", false
 	}
-	excludedPrefixes := []string{"java.", "javax.", "jdk.", "sun.", "com.sun.", "org.graalvm.", "lib"}
-	for _, prefix := range excludedPrefixes {
+	for _, prefix := range topStackExcludedPrefixes {
 		if strings.HasPrefix(normalizedClass, prefix) {
-			return false
+			c.javaCache[frame] = false
+			return "", false
 		}
 	}
-	excludedFragments := []string{".so", "[vdso]", "pthread", "clock_gettime", "adapter", "stubroutine", "vtablestub", "itable stub"}
-	for _, fragment := range excludedFragments {
+	for _, fragment := range topStackExcludedFragments {
 		if strings.Contains(normalized, fragment) {
-			return false
+			c.javaCache[frame] = false
+			return "", false
 		}
 	}
-	excludedMethods := map[string]struct{}{
-		"read": {}, "write": {}, "open": {}, "close": {}, "poll": {}, "select": {}, "epoll": {}, "recv": {}, "send": {}, "accept": {}, "connect": {}, "syscall": {}, "nanosleep": {},
+	_, excluded := topStackExcludedMethods[normalizedMethod]
+	c.javaCache[frame] = !excluded
+	if excluded {
+		return "", false
 	}
-	_, excluded := excludedMethods[normalizedMethod]
-	return !excluded
+	return location, true
 }
 
 func frameWithoutLine(frame string) string {
@@ -193,4 +246,11 @@ func percent(value, total uint64) string {
 		return "0.0%"
 	}
 	return fmt.Sprintf("%.1f%%", (float64(value)/float64(total))*100)
+}
+
+func recordMetric(exporter *metrics.Exporter, name string, value float64) {
+	if exporter == nil {
+		return
+	}
+	exporter.Add(name, value)
 }

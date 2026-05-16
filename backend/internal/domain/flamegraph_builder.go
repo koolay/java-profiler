@@ -2,14 +2,13 @@ package domain
 
 import (
 	"sort"
-
-	"github.com/koolay/java-profiler/backend/internal/clickhouse"
 )
 
 type FlamegraphNode struct {
-	Name     string           `json:"name"`
-	Value    uint64           `json:"value"`
-	Children []FlamegraphNode `json:"children,omitempty"`
+	Name       string           `json:"name"`
+	Value      uint64           `json:"value"`
+	Children   []FlamegraphNode `json:"children,omitempty"`
+	childIndex map[string]int   `json:"-"`
 }
 
 type FlamegraphMetadata struct {
@@ -24,29 +23,38 @@ type FlamegraphResult struct {
 	Metadata FlamegraphMetadata `json:"metadata"`
 }
 
-func BuildFlamegraph(samples []clickhouse.ProfileSample, nodeLimit int) FlamegraphResult {
+type FlamegraphSample struct {
+	Frames []string
+	Value  uint64
+}
+
+func BuildFlamegraph(samples []FlamegraphSample, nodeLimit int) FlamegraphResult {
 	if nodeLimit <= 0 {
 		nodeLimit = 2048
 	}
-	root := FlamegraphNode{Name: "root"}
+	root := FlamegraphNode{Name: "root", childIndex: map[string]int{}}
 	nodeCount := 1
 	omitted := 0
 	for _, sample := range samples {
 		root.Value += sample.Value
-		children := &root.Children
+		children := &root
 		for _, frame := range sample.Frames {
-			idx := findChild(*children, frame)
-			if idx == -1 {
+			idx, ok := children.childIndex[frame]
+			if !ok {
 				if nodeCount >= nodeLimit {
 					omitted++
 					break
 				}
-				*children = append(*children, FlamegraphNode{Name: frame})
-				idx = len(*children) - 1
+				children.Children = append(children.Children, FlamegraphNode{Name: frame, childIndex: map[string]int{}})
+				idx = len(children.Children) - 1
+				if children.childIndex == nil {
+					children.childIndex = map[string]int{}
+				}
+				children.childIndex[frame] = idx
 				nodeCount++
 			}
-			(*children)[idx].Value += sample.Value
-			children = &(*children)[idx].Children
+			children.Children[idx].Value += sample.Value
+			children = &children.Children[idx]
 		}
 	}
 	sortNode(root.Children)
@@ -56,15 +64,6 @@ func BuildFlamegraph(samples []clickhouse.ProfileSample, nodeLimit int) Flamegra
 		metadata.Reasons = []string{"node_limit"}
 	}
 	return FlamegraphResult{Root: root, Metadata: metadata}
-}
-
-func findChild(children []FlamegraphNode, name string) int {
-	for i, child := range children {
-		if child.Name == name {
-			return i
-		}
-	}
-	return -1
 }
 
 func sortNode(children []FlamegraphNode) {

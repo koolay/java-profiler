@@ -64,7 +64,8 @@ func TestCollectorTargetStatusUploadAuthenticated(t *testing.T) {
 }
 
 func TestCollectorUploadAuthenticated(t *testing.T) {
-	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "secret"}}, metrics.NewExporter())
+	exporter := metrics.NewExporter()
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "secret"}}, exporter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +76,9 @@ func TestCollectorUploadAuthenticated(t *testing.T) {
 	server.ServeHTTP(rec, req)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("expected accepted, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(exporter.Snapshot(), "java_profiler_http_ingest_profile_requests_total 1") {
+		t.Fatalf("expected ingest request metric in snapshot: %s", exporter.Snapshot())
 	}
 }
 

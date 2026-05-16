@@ -42,6 +42,30 @@ type IngestionQuery struct {
 	Limit int
 }
 
+type IngestionHealthBatch struct {
+	BatchType   domain.BatchType
+	Status      IngestionStatus
+	Retryable   bool
+	Count       int
+	LatestAt    time.Time
+	LastMessage string
+}
+
+type IngestionHealthTotals struct {
+	Accepted         int
+	Duplicate        int
+	Retryable        int
+	Rejected         int
+	DroppedSamples   int
+	DroppedStacks    int
+	TruncatedBatches int
+}
+
+type IngestionHealthReport struct {
+	Batches []IngestionHealthBatch
+	Totals  IngestionHealthTotals
+}
+
 type IngestionRepository struct {
 	mu      sync.Mutex
 	batches map[string]IngestionBatch
@@ -98,6 +122,61 @@ func (r *IngestionRepository) ListIngestionBatches(_ context.Context, q Ingestio
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func (r *IngestionRepository) QueryIngestionHealth(ctx context.Context, q IngestionQuery) (IngestionHealthReport, error) {
+	batches, err := r.ListIngestionBatches(ctx, q)
+	if err != nil {
+		return IngestionHealthReport{}, err
+	}
+	return summarizeIngestionHealthBatches(batches), nil
+}
+
+func summarizeIngestionHealthBatches(batches []IngestionBatch) IngestionHealthReport {
+	grouped := map[string]IngestionHealthBatch{}
+	var totals IngestionHealthTotals
+	for _, batch := range batches {
+		key := string(batch.BatchType) + "|" + string(batch.Status)
+		current := grouped[key]
+		current.BatchType = batch.BatchType
+		current.Status = batch.Status
+		current.Retryable = batch.Status == IngestionRetryable || batch.Retryable
+		current.Count++
+		if batch.ReceivedAt.After(current.LatestAt) {
+			current.LatestAt = batch.ReceivedAt
+			current.LastMessage = batch.Message
+		}
+		grouped[key] = current
+		totals.DroppedSamples += batch.DroppedSampleCount
+		totals.DroppedStacks += batch.DroppedStackCount
+		if batch.Truncated {
+			totals.TruncatedBatches++
+		}
+		switch batch.Status {
+		case IngestionAccepted:
+			totals.Accepted++
+		case IngestionDuplicate:
+			totals.Duplicate++
+		case IngestionRetryable:
+			totals.Retryable++
+		case IngestionRejected:
+			totals.Rejected++
+		}
+	}
+	out := make([]IngestionHealthBatch, 0, len(grouped))
+	for _, item := range grouped {
+		out = append(out, item)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].LatestAt.Equal(out[j].LatestAt) {
+			if out[i].BatchType == out[j].BatchType {
+				return out[i].Status < out[j].Status
+			}
+			return out[i].BatchType < out[j].BatchType
+		}
+		return out[i].LatestAt.After(out[j].LatestAt)
+	})
+	return IngestionHealthReport{Batches: out, Totals: totals}
 }
 
 func ingestionBatchKey(batchID string, batchType domain.BatchType) string {

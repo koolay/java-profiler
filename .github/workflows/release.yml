@@ -1,0 +1,140 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+env:
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/java-profiler-backend
+  COLLECTOR_IMAGE: ghcr.io/${{ github.repository_owner }}/java-profiler-collector
+  WEB_IMAGE: ghcr.io/${{ github.repository_owner }}/java-profiler-web
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.0"
+      - run: go test ./...
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: mvn test
+        working-directory: java-helper/thread-diagnostics
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+        working-directory: web
+      - run: npm test
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/helm -f deploy/helm/values_test.yaml
+      - run: sh scripts/verify-assets.sh deploy/helm/values.yaml
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: validate
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive release metadata
+        id: meta
+        run: |
+          set -eu
+          case "${GITHUB_REF_NAME}" in
+            v*) ;;
+            *) echo "Release tags must start with v" >&2; exit 1 ;;
+          esac
+          release_version="${GITHUB_REF_NAME#v}"
+          backend_image="${BACKEND_IMAGE}:${GITHUB_REF_NAME}"
+          collector_image="${COLLECTOR_IMAGE}:${GITHUB_REF_NAME}"
+          web_image="${WEB_IMAGE}:${GITHUB_REF_NAME}"
+
+          printf 'tag=%s\n' "${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          printf 'version=%s\n' "${release_version}" >> "${GITHUB_OUTPUT}"
+          printf 'backend_image=%s\n' "${backend_image}" >> "${GITHUB_OUTPUT}"
+          printf 'collector_image=%s\n' "${collector_image}" >> "${GITHUB_OUTPUT}"
+          printf 'web_image=%s\n' "${web_image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        id: backend
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: true
+          platforms: linux/amd64,linux/arm64
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.backend_image }}
+
+      - name: Build and push collector image
+        uses: docker/build-push-action@v6
+        id: collector
+        with:
+          context: .
+          file: Dockerfile.collector
+          push: true
+          platforms: linux/amd64,linux/arm64
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.collector_image }}
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        id: web
+        with:
+          context: .
+          file: Dockerfile.web
+          push: true
+          platforms: linux/amd64,linux/arm64
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.web_image }}
+
+      - name: Package and publish release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          scripts/release-publish.sh \
+            --tag "${{ steps.meta.outputs.tag }}" \
+            --commit "${GITHUB_SHA}" \
+            --backend-image "${{ steps.meta.outputs.backend_image }}" \
+            --collector-image "${{ steps.meta.outputs.collector_image }}" \
+            --web-image "${{ steps.meta.outputs.web_image }}" \
+            --backend-digest "${{ steps.backend.outputs.digest }}" \
+            --collector-digest "${{ steps.collector.outputs.digest }}" \
+            --web-digest "${{ steps.web.outputs.digest }}" \
+            --chart-dir deploy/helm

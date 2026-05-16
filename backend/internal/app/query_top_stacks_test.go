@@ -8,7 +8,7 @@ import (
 )
 
 func TestTopStacksSeparatesSelfAndTotal(t *testing.T) {
-	samples := []clickhouse.ProfileSample{
+	samples := []clickhouse.TopStackSample{
 		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "Demo.handleWork:93", "Demo.burnCpu:188"}, Value: 8},
 		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "Demo.handleWork:93", "Demo.writeJson:232"}, Value: 2},
 	}
@@ -29,7 +29,7 @@ func TestTopStacksSeparatesSelfAndTotal(t *testing.T) {
 }
 
 func TestTopStacksKeepsJavaRowsWhenRuntimeFramesExist(t *testing.T) {
-	samples := []clickhouse.ProfileSample{
+	samples := []clickhouse.TopStackSample{
 		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "java.lang.Thread.run:1583", "Demo.handleWork:93", "Demo.burnCpu:188", "libjvm.so"}, Value: 12},
 		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "java.lang.Thread.run:1583", "Demo.handleWork:93", "Demo.writeJson:232"}, Value: 5},
 	}
@@ -53,7 +53,7 @@ func TestTopStacksKeepsJavaRowsWhenRuntimeFramesExist(t *testing.T) {
 }
 
 func TestTopStacksKeepsSameSymbolFromDifferentPackagesDistinct(t *testing.T) {
-	samples := []clickhouse.ProfileSample{
+	samples := []clickhouse.TopStackSample{
 		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "com.foo.CheckoutService.priceCart:10"}, Value: 6},
 		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "org.acme.CheckoutService.priceCart:42"}, Value: 4},
 	}
@@ -77,7 +77,7 @@ func TestTopStacksKeepsSameSymbolFromDifferentPackagesDistinct(t *testing.T) {
 }
 
 func TestTopStacksDoesNotPromoteRuntimeOnlyFrames(t *testing.T) {
-	samples := []clickhouse.ProfileSample{
+	samples := []clickhouse.TopStackSample{
 		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "libc.so.6.pthread_cond_timedwait", "libjvm.so.PlatformMonitor::wait", "java.lang.Thread.run:1583"}, Value: 21},
 		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "so.6", "[vdso]", "6.clock_gettime"}, Value: 9},
 	}

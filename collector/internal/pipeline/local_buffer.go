@@ -22,11 +22,12 @@ type DropStats struct {
 }
 
 type LocalBuffer struct {
-	mu         sync.Mutex
-	maxBytes   int
-	maxBatches int
-	batches    []Batch
-	stats      DropStats
+	mu                   sync.Mutex
+	maxBytes             int
+	maxBatches           int
+	batches              []Batch
+	stats                DropStats
+	currentBufferedBytes int
 }
 
 func NewLocalBuffer(maxBytes, maxBatches int) *LocalBuffer {
@@ -46,9 +47,11 @@ func (b *LocalBuffer) Push(batch Batch) {
 		batch.Bytes = len(batch.Payload)
 	}
 	b.batches = append(b.batches, batch)
-	for b.bufferedBytes() > b.maxBytes || len(b.batches) > b.maxBatches {
+	b.currentBufferedBytes += batch.Bytes
+	for b.currentBufferedBytes > b.maxBytes || len(b.batches) > b.maxBatches {
 		dropped := b.batches[0]
 		b.batches = b.batches[1:]
+		b.currentBufferedBytes -= dropped.Bytes
 		b.stats.DroppedBatches++
 		b.stats.DroppedBytes += uint64(dropped.Bytes)
 		if b.stats.OldestDroppedAt.IsZero() || dropped.CreatedAt.Before(b.stats.OldestDroppedAt) {
@@ -65,6 +68,7 @@ func (b *LocalBuffer) Pop() (Batch, bool) {
 	}
 	next := b.batches[0]
 	b.batches = b.batches[1:]
+	b.currentBufferedBytes -= next.Bytes
 	return next, true
 }
 
@@ -73,14 +77,6 @@ func (b *LocalBuffer) Stats() DropStats {
 	defer b.mu.Unlock()
 	stats := b.stats
 	stats.CurrentBatches = len(b.batches)
-	stats.CurrentBufferedBytes = b.bufferedBytes()
+	stats.CurrentBufferedBytes = b.currentBufferedBytes
 	return stats
-}
-
-func (b *LocalBuffer) bufferedBytes() int {
-	total := 0
-	for _, batch := range b.batches {
-		total += batch.Bytes
-	}
-	return total
 }

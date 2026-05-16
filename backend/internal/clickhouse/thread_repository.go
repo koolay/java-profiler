@@ -26,7 +26,11 @@ func (r *ThreadRepository) InsertSnapshots(_ context.Context, snapshots []Thread
 	return nil
 }
 
-func (r *ThreadRepository) ListSnapshots(_ context.Context, namespace, service string) ([]ThreadSnapshot, error) {
+func (r *ThreadRepository) ListSnapshots(ctx context.Context, namespace, service string) ([]ThreadSnapshot, error) {
+	return r.ListSnapshotsLimited(ctx, namespace, service, 0)
+}
+
+func (r *ThreadRepository) ListSnapshotsLimited(_ context.Context, namespace, service string, limit int) ([]ThreadSnapshot, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make([]ThreadSnapshot, 0)
@@ -38,11 +42,18 @@ func (r *ThreadRepository) ListSnapshots(_ context.Context, namespace, service s
 			continue
 		}
 		out = append(out, snapshot)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
 	}
 	return out, nil
 }
 
-func (r *ThreadRepository) ListDeadlocks(_ context.Context, namespace, service string) ([]DeadlockEvent, error) {
+func (r *ThreadRepository) ListDeadlocks(ctx context.Context, namespace, service string) ([]DeadlockEvent, error) {
+	return r.ListDeadlocksLimited(ctx, namespace, service, 0)
+}
+
+func (r *ThreadRepository) ListDeadlocksLimited(_ context.Context, namespace, service string, limit int) ([]DeadlockEvent, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make([]DeadlockEvent, 0)
@@ -54,6 +65,9 @@ func (r *ThreadRepository) ListDeadlocks(_ context.Context, namespace, service s
 			continue
 		}
 		out = append(out, event)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
 	}
 	return out, nil
 }

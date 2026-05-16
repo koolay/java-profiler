@@ -100,6 +100,8 @@ func TestProfileBatchIngestRecordsMetadata(t *testing.T) {
 
 type appProfileQueryStore interface {
 	QuerySamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.ProfileSample, error)
+	QueryFlamegraphSamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.FlamegraphSample, error)
+	QueryTopStackSamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.TopStackSample, error)
 }
 
 func TestProfileBatchIngestorRejectsSameBatchDifferentPayload(t *testing.T) {
@@ -216,6 +218,53 @@ func TestProfileBatchIngestorRejectsSamplesWithoutTimeRange(t *testing.T) {
 	}
 	if result.Status != clickhouse.IngestionRejected {
 		t.Fatalf("expected missing time range to be rejected, got %+v", result)
+	}
+}
+
+func TestPayloadHashIsStableAndSensitiveToContentChanges(t *testing.T) {
+	base := ProfileBatchRequest{
+		BatchID:     "batch-1",
+		CollectorID: "collector-a",
+		ReceivedAt:  time.Unix(10, 0),
+		Metadata: profiling.ProfileBatchMetadata{
+			WindowRawSampleCount:        100,
+			WindowAggregatedSampleCount: 20,
+			BatchSampleCount:            10,
+			DroppedSampleCount:          5,
+			DroppedStackCount:           4,
+			Truncated:                   true,
+			PartIndex:                   1,
+			PartCount:                   2,
+		},
+		Samples: []clickhouse.ProfileSample{{
+			BatchID:     "batch-1",
+			Target:      domain.TargetIdentity{Cluster: "cluster-a", Namespace: "prod", Workload: "checkout", Pod: "checkout-1", Container: "checkout", Node: "node-a", PodUID: "pod-1", ProcessID: 1, JVMStartTime: time.Unix(1, 0), RuntimeVendor: "OpenJDK", RuntimeVersion: "17", Service: "checkout"},
+			ProfileType: domain.ProfileTypeCPU,
+			StartedAt:   time.Unix(100, 0),
+			EndedAt:     time.Unix(160, 0),
+			StackID:     "stack-1",
+			Frames:      []string{"A", "B"},
+			Value:       10,
+		}},
+	}
+
+	same := payloadHash(base.Samples, base.Metadata)
+	changedReceivedAt := base
+	changedReceivedAt.ReceivedAt = time.Unix(20, 0)
+	if got := payloadHash(changedReceivedAt.Samples, changedReceivedAt.Metadata); got != same {
+		t.Fatalf("expected received_at to be ignored by payload hash")
+	}
+
+	changedMetadata := base
+	changedMetadata.Metadata.DroppedSampleCount = 6
+	if got := payloadHash(changedMetadata.Samples, changedMetadata.Metadata); got == same {
+		t.Fatalf("expected metadata change to affect payload hash")
+	}
+
+	changedSample := base
+	changedSample.Samples[0].Value = 11
+	if got := payloadHash(changedSample.Samples, changedSample.Metadata); got == same {
+		t.Fatalf("expected sample change to affect payload hash")
 	}
 }
 

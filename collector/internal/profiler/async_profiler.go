@@ -37,10 +37,11 @@ type Config struct {
 }
 
 type Runner struct {
-	cfg      Config
-	attach   AttachController
-	exec     Executor
-	sessions map[string]session
+	cfg       Config
+	attach    AttachController
+	exec      Executor
+	sessions  map[string]session
+	cachedLib cachedLibrary
 }
 
 type CollectionResult struct {
@@ -57,6 +58,13 @@ type session struct {
 	pid       int
 	startedAt time.Time
 	jfrPath   string
+}
+
+type cachedLibrary struct {
+	path    string
+	modTime time.Time
+	size    int64
+	data    []byte
 }
 
 const (
@@ -165,7 +173,7 @@ func (r *Runner) RecoverConflict(ctx context.Context, target domain.TargetIdenti
 }
 
 func (r *Runner) stageLibrary(pid int) error {
-	data, err := os.ReadFile(r.cfg.LibraryPath)
+	data, err := r.libraryBytes()
 	if err != nil {
 		return err
 	}
@@ -174,6 +182,30 @@ func (r *Runner) stageLibrary(pid int) error {
 		return err
 	}
 	return writeFileIfChanged(filepath.Join(dir, "libasyncProfiler.so"), data)
+}
+
+func (r *Runner) libraryBytes() ([]byte, error) {
+	info, err := os.Stat(r.cfg.LibraryPath)
+	if err != nil {
+		return nil, err
+	}
+	if r.cachedLib.path == r.cfg.LibraryPath &&
+		r.cachedLib.size == info.Size() &&
+		r.cachedLib.modTime.Equal(info.ModTime()) &&
+		r.cachedLib.data != nil {
+		return r.cachedLib.data, nil
+	}
+	data, err := os.ReadFile(r.cfg.LibraryPath)
+	if err != nil {
+		return nil, err
+	}
+	r.cachedLib = cachedLibrary{
+		path:    r.cfg.LibraryPath,
+		modTime: info.ModTime(),
+		size:    info.Size(),
+		data:    data,
+	}
+	return data, nil
 }
 
 func writeFileIfChanged(path string, data []byte) error {

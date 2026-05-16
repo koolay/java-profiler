@@ -88,3 +88,67 @@ func TestIngestionRepositoryConflictRejectionBecomesFinalState(t *testing.T) {
 		t.Fatalf("expected rejection message, got %+v", batches[0])
 	}
 }
+
+func TestIngestionRepositoryQueryIngestionHealthSummarizesLatestBatches(t *testing.T) {
+	repo := NewIngestionRepository()
+	for _, batch := range []IngestionBatch{
+		{
+			BatchID:            "profile-a",
+			CollectorID:        "collector-a",
+			BatchType:          domain.BatchTypeProfile,
+			ReceivedAt:         time.Unix(100, 0),
+			Status:             IngestionAccepted,
+			PayloadHash:        "hash-a",
+			Message:            "accepted-a",
+			DroppedSampleCount: 2,
+			DroppedStackCount:  1,
+		},
+		{
+			BatchID:            "profile-b",
+			CollectorID:        "collector-a",
+			BatchType:          domain.BatchTypeProfile,
+			ReceivedAt:         time.Unix(101, 0),
+			Status:             IngestionAccepted,
+			PayloadHash:        "hash-b",
+			Message:            "accepted-b",
+			DroppedSampleCount: 3,
+			DroppedStackCount:  0,
+		},
+		{
+			BatchID:            "profile-c",
+			CollectorID:        "collector-a",
+			BatchType:          domain.BatchTypeProfile,
+			ReceivedAt:         time.Unix(102, 0),
+			Status:             IngestionRetryable,
+			Retryable:          true,
+			PayloadHash:        "hash-c",
+			Message:            "retryable",
+			DroppedSampleCount: 1,
+			DroppedStackCount:  1,
+		},
+	} {
+		if _, err := repo.Record(context.Background(), batch); err != nil {
+			t.Fatalf("record failed: %v", err)
+		}
+	}
+
+	report, err := repo.QueryIngestionHealth(context.Background(), IngestionQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("health query failed: %v", err)
+	}
+	if len(report.Batches) != 2 {
+		t.Fatalf("expected 2 grouped batches, got %+v", report.Batches)
+	}
+	if report.Batches[0].LatestAt != time.Unix(102, 0) {
+		t.Fatalf("expected retryable batch first, got %+v", report.Batches[0])
+	}
+	if report.Totals.Accepted != 2 {
+		t.Fatalf("accepted totals = %+v", report.Totals)
+	}
+	if report.Totals.Retryable != 1 {
+		t.Fatalf("retryable totals = %+v", report.Totals)
+	}
+	if report.Totals.DroppedSamples != 6 || report.Totals.DroppedStacks != 2 {
+		t.Fatalf("unexpected loss totals = %+v", report.Totals)
+	}
+}

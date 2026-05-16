@@ -14,6 +14,7 @@
 ### brainstorms/
 
 - **[java-profiler-requirements.md](./brainstorms/java-profiler-requirements.md)** - Java profiling product requirements
+- **[2026-05-16-tag-triggered-release-pipeline.md](./brainstorms/2026-05-16-tag-triggered-release-pipeline.md)** - Tag-triggered release pipeline brainstorm for automated release artifact generation
 
 ### plans/
 
@@ -22,6 +23,7 @@
 - **[2026-05-10-004-flamegraph-actionable-context-ux.md](./plans/2026-05-10-004-flamegraph-actionable-context-ux.md)** - Flame graph actionable-context UX fixes for Java CPU bottleneck analysis
 - **[2026-05-10-005-pyroscope-study-alignment-polish.md](./plans/2026-05-10-005-pyroscope-study-alignment-polish.md)** - Final Pyroscope study alignment polish for CPU table labels, insight copy, frame categories, and focus state
 - **[2026-05-10-006-fix-pyroscope-analysis-ux-plan.md](./plans/2026-05-10-006-fix-pyroscope-analysis-ux-plan.md)** - Plan to close Pyroscope analysis UX gaps with tooltip metrics, combined workflow, visual hierarchy, and focus navigation
+- **[2026-05-16-001-tag-triggered-release-pipeline.md](./plans/2026-05-16-001-tag-triggered-release-pipeline.md)** - Tag-triggered release pipeline plan for publishing versioned product artifacts from release tags
 
 ### operations/
 

@@ -2,6 +2,7 @@ package clickhouse
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ type TargetStatusQuery struct {
 	Service   string
 	Start     time.Time
 	End       time.Time
+	Limit     int
 }
 
 func (s TargetStatus) DesiredStateIsValid() bool {
@@ -72,6 +74,12 @@ func (r *StatusRepository) LatestByService(_ context.Context, query TargetStatus
 	out := make([]TargetStatus, 0, len(latest))
 	for _, status := range latest {
 		out = append(out, status)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].StatusAt.After(out[j].StatusAt)
+	})
+	if query.Limit > 0 && len(out) > query.Limit {
+		out = out[:query.Limit]
 	}
 	return out, nil
 }

@@ -60,8 +60,9 @@ func NewServer(cfg ServerConfig, exporter *metrics.Exporter) (http.Handler, erro
 		Profiles:        app.ProfileBatchIngestor{Profiles: profiles, Ingestion: ingestion},
 		ThreadSnapshots: app.ThreadSnapshotIngestor{Threads: threads, Ingestion: ingestion},
 		TargetStatuses:  app.TargetStatusIngestor{Statuses: statusIngest, Ingestion: ingestion},
+		Metrics:         exporter,
 	}
-	queryHandlers := QueryHandlers{Profiles: profiles, Threads: threads, Statuses: statuses, IngestionStore: ingestionQuery}
+	queryHandlers := QueryHandlers{Profiles: profiles, Threads: threads, Statuses: statuses, IngestionStore: ingestionQuery, Metrics: exporter}
 	mux := http.NewServeMux()
 	mux.Handle("/api/collector/v1/profile-batches", RequireCollectorAuth(cfg.Auth, http.HandlerFunc(handlers.ProfileBatch)))
 	mux.Handle("/api/collector/v1/thread-snapshot-batches", RequireCollectorAuth(cfg.Auth, http.HandlerFunc(handlers.ThreadSnapshotBatch)))
