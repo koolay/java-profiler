@@ -2,6 +2,43 @@
 
 本文面向 Java 服务负责人、值班响应人员和应用开发人员，说明如何使用 `java-profiler` 分析 Kubernetes 中 Java 服务的 CPU、内存分配、锁等待、死锁和线程问题。部署、权限、升级、ClickHouse、Web 代理和平台故障处理见 [部署运维管理员手册](./deployment-operations-admin-manual.md)。如果问题涉及部署、权限、ClickHouse、Web 代理、token 或 collector DaemonSet，请转交平台管理员并引用管理员手册。
 
+## 真实工作流截图
+
+这些截图来自真实 Kubernetes acceptance 环境，不是 mock UI 状态。保留它们是为了让读者快速理解核心诊断路径，也让维护者有一组可回归对比的 UI 证据。
+
+重新生成截图时，先把真实 Web UI port-forward 到本机，然后从仓库根目录运行：
+
+```bash
+export REAL_ACCEPTANCE_BASE_URL=http://127.0.0.1:18081
+export REAL_ACCEPTANCE_NAMESPACE=java-profiler-qa
+export REAL_ACCEPTANCE_SERVICE=jdk17-http-demo
+node scripts/capture-doc-screenshots.mjs
+```
+
+### Target status
+
+先确认目标 JVM 是否被接受、拒绝或因为 metadata/JVM/runtime 条件而没有数据。
+
+![真实 target status 证据](../assets/screenshots/real-target-status.png)
+
+### CPU profile analysis
+
+CPU 视图把 Top Table、Flame Graph、选中 frame 详情、Self/Total CPU 语义和 Java frame 分类放在同一个真实服务诊断流里。
+
+![真实 CPU profile analysis](../assets/screenshots/real-cpu-analysis.png)
+
+### Deadlock diagnosis
+
+死锁视图用于确认选定服务和时间范围内是否有 cycle 证据；真实运行也可能呈现经过验证的空状态。
+
+![真实 deadlock diagnosis surface](../assets/screenshots/real-deadlocks.png)
+
+### Ingestion health
+
+Ingestion health 用 accepted/rejected/dropped payload 证据闭环 collector 到 backend 的上传和入库路径。
+
+![真实 ingestion health 证据](../assets/screenshots/real-ingestion-health.png)
+
 ## 你能用它回答什么
 
 `java-profiler` 第一版本聚焦 HotSpot 兼容 Java 服务：

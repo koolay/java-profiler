@@ -134,6 +134,25 @@ See `docs/operations/real-profiling-acceptance-standard.md` for the full standar
 - `docs/operations/real-profiling-acceptance-standard.md`: mandatory real Kubernetes acceptance standard.
 - `docs/index.md`: documentation site homepage.
 
+## Real UI Evidence
+
+These screenshots are generated from a real Kubernetes acceptance environment, not from mocked UI state. They show the expected diagnosis workflow and give maintainers a visual regression anchor for the core surfaces.
+
+![CPU profile analysis showing real DemoHttpService hotspots](docs/assets/screenshots/real-cpu-analysis.png)
+
+- [Target status evidence](docs/assets/screenshots/real-target-status.png)
+- [Deadlock diagnosis surface](docs/assets/screenshots/real-deadlocks.png)
+- [Ingestion health evidence](docs/assets/screenshots/real-ingestion-health.png)
+
+Regenerate them from a port-forwarded real UI:
+
+```bash
+export REAL_ACCEPTANCE_BASE_URL=http://127.0.0.1:18081
+export REAL_ACCEPTANCE_NAMESPACE=java-profiler-qa
+export REAL_ACCEPTANCE_SERVICE=jdk17-http-demo
+node scripts/capture-doc-screenshots.mjs
+```
+
 ## Scope Boundaries
 
 The first version does not include:
