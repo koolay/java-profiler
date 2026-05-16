@@ -52,7 +52,6 @@ docs/
   brainstorms/
   operations/
   research/
-  plans/
 ```
 
 Release delivery is automated from `vX.Y.Z` tag pushes. The workflow publishes backend, collector, and web images to GHCR, emits SBOM/provenance attestations, packages the Helm chart, and creates the matching GitHub Release with image digests.
@@ -123,6 +122,7 @@ See `docs/operations/real-profiling-acceptance-standard.md` for the full standar
 
 ## Documentation
 
+- Online documentation: https://koolay.github.io/java-profiler/
 - `docs/brainstorms/java-profiler-requirements.md`: product requirements, actors, flows, acceptance examples, and scope boundaries.
 - `docs/architecture/java-profiler-architecture.md`: collector, backend, ClickHouse, query, and UI architecture.
 - `docs/architecture/performance-ingestion-architecture-review.md`: ingestion hardening, batch limits, OOM risk, and ClickHouse query pressure.
@@ -132,7 +132,7 @@ See `docs/operations/real-profiling-acceptance-standard.md` for the full standar
 - `docs/operations/deployment-operations-admin-manual.md`: deployment, operations, security, storage, upgrade, and platform troubleshooting.
 - `docs/operations/e2e-automation-test-guide.md`: real E2E and browser automation guide.
 - `docs/operations/real-profiling-acceptance-standard.md`: mandatory real Kubernetes acceptance standard.
-- `docs/index.md`: full documentation directory index.
+- `docs/index.md`: documentation site homepage.
 
 ## Scope Boundaries
 
