@@ -10,6 +10,8 @@ type Props = {
   searchQuery?: string;
   onSearchQueryChange?: (query: string) => void;
   onReset?: () => void;
+  formatValue?: (value: number) => string;
+  valueLabel?: string;
 };
 
 type Frame = FlamegraphNode & {
@@ -27,12 +29,13 @@ type Frame = FlamegraphNode & {
 
 type FrameCategory = "application" | "runtime" | "native";
 
-export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight, searchQuery, onSearchQueryChange, onReset }: Props) {
+export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight, searchQuery, onSearchQueryChange, onReset, formatValue = defaultFormatValue, valueLabel = "Samples" }: Props) {
   const [internalQuery, setInternalQuery] = useState("");
   const [zoomPath, setZoomPath] = useState("root");
   const [selectedPath, setSelectedPath] = useState("root");
   const [hoveredPath, setHoveredPath] = useState<string | undefined>();
   const [zoomHistory, setZoomHistory] = useState<string[]>([]);
+  const [hideSystemFrames, setHideSystemFrames] = useState(false);
   const query = searchQuery ?? internalQuery;
   const setQuery = (nextQuery: string) => {
     if (searchQuery === undefined) {
@@ -41,13 +44,14 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
     onSearchQueryChange?.(nextQuery);
   };
   const frames = useMemo(() => layout(root, zoomPath, query, highlightQuery), [root, highlightQuery, query, zoomPath]);
-  const depth = Math.max(0, ...frames.map((frame) => frame.depth));
+  const visibleFrames = useMemo(() => (hideSystemFrames ? frames.filter((frame) => frame.path === zoomPath || frame.category === "application") : frames), [frames, hideSystemFrames, zoomPath]);
+  const depth = Math.max(0, ...visibleFrames.map((frame) => frame.depth));
   const rowHeight = 32;
   const queryActive = query.trim().length > 0;
   const highlightActive = highlightQuery.trim().length > 0;
   const zoomed = zoomPath !== "root";
-  const selectedFrame = (highlightActive && selectedPath === "root" ? frames.find((frame) => frame.matched) : frames.find((frame) => frame.path === selectedPath)) ?? frames[0];
-  const inspectedFrame = frames.find((frame) => frame.path === hoveredPath) ?? selectedFrame;
+  const selectedFrame = (highlightActive && selectedPath === "root" ? visibleFrames.find((frame) => frame.matched) : visibleFrames.find((frame) => frame.path === selectedPath)) ?? visibleFrames[0];
+  const inspectedFrame = visibleFrames.find((frame) => frame.path === hoveredPath) ?? selectedFrame;
   const zoomTrail = zoomed ? ["root", ...zoomHistory.slice(1), zoomPath].map((path) => findByPath(root, path)?.name ?? "root") : [];
   const resetZoom = () => {
     setQuery("");
@@ -72,13 +76,14 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
       return history.slice(0, -1);
     });
   };
-  const hasSamples = (root.value > 0 || (root.children?.length ?? 0) > 0) && frames.length > 0;
+  const hasSamples = (root.value > 0 || (root.children?.length ?? 0) > 0) && visibleFrames.length > 0;
   return (
     <section className="flamegraph" aria-label="Flamegraph">
       <div className="flamegraph-tools">
         <input aria-label="Search flamegraph frames" placeholder="Search frame" value={query} onChange={(event) => setQuery(event.target.value)} />
         <button onClick={backZoom} disabled={zoomHistory.length === 0}>Back</button>
         <button onClick={resetZoom}>Reset</button>
+        <button className={hideSystemFrames ? "active" : ""} aria-pressed={hideSystemFrames} onClick={() => setHideSystemFrames((value) => !value)}>Hide Native</button>
       </div>
       <p className="flamegraph-mode">
         {zoomed
@@ -103,11 +108,11 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
         </nav>
       )}
       {hasSamples && inspectedFrame && selectedFrame && (
-        <FrameInspector frame={inspectedFrame} onFocus={() => zoomToPath(selectedFrame.path)} />
+        <FrameInspector frame={inspectedFrame} onFocus={() => zoomToPath(selectedFrame.path)} formatValue={formatValue} valueLabel={valueLabel} />
       )}
       {hasSamples ? (
         <div className="flamegraph-stack" style={{ height: Math.max(1, depth + 1) * rowHeight }}>
-          {frames.map((frame) => (
+          {visibleFrames.map((frame) => (
             <button
               key={frame.path}
               className={`flame-row flame-row-${frame.category}${frame.matched ? " flame-row-match" : ""}${frame.dimmed ? " flame-row-dimmed" : ""}${frame.path === selectedFrame?.path ? " flame-row-selected" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
@@ -124,7 +129,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
               aria-describedby="flamegraph-frame-inspector"
             >
               <span className="flame-frame">{formatFrameLabel(frame.name)}</span>
-              {frame.width >= 7 && <b className="flame-value">{frame.value.toLocaleString()}</b>}
+              {frame.width >= 7 && <b className="flame-value">{displayFrameValue(frame, formatValue)}</b>}
             </button>
           ))}
         </div>
@@ -139,12 +144,12 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
           </div>
           <dl>
             <div>
-              <dt>Samples</dt>
-              <dd>{selectedFrame.value.toLocaleString()}</dd>
+              <dt>{valueLabel}</dt>
+              <dd>{displayFrameValue(selectedFrame, formatValue)}</dd>
             </div>
             <div>
               <dt>Self</dt>
-              <dd>{selectedFrame.self.toLocaleString()}</dd>
+              <dd>{formatValue(selectedFrame.self)}</dd>
             </div>
             <div>
               <dt>Total CPU</dt>
@@ -207,7 +212,15 @@ function normalizeFrameSearch(value: string) {
   return value.trim().replaceAll("/", ".").toLowerCase();
 }
 
-function FrameInspector({ frame, onFocus }: { frame: Frame; onFocus: () => void }) {
+function defaultFormatValue(value: number) {
+  return value.toLocaleString();
+}
+
+function displayFrameValue(frame: Frame, formatValue: (value: number) => string) {
+  return frame.display_value ?? formatValue(frame.value);
+}
+
+function FrameInspector({ frame, onFocus, formatValue, valueLabel }: { frame: Frame; onFocus: () => void; formatValue: (value: number) => string; valueLabel: string }) {
   return (
     <div className={`flamegraph-tooltip flamegraph-tooltip-${frame.category}`} id="flamegraph-frame-inspector" role="status">
       <div>
@@ -216,12 +229,12 @@ function FrameInspector({ frame, onFocus }: { frame: Frame; onFocus: () => void 
       </div>
       <dl>
         <div>
-          <dt>Total CPU</dt>
-          <dd>{frame.value.toLocaleString()} <span>{frame.totalPercent.toFixed(1)}%</span></dd>
+          <dt>Total {valueLabel}</dt>
+          <dd>{displayFrameValue(frame, formatValue)} <span>{frame.totalPercent.toFixed(1)}%</span></dd>
         </div>
         <div>
           <dt>Self CPU</dt>
-          <dd>{frame.self.toLocaleString()} <span>{frame.selfPercent.toFixed(1)}%</span></dd>
+          <dd>{formatValue(frame.self)} <span>{frame.selfPercent.toFixed(1)}%</span></dd>
         </div>
         <div>
           <dt>Depth</dt>

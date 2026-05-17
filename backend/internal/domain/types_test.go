@@ -6,8 +6,8 @@ import (
 )
 
 func TestAllProfileTypesAreStableAndValid(t *testing.T) {
-	if len(AllProfileTypes) != 5 {
-		t.Fatalf("expected 5 profile types, got %d", len(AllProfileTypes))
+	if len(AllProfileTypes) != 7 {
+		t.Fatalf("expected 7 profile types, got %d", len(AllProfileTypes))
 	}
 	for _, pt := range AllProfileTypes {
 		if !pt.IsValid() {
@@ -18,8 +18,10 @@ func TestAllProfileTypesAreStableAndValid(t *testing.T) {
 		"java_allocation_bytes",
 		"java_allocation_objects",
 		"java_cpu_nanoseconds",
+		"java_io_wait_nanoseconds",
 		"java_lock_contention_count",
 		"java_lock_delay_nanoseconds",
+		"java_wall_clock_nanoseconds",
 	}
 	got := StableProfileTypeNames()
 	for i := range want {

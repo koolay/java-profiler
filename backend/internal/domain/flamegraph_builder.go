@@ -2,13 +2,16 @@ package domain
 
 import (
 	"sort"
+
+	rootdomain "github.com/koolay/java-profiler/domain"
 )
 
 type FlamegraphNode struct {
-	Name       string           `json:"name"`
-	Value      uint64           `json:"value"`
-	Children   []FlamegraphNode `json:"children,omitempty"`
-	childIndex map[string]int   `json:"-"`
+	Name         string           `json:"name"`
+	Value        uint64           `json:"value"`
+	DisplayValue string           `json:"display_value,omitempty"`
+	Children     []FlamegraphNode `json:"children,omitempty"`
+	childIndex   map[string]int   `json:"-"`
 }
 
 type FlamegraphMetadata struct {
@@ -19,8 +22,9 @@ type FlamegraphMetadata struct {
 }
 
 type FlamegraphResult struct {
-	Root     FlamegraphNode     `json:"root"`
-	Metadata FlamegraphMetadata `json:"metadata"`
+	Root      FlamegraphNode                   `json:"root"`
+	Metadata  FlamegraphMetadata               `json:"metadata"`
+	Semantics rootdomain.ProfileValueSemantics `json:"semantics"`
 }
 
 type FlamegraphSample struct {
@@ -64,6 +68,19 @@ func BuildFlamegraph(samples []FlamegraphSample, nodeLimit int) FlamegraphResult
 		metadata.Reasons = []string{"node_limit"}
 	}
 	return FlamegraphResult{Root: root, Metadata: metadata}
+}
+
+func ApplyProfileSemantics(result FlamegraphResult, profileType rootdomain.ProfileType, window rootdomain.TimeWindow) FlamegraphResult {
+	result.Semantics = profileType.Semantics(window)
+	applyDisplayValues(&result.Root, profileType, window)
+	return result
+}
+
+func applyDisplayValues(node *FlamegraphNode, profileType rootdomain.ProfileType, window rootdomain.TimeWindow) {
+	node.DisplayValue = rootdomain.FormatProfileValue(profileType, node.Value, window)
+	for i := range node.Children {
+		applyDisplayValues(&node.Children[i], profileType, window)
+	}
 }
 
 func sortNode(children []FlamegraphNode) {

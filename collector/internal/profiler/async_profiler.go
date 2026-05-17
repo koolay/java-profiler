@@ -33,6 +33,7 @@ type Config struct {
 	LibraryPath          string
 	TargetTmpDir         string
 	AllocationAndLockJFR bool
+	DisableWallClockJFR  bool
 	Now                  func() time.Time
 }
 
@@ -46,6 +47,7 @@ type Runner struct {
 
 type CollectionResult struct {
 	Samples        []profiling.ProfileSample
+	JVMEvents      []profiling.JVMEvent
 	RawSampleCount int
 }
 
@@ -70,6 +72,7 @@ type cachedLibrary struct {
 const (
 	allocationSampleInterval = "8m"
 	lockSampleThreshold      = "10us"
+	wallSampleInterval       = "10ms"
 )
 
 func NewRunner(cfg Config, attach AttachController) *Runner {
@@ -131,6 +134,7 @@ func (r *Runner) Collect(ctx context.Context, batchID string, target domain.Targ
 	normalized := jfr.NormalizeWindowWithStats(batchID, target, events, prior.startedAt, now)
 	result := CollectionResult{
 		Samples:        normalized.Samples,
+		JVMEvents:      normalized.JVMEvents,
 		RawSampleCount: normalized.RawSampleCount,
 	}
 	if err := r.start(ctx, key, target.ProcessID, nsPID, now); err != nil {
@@ -239,6 +243,9 @@ func (r *Runner) start(ctx context.Context, key string, pid int, nsPID int, star
 		if r.cfg.AllocationAndLockJFR {
 			args = append(args[:5], append([]string{"--alloc", allocationSampleInterval, "--lock", lockSampleThreshold}, args[5:]...)...)
 		}
+		if !r.cfg.DisableWallClockJFR {
+			args = append(args[:5], append([]string{"--wall", wallSampleInterval}, args[5:]...)...)
+		}
 		args = append(args, strconv.Itoa(pid))
 		if _, err := r.exec.Run(ctx, r.cfg.AsprofPath, args...); err != nil {
 			_ = RemoveSessionMarker(r.cfg.ProcRoot, pid)
@@ -250,6 +257,9 @@ func (r *Runner) start(ctx context.Context, key string, pid int, nsPID int, star
 	args := fmt.Sprintf("start,file=%s,jfr,event=itimer,interval=10ms", jfrPath)
 	if r.cfg.AllocationAndLockJFR {
 		args += ",alloc=" + allocationSampleInterval + ",lock=" + lockSampleThreshold
+	}
+	if !r.cfg.DisableWallClockJFR {
+		args += ",wall=" + wallSampleInterval
 	}
 	if err := r.attach.LoadNativeAgent(ctx, pid, r.targetLibraryPath(), args); err != nil {
 		_ = RemoveSessionMarker(r.cfg.ProcRoot, pid)

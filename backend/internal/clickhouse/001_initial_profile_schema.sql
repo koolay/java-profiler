@@ -96,6 +96,33 @@ PARTITION BY toDate(event_at)
 ORDER BY (cluster, namespace, service, pod, process_id, event_at, cycle_id)
 TTL expires_at DELETE;
 
+CREATE TABLE IF NOT EXISTS java_profiler_jvm_events
+(
+    event_id String,
+    batch_id String,
+    cluster LowCardinality(String),
+    namespace LowCardinality(String),
+    service LowCardinality(String),
+    pod String,
+    container String,
+    process_id UInt32,
+    jvm_start_time DateTime64(9, 'UTC'),
+    event_type LowCardinality(String),
+    event_at DateTime64(9, 'UTC'),
+    duration_ns UInt64,
+    collector String,
+    action String,
+    cause String,
+    message String,
+    stack_frames Array(String),
+    created_at DateTime64(9, 'UTC') DEFAULT now64(9),
+    expires_at DateTime DEFAULT toDateTime(created_at) + INTERVAL 7 DAY
+)
+ENGINE = MergeTree
+PARTITION BY toDate(event_at)
+ORDER BY (cluster, namespace, service, pod, process_id, event_type, event_at, event_id)
+TTL expires_at DELETE;
+
 CREATE TABLE IF NOT EXISTS java_profiler_target_status
 (
     batch_id String,

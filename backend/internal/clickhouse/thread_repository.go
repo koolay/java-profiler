@@ -9,11 +9,40 @@ import (
 
 type ThreadSnapshot = profiling.ThreadSnapshot
 type DeadlockEvent = profiling.DeadlockEvent
+type JVMEvent = profiling.JVMEvent
 
 type ThreadRepository struct {
 	mu        sync.RWMutex
 	snapshots []ThreadSnapshot
 	deadlocks []DeadlockEvent
+	jvmEvents []JVMEvent
+}
+
+func (r *ThreadRepository) InsertJVMEvents(_ context.Context, events []JVMEvent) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.jvmEvents = append(r.jvmEvents, events...)
+	return nil
+}
+
+func (r *ThreadRepository) QueryJVMEvents(_ context.Context, q JVMEventQuery) ([]JVMEvent, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 1000
+	}
+	out := make([]JVMEvent, 0)
+	for _, event := range r.jvmEvents {
+		if !jvmEventMatches(event, q) {
+			continue
+		}
+		out = append(out, event)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 func NewThreadRepository() *ThreadRepository { return &ThreadRepository{} }

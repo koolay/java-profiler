@@ -102,6 +102,7 @@ type appProfileQueryStore interface {
 	QuerySamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.ProfileSample, error)
 	QueryFlamegraphSamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.FlamegraphSample, error)
 	QueryTopStackSamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.TopStackSample, error)
+	QueryProfileTargetSummary(context.Context, clickhouse.ProfileQuery) ([]clickhouse.ProfileTargetSummary, error)
 }
 
 func TestProfileBatchIngestorRejectsSameBatchDifferentPayload(t *testing.T) {

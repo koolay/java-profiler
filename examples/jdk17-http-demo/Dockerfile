@@ -1,5 +1,5 @@
-ARG BUILDER_IMAGE=ghcr.io/koolay/josepdcs/kubectl-prof:1.5.0-jvm-alpine
-ARG RUNTIME_IMAGE=ghcr.io/koolay/josepdcs/kubectl-prof:1.5.0-jvm-alpine
+ARG BUILDER_IMAGE=docker.m.daocloud.io/eclipse-temurin:21-jdk
+ARG RUNTIME_IMAGE=docker.m.daocloud.io/eclipse-temurin:21-jdk
 
 FROM ${BUILDER_IMAGE} AS build
 WORKDIR /src

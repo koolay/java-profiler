@@ -74,7 +74,8 @@ test("renders top table and flame graph in both mode", () => {
   render(<HotCodeView root={root} metadata={{ partial: false }} />);
 
   const analysis = screen.getByLabelText("CPU profile analysis");
-  expect(within(analysis).getByRole("heading", { name: "CPU profile" })).toBeInTheDocument();
+  expect(within(analysis).getByRole("heading", { name: "Single Pod CPU profile" })).toBeInTheDocument();
+  expect(screen.getByLabelText("CPU profile units")).toHaveTextContent("CPU time");
   expect(screen.getByRole("region", { name: "Top table" })).toBeInTheDocument();
   expect(screen.getByRole("region", { name: "Flamegraph" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "Self CPU" })).toBeInTheDocument();
@@ -87,7 +88,7 @@ test("renders top table and flame graph in both mode", () => {
   expect(screen.getByPlaceholderText("Search frame")).toHaveValue("");
   expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
   expect(screen.getByRole("button", { name: /so\.6/ })).not.toHaveClass("flame-row-dimmed");
-  expect(screen.getByText(/High total, low self: start from DemoHttpService\.handleWork/)).toBeInTheDocument();
+  expect(screen.getByLabelText("Selected Java frame")).toHaveTextContent("DemoHttpService.handleWork");
 });
 
 test("renders backend top rows with self and total CPU values", () => {
@@ -119,8 +120,8 @@ test("renders backend top rows with self and total CPU values", () => {
   );
 
   const handleRow = screen.getByRole("row", { name: /DemoHttpService\.handleWork/ });
-  expect(handleRow).toHaveTextContent("0 0.0%");
-  expect(handleRow).toHaveTextContent("10 100.0%");
+  expect(handleRow).toHaveTextContent("0 ns 0.0%");
+  expect(handleRow).toHaveTextContent("10 ns 100.0%");
 });
 
 test("selecting a backend top row highlights matching flame graph frames", () => {
@@ -213,14 +214,13 @@ test("reset clears search and selected top table row state", () => {
 
   const topTable = screen.getByRole("region", { name: "Top table" });
   fireEvent.click(within(topTable).getByRole("button", { name: /DemoHttpService\.handleWork/ }));
-  expect(screen.getByText(/High total, low self: start from DemoHttpService\.handleWork/)).toBeInTheDocument();
+  expect(screen.getByLabelText("Selected Java frame")).toHaveTextContent("DemoHttpService.handleWork");
   expect(within(topTable).getByRole("row", { name: /DemoHttpService\.handleWork/ })).toHaveClass("active");
 
   fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "handlework" } });
   fireEvent.click(screen.getByRole("button", { name: "Reset" }));
 
   expect(screen.getByLabelText("Search flamegraph frames")).toHaveValue("");
-  expect(screen.queryByText(/High total, low self: start from DemoHttpService\.handleWork/)).not.toBeInTheDocument();
   expect(within(topTable).getByRole("row", { name: /DemoHttpService\.handleWork/ })).not.toHaveClass("active");
 });
 

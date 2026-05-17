@@ -37,7 +37,7 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
   const inspector = screen.getByRole("status");
   expect(within(inspector).getByText("Native/system")).toBeInTheDocument();
   expect(within(inspector).getByText("libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis")).toBeInTheDocument();
-  expect(within(inspector).getByText("Total CPU")).toBeInTheDocument();
+  expect(within(inspector).getByText("Total Samples")).toBeInTheDocument();
   expect(within(inspector).getByText("Self CPU")).toBeInTheDocument();
 
   fireEvent.click(nativeFrame);
@@ -192,6 +192,28 @@ test("keeps flamegraph context when no frames match the search", () => {
 
   expect(screen.getByRole("button", { name: /Checkout\.handle/ })).toHaveClass("flame-row-dimmed");
   expect(screen.getByText(/Search highlights matching frames/)).toBeInTheDocument();
+});
+
+test("hides native and runtime frames without removing application frames", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 30,
+        children: [
+          { name: "libc.so.6", value: 10 },
+          { name: "java.lang.Thread.run", value: 10 },
+          { name: "com.acme.Checkout.handle:42", value: 10 },
+        ],
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Hide Native" }));
+
+  expect(screen.queryByRole("button", { name: /libc\.so/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Thread\.run/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Checkout\.handle/ })).toBeInTheDocument();
 });
 
 test("shows a custom empty state when there are no samples", () => {

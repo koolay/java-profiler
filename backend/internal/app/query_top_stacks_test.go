@@ -26,6 +26,9 @@ func TestTopStacksSeparatesSelfAndTotal(t *testing.T) {
 	if handle.TotalPercent != "100.0%" || burn.SelfPercent != "80.0%" {
 		t.Fatalf("unexpected percents: handle total=%s burn self=%s", handle.TotalPercent, burn.SelfPercent)
 	}
+	if handle.Semantics.ValueUnit != "nanoseconds" || handle.SelfDisplay != "0 ns" || burn.SelfDisplay != "8 ns" {
+		t.Fatalf("unexpected semantics/display: handle=%+v burn=%+v", handle, burn)
+	}
 }
 
 func TestTopStacksKeepsJavaRowsWhenRuntimeFramesExist(t *testing.T) {

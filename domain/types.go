@@ -15,7 +15,17 @@ const (
 	ProfileTypeAllocObjects   ProfileType = "java_allocation_objects"
 	ProfileTypeLockContention ProfileType = "java_lock_contention_count"
 	ProfileTypeLockDelay      ProfileType = "java_lock_delay_nanoseconds"
+	ProfileTypeWallClock      ProfileType = "java_wall_clock_nanoseconds"
+	ProfileTypeIOWait         ProfileType = "java_io_wait_nanoseconds"
 )
+
+type ProfileValueSemantics struct {
+	ValueUnit           string  `json:"value_unit"`
+	DisplayUnit         string  `json:"display_unit"`
+	PercentBasis        string  `json:"percent_basis"`
+	BaselineDescription string  `json:"baseline_description"`
+	WindowSeconds       float64 `json:"window_seconds,omitempty"`
+}
 
 var AllProfileTypes = []ProfileType{
 	ProfileTypeCPU,
@@ -23,16 +33,80 @@ var AllProfileTypes = []ProfileType{
 	ProfileTypeAllocObjects,
 	ProfileTypeLockContention,
 	ProfileTypeLockDelay,
+	ProfileTypeWallClock,
+	ProfileTypeIOWait,
 }
 
 func (p ProfileType) String() string { return string(p) }
 
 func (p ProfileType) IsValid() bool {
 	switch p {
-	case ProfileTypeCPU, ProfileTypeAllocBytes, ProfileTypeAllocObjects, ProfileTypeLockContention, ProfileTypeLockDelay:
+	case ProfileTypeCPU, ProfileTypeAllocBytes, ProfileTypeAllocObjects, ProfileTypeLockContention, ProfileTypeLockDelay, ProfileTypeWallClock, ProfileTypeIOWait:
 		return true
 	default:
 		return false
+	}
+}
+
+func (p ProfileType) Semantics(window TimeWindow) ProfileValueSemantics {
+	semantics := ProfileValueSemantics{
+		PercentBasis:        "returned_profile_value",
+		BaselineDescription: "Percentage is relative to the returned profile samples for the selected filters.",
+	}
+	if duration := window.Duration(); duration > 0 {
+		semantics.WindowSeconds = duration.Seconds()
+		semantics.BaselineDescription = "Percentage is relative to returned profile samples; average cores use the selected time window."
+	}
+	switch p {
+	case ProfileTypeCPU:
+		semantics.ValueUnit = "nanoseconds"
+		semantics.DisplayUnit = "duration_and_average_cores"
+	case ProfileTypeWallClock:
+		semantics.ValueUnit = "nanoseconds"
+		semantics.DisplayUnit = "duration"
+		semantics.BaselineDescription = "Percentage is relative to returned Wall Clock samples for the selected Java target and time range."
+	case ProfileTypeIOWait:
+		semantics.ValueUnit = "nanoseconds"
+		semantics.DisplayUnit = "duration"
+		semantics.BaselineDescription = "Percentage is relative to returned Java I/O wait samples for the selected target and time range."
+	case ProfileTypeAllocBytes:
+		semantics.ValueUnit = "bytes"
+		semantics.DisplayUnit = "bytes"
+	case ProfileTypeAllocObjects:
+		semantics.ValueUnit = "objects"
+		semantics.DisplayUnit = "count"
+	case ProfileTypeLockContention:
+		semantics.ValueUnit = "events"
+		semantics.DisplayUnit = "count"
+	case ProfileTypeLockDelay:
+		semantics.ValueUnit = "nanoseconds"
+		semantics.DisplayUnit = "duration"
+	default:
+		semantics.ValueUnit = "raw"
+		semantics.DisplayUnit = "raw"
+	}
+	return semantics
+}
+
+func FormatProfileValue(profileType ProfileType, value uint64, window TimeWindow) string {
+	switch profileType {
+	case ProfileTypeCPU:
+		duration := formatDurationNanos(value)
+		if windowDuration := window.Duration(); windowDuration > 0 && value > 0 {
+			cores := float64(value) / float64(windowDuration.Nanoseconds())
+			if cores >= 0.01 {
+				return fmt.Sprintf("%s · %.2f cores", duration, cores)
+			}
+		}
+		return duration
+	case ProfileTypeLockDelay, ProfileTypeWallClock, ProfileTypeIOWait:
+		return formatDurationNanos(value)
+	case ProfileTypeAllocBytes:
+		return formatBytes(value)
+	case ProfileTypeAllocObjects, ProfileTypeLockContention:
+		return fmt.Sprintf("%d", value)
+	default:
+		return fmt.Sprintf("%d", value)
 	}
 }
 
@@ -95,6 +169,7 @@ type BatchType string
 const (
 	BatchTypeProfile        BatchType = "profile"
 	BatchTypeThreadSnapshot BatchType = "thread_snapshot"
+	BatchTypeJVMEvent       BatchType = "jvm_event"
 	BatchTypeTargetStatus   BatchType = "target_status"
 	BatchTypeCollectorBeat  BatchType = "collector_heartbeat"
 	BatchTypeIngestion      BatchType = "ingestion"
@@ -104,7 +179,7 @@ const (
 
 func (b BatchType) IsValid() bool {
 	switch b {
-	case BatchTypeProfile, BatchTypeThreadSnapshot, BatchTypeTargetStatus, BatchTypeCollectorBeat, BatchTypeIngestion, BatchTypeRetention, BatchTypeArtifactIndex:
+	case BatchTypeProfile, BatchTypeThreadSnapshot, BatchTypeJVMEvent, BatchTypeTargetStatus, BatchTypeCollectorBeat, BatchTypeIngestion, BatchTypeRetention, BatchTypeArtifactIndex:
 		return true
 	default:
 		return false
@@ -221,4 +296,33 @@ func StableProfileTypeNames() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func formatDurationNanos(value uint64) string {
+	switch {
+	case value >= uint64(time.Minute):
+		return fmt.Sprintf("%.1f min", float64(value)/float64(time.Minute))
+	case value >= uint64(time.Second):
+		return fmt.Sprintf("%.2f s", float64(value)/float64(time.Second))
+	case value >= uint64(time.Millisecond):
+		return fmt.Sprintf("%.1f ms", float64(value)/float64(time.Millisecond))
+	case value >= uint64(time.Microsecond):
+		return fmt.Sprintf("%.1f us", float64(value)/float64(time.Microsecond))
+	default:
+		return fmt.Sprintf("%d ns", value)
+	}
+}
+
+func formatBytes(value uint64) string {
+	const unit = 1024
+	switch {
+	case value >= unit*unit*unit:
+		return fmt.Sprintf("%.1f GiB", float64(value)/(unit*unit*unit))
+	case value >= unit*unit:
+		return fmt.Sprintf("%.1f MiB", float64(value)/(unit*unit))
+	case value >= unit:
+		return fmt.Sprintf("%.1f KiB", float64(value)/unit)
+	default:
+		return fmt.Sprintf("%d B", value)
+	}
 }

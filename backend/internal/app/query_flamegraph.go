@@ -50,6 +50,7 @@ func (q FlamegraphQuerier) Query(ctx context.Context, query FlamegraphQuery) (ba
 	}
 	buildStarted := time.Now()
 	result := backenddomain.BuildFlamegraph(flamegraphSamples, query.NodeLimit)
+	result = backenddomain.ApplyProfileSemantics(result, query.ProfileType, domain.TimeWindow{StartedAt: query.Start, EndsAt: query.End})
 	recordMetric(q.Metrics, "java_profiler_query_flamegraph_build_seconds_total", time.Since(buildStarted).Seconds())
 	recordMetric(q.Metrics, "java_profiler_query_flamegraph_scanned_samples_total", float64(result.Metadata.ScannedSamples))
 	recordMetric(q.Metrics, "java_profiler_query_flamegraph_omitted_nodes_total", float64(result.Metadata.OmittedNodes))

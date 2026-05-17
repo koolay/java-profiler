@@ -56,3 +56,17 @@ type DeadlockEvent struct {
 	Locks           []string              `json:"locks"`
 	BlockingFrames  []string              `json:"blocking_frames"`
 }
+
+type JVMEvent struct {
+	EventID     string                `json:"event_id"`
+	BatchID     string                `json:"batch_id"`
+	Target      domain.TargetIdentity `json:"target"`
+	EventType   string                `json:"event_type"`
+	EventAt     time.Time             `json:"event_at"`
+	DurationNS  uint64                `json:"duration_ns"`
+	Collector   string                `json:"collector,omitempty"`
+	Action      string                `json:"action,omitempty"`
+	Cause       string                `json:"cause,omitempty"`
+	Message     string                `json:"message,omitempty"`
+	StackFrames []string              `json:"stack_frames,omitempty"`
+}

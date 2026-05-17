@@ -18,7 +18,7 @@ Options:
   --source-image IMAGE      JDK image for --source-mode. Default: docker.m.daocloud.io/eclipse-temurin:21-jdk.
   --kind-load               Load the image into a kind cluster after building.
   --kind-cluster NAME       kind cluster name. Default: kind.
-  --run-load                Port-forward the service and call CPU/alloc/lock/thread endpoints.
+  --run-load                Port-forward the service and call CPU/alloc/gc/io/wall/lock/thread endpoints.
   --duration-ms N           Load duration per endpoint. Default: 30000.
   --local-port PORT         Local port for port-forward. Default: 18080.
   --artifact-dir DIR        Write deployment evidence. Default: /tmp/java-profiler-jdk17-demo-<timestamp>.
@@ -120,6 +120,7 @@ kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -
 
 if [[ "$source_mode" == "true" ]]; then
   log "## Apply Source ConfigMap"
+  source_hash="$(shasum -a 256 examples/jdk17-http-demo/src/main/java/com/ebpfjava/examples/httpdemo/DemoHttpService.java | awk '{print $1}')"
   kubectl -n "$namespace" create configmap jdk17-http-demo-source \
     --from-file=DemoHttpService.java=examples/jdk17-http-demo/src/main/java/com/ebpfjava/examples/httpdemo/DemoHttpService.java \
     --dry-run=client -o yaml | kubectl apply -f - | tee "$artifact_dir/source-configmap.log"
@@ -170,6 +171,7 @@ if [[ "$source_mode" == "true" ]]; then
     {"op":"add","path":"/spec/template/spec/containers/0/command","value":["/bin/sh","-lc"]},
     {"op":"add","path":"/spec/template/spec/containers/0/args","value":["mkdir -p /tmp/classes && javac --release 17 -d /tmp/classes /src/DemoHttpService.java && exec java -XX:+UseContainerSupport -cp /tmp/classes com.ebpfjava.examples.httpdemo.DemoHttpService"]}
   ]' | tee "$artifact_dir/demo-source-patch.log"
+  kubectl -n "$namespace" patch deploy/jdk17-http-demo --type=merge -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"java-profiler.io/source-hash\":\"${source_hash}\"}}}}}" | tee "$artifact_dir/demo-source-hash.log"
 else
   kubectl -n "$namespace" set image deploy/jdk17-http-demo "app=$image" | tee "$artifact_dir/demo-set-image.log"
 fi
@@ -188,6 +190,9 @@ if [[ "$run_load" == "true" ]]; then
   curl -fsS "http://127.0.0.1:${local_port}/health" | tee "$artifact_dir/health.json"
   curl -fsS "http://127.0.0.1:${local_port}/work?mode=cpu&durationMs=${duration_ms}" | tee "$artifact_dir/work-cpu.json"
   curl -fsS "http://127.0.0.1:${local_port}/work?mode=alloc&durationMs=${duration_ms}" | tee "$artifact_dir/work-alloc.json"
+  curl -fsS "http://127.0.0.1:${local_port}/work?mode=gc&durationMs=${duration_ms}" | tee "$artifact_dir/work-gc.json"
+  curl -fsS "http://127.0.0.1:${local_port}/work?mode=io&durationMs=${duration_ms}" | tee "$artifact_dir/work-io.json"
+  curl -fsS "http://127.0.0.1:${local_port}/work?mode=wall&durationMs=${duration_ms}" | tee "$artifact_dir/work-wall.json"
   curl -fsS "http://127.0.0.1:${local_port}/work?mode=lock&durationMs=${duration_ms}" | tee "$artifact_dir/work-lock.json"
   curl -fsS "http://127.0.0.1:${local_port}/threads?durationMs=${duration_ms}" | tee "$artifact_dir/threads.json"
 

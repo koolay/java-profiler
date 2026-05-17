@@ -75,7 +75,7 @@ func TestRunnerUsesOfficialAsprofCLIWhenConfigured(t *testing.T) {
 		t.Fatalf("expected initial start asprof command, got %+v", exec.commands)
 	}
 	startArgs := strings.Join(exec.commands[0].args, " ")
-	for _, want := range []string{"start -e itimer", "-f /tmp/java-profiler/ap_7.jfr", "--libpath /tmp/java-profiler/libasyncProfiler.so"} {
+	for _, want := range []string{"start -e itimer", "--wall 10ms", "-f /tmp/java-profiler/ap_7.jfr", "--libpath /tmp/java-profiler/libasyncProfiler.so"} {
 		if !strings.Contains(startArgs, want) {
 			t.Fatalf("expected start command to contain %q, got %s", want, startArgs)
 		}
@@ -126,6 +126,43 @@ func TestRunnerCanOptIntoAllocationAndLockProfiling(t *testing.T) {
 	}
 }
 
+func TestRunnerCanDisableWallClockProfiling(t *testing.T) {
+	root := t.TempDir()
+	procRoot := filepath.Join(root, "proc")
+	targetRoot := filepath.Join(procRoot, "42", "root")
+	if err := os.MkdirAll(filepath.Join(targetRoot, "tmp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(procRoot, "42"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(procRoot, "42", "status"), []byte("Name:\tjava\nNSpid:\t4242\t7\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	libPath := filepath.Join(root, "libasyncProfiler.so")
+	if err := os.WriteFile(libPath, []byte("native-profiler"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner := NewRunner(Config{
+		ProcRoot:            procRoot,
+		AsprofPath:          "/assets/asprof",
+		LibraryPath:         libPath,
+		TargetTmpDir:        "/tmp/java-profiler",
+		DisableWallClockJFR: true,
+	}, &recordingAttachController{})
+	exec := &recordingExecutor{}
+	runner.exec = exec
+	target := domain.TargetIdentity{Cluster: "c", Namespace: "prod", Service: "jdk17-http-demo", Pod: "jdk17-http-demo-1", ProcessID: 42, JVMStartTime: time.Unix(1, 0)}
+
+	if _, err := runner.Collect(context.Background(), "batch-1", target); err != nil {
+		t.Fatal(err)
+	}
+	startArgs := strings.Join(exec.commands[0].args, " ")
+	if strings.Contains(startArgs, "--wall") {
+		t.Fatalf("expected wall clock to be disabled, got %s", startArgs)
+	}
+}
+
 func TestRunnerUsesHotSpotAttachStopsParsesAndRestartsAsyncProfilerJFR(t *testing.T) {
 	root := t.TempDir()
 	procRoot := filepath.Join(root, "proc")
@@ -163,7 +200,7 @@ func TestRunnerUsesHotSpotAttachStopsParsesAndRestartsAsyncProfilerJFR(t *testin
 		t.Fatalf("expected initial start attach command, got %+v", attach.commands)
 	}
 	start := attach.commands[0]
-	if start.pid != 42 || start.agentPath != "/tmp/java-profiler/libasyncProfiler.so" || !strings.HasPrefix(start.args, "start,file=/tmp/java-profiler/ap_7.jfr,jfr,event=itimer,interval=10ms") || strings.Contains(start.args, "alloc=") || strings.Contains(start.args, "lock=") {
+	if start.pid != 42 || start.agentPath != "/tmp/java-profiler/libasyncProfiler.so" || !strings.HasPrefix(start.args, "start,file=/tmp/java-profiler/ap_7.jfr,jfr,event=itimer,interval=10ms") || !strings.Contains(start.args, "wall=10ms") || strings.Contains(start.args, "alloc=") || strings.Contains(start.args, "lock=") {
 		t.Fatalf("expected Coroot-style native agent start command, got %+v", start)
 	}
 	if _, err := os.Stat(filepath.Join(targetRoot, "tmp", "java-profiler", "libasyncProfiler.so")); err != nil {

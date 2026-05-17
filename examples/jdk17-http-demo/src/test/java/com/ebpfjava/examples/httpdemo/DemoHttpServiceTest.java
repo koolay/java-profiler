@@ -52,8 +52,8 @@ class DemoHttpServiceTest {
   }
 
   @Test
-  void workEndpointCanExerciseCpuAllocationAndLockPaths() throws Exception {
-    for (String mode : new String[] {"cpu", "alloc", "lock"}) {
+  void workEndpointCanExerciseProfilerEvidencePaths() throws Exception {
+    for (String mode : new String[] {"cpu", "alloc", "gc", "io", "wall", "lock"}) {
       HttpResponse<String> response = get("/work?mode=" + mode + "&durationMs=20");
 
       assertEquals(200, response.statusCode(), mode);

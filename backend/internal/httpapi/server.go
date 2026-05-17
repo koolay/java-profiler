@@ -26,6 +26,7 @@ func NewServer(cfg ServerConfig, exporter *metrics.Exporter) (http.Handler, erro
 	var statuses app.TargetStatusQueryStore
 	var statusIngest app.TargetStatusStore
 	var threads app.ThreadStore
+	var jvmEvents app.JVMEventStore
 	if cfg.ClickHouseDSN != "" {
 		sqlRepo, err := clickhouse.OpenSQLRepository(cfg.ClickHouseDSN)
 		if err != nil {
@@ -44,6 +45,7 @@ func NewServer(cfg ServerConfig, exporter *metrics.Exporter) (http.Handler, erro
 		statuses = sqlRepo
 		statusIngest = sqlRepo
 		threads = sqlRepo
+		jvmEvents = sqlRepo
 	} else if cfg.AllowInMemory {
 		profiles = clickhouse.NewProfileRepository()
 		ingestionRepo := clickhouse.NewIngestionRepository()
@@ -52,25 +54,31 @@ func NewServer(cfg ServerConfig, exporter *metrics.Exporter) (http.Handler, erro
 		statusRepo := clickhouse.NewStatusRepository()
 		statuses = statusRepo
 		statusIngest = statusRepo
-		threads = clickhouse.NewThreadRepository()
+		threadsRepo := clickhouse.NewThreadRepository()
+		threads = threadsRepo
+		jvmEvents = threadsRepo
 	} else {
 		return nil, fmt.Errorf("JAVA_PROFILER_CLICKHOUSE_DSN is required unless in-memory mode is explicitly enabled")
 	}
 	handlers := IngestHandlers{
 		Profiles:        app.ProfileBatchIngestor{Profiles: profiles, Ingestion: ingestion},
 		ThreadSnapshots: app.ThreadSnapshotIngestor{Threads: threads, Ingestion: ingestion},
+		JVMEvents:       app.JVMEventIngestor{Events: jvmEvents, Ingestion: ingestion},
 		TargetStatuses:  app.TargetStatusIngestor{Statuses: statusIngest, Ingestion: ingestion},
 		Metrics:         exporter,
 	}
-	queryHandlers := QueryHandlers{Profiles: profiles, Threads: threads, Statuses: statuses, IngestionStore: ingestionQuery, Metrics: exporter}
+	queryHandlers := QueryHandlers{Profiles: profiles, Threads: threads, JVMEvents: jvmEvents, Statuses: statuses, IngestionStore: ingestionQuery, Metrics: exporter}
 	mux := http.NewServeMux()
 	mux.Handle("/api/collector/v1/profile-batches", RequireCollectorAuth(cfg.Auth, http.HandlerFunc(handlers.ProfileBatch)))
 	mux.Handle("/api/collector/v1/thread-snapshot-batches", RequireCollectorAuth(cfg.Auth, http.HandlerFunc(handlers.ThreadSnapshotBatch)))
+	mux.Handle("/api/collector/v1/jvm-event-batches", RequireCollectorAuth(cfg.Auth, http.HandlerFunc(handlers.JVMEventBatch)))
 	mux.Handle("/api/collector/v1/target-status-batches", RequireCollectorAuth(cfg.Auth, http.HandlerFunc(handlers.TargetStatusBatch)))
 	mux.Handle("/api/ui/v1/flamegraph", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.Flamegraph)))
 	mux.Handle("/api/ui/v1/top-stacks", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.TopStacks)))
+	mux.Handle("/api/ui/v1/service-summary", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.ServiceSummary)))
 	mux.Handle("/api/ui/v1/thread-diagnosis", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.ThreadDiagnosis)))
 	mux.Handle("/api/ui/v1/deadlocks", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.Deadlocks)))
+	mux.Handle("/api/ui/v1/jvm-events", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.JVMEventsEvidence)))
 	mux.Handle("/api/ui/v1/target-status", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.TargetStatus)))
 	mux.Handle("/api/ui/v1/ingestion", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.Ingestion)))
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {

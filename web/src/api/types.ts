@@ -3,12 +3,23 @@ export type ProfileType =
   | "java_allocation_bytes"
   | "java_allocation_objects"
   | "java_lock_contention_count"
-  | "java_lock_delay_nanoseconds";
+  | "java_lock_delay_nanoseconds"
+  | "java_wall_clock_nanoseconds"
+  | "java_io_wait_nanoseconds";
 
 export type FlamegraphNode = {
   name: string;
   value: number;
+  display_value?: string;
   children?: FlamegraphNode[];
+};
+
+export type ProfileValueSemantics = {
+  value_unit: string;
+  display_unit: string;
+  percent_basis: string;
+  baseline_description: string;
+  window_seconds?: number;
 };
 
 export type PartialMetadata = {
@@ -21,6 +32,7 @@ export type PartialMetadata = {
 export type FlamegraphResponse = {
   root: FlamegraphNode;
   metadata: PartialMetadata;
+  semantics?: ProfileValueSemantics;
 };
 
 export type TopStackRow = {
@@ -29,8 +41,11 @@ export type TopStackRow = {
   profile_type: ProfileType | string;
   self: number;
   total: number;
+  self_display?: string;
+  total_display?: string;
   self_percent: string;
   total_percent: string;
+  semantics?: ProfileValueSemantics;
 };
 
 export type TargetStatusReason =
@@ -86,5 +101,24 @@ export type IngestionHealth = {
     latest_at: string;
     last_message?: string;
   }>;
+  partial: boolean;
+};
+
+export type JVMEvent = {
+  event_id: string;
+  batch_id?: string;
+  target?: { namespace?: string; service?: string; pod?: string; container?: string; process_id?: number };
+  event_type: string;
+  event_at: string;
+  duration_ns: number;
+  collector?: string;
+  action?: string;
+  cause?: string;
+  message?: string;
+  stack_frames?: string[];
+};
+
+export type JVMEventEvidence = {
+  events: JVMEvent[];
   partial: boolean;
 };
