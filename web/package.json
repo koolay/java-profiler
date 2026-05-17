@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest run",
-    "test:browser": "sh -c 'npm run dev -- --host 127.0.0.1 --port 5173 >/tmp/java-profiler-vite.log 2>&1 & pid=$!; trap \"kill $pid\" EXIT; wait-on http://127.0.0.1:5173 && playwright test --config=playwright.config.ts'"
+    "test:browser": "sh -c 'npm run dev -- --host 127.0.0.1 --port 5175 --strictPort >/tmp/java-profiler-vite.log 2>&1 & pid=$!; trap \"kill $pid\" EXIT; wait-on http://127.0.0.1:5175 && playwright test --config=playwright.config.ts'"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",

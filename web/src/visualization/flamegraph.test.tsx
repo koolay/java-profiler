@@ -1,5 +1,11 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act } from "react";
+import { afterEach, vi } from "vitest";
 import { Flamegraph } from "./flamegraph";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 test("renders flamegraph frames and partial warning", () => {
   render(<Flamegraph root={{ name: "root", value: 14, children: [{ name: "Checkout.handle", value: 10 }, { name: "java.lang.Thread.run", value: 4 }] }} metadata={{ partial: true, reasons: ["node_limit"] }} />);
@@ -46,8 +52,12 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
   expect(within(detail).getByText("66.7%")).toBeInTheDocument();
   expect(within(detail).getByText("Self CPU")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByText("BusyApp.lambda$main$0:14")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("Focused:");
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("66.7% of profile");
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toContainElement(screen.getByRole("button", { name: "Back" }));
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toContainElement(screen.getByRole("button", { name: "Reset" }));
   expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("Focused");
   expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("libjvm.so VeryLongNativeFrameNameThatWillNeedEllipsis");
 
@@ -59,7 +69,7 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
   expect(screen.getByRole("button", { name: /Thread\.run/ })).toBeInTheDocument();
 });
 
-test("focuses the selected frame even when hover has moved to a different frame", () => {
+test("focuses the frame currently shown in the inspector", () => {
   render(
     <Flamegraph
       root={{
@@ -74,8 +84,36 @@ test("focuses the selected frame even when hover has moved to a different frame"
   );
 
   fireEvent.click(screen.getByRole("button", { name: /SelectedFrame\.method:10/ }));
-  fireEvent.mouseEnter(screen.getByRole("button", { name: /HoveredFrame\.method:20/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
+  const hoveredFrame = screen.getByRole("button", { name: /HoveredFrame\.method:20/ });
+  fireEvent.mouseEnter(hoveredFrame);
+  fireEvent.mouseLeave(hoveredFrame);
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
+
+  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("HoveredFrame.method:20");
+  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).not.toHaveTextContent("SelectedFrame.method:10");
+});
+
+test("returns to the selected frame after hover inspection expires", () => {
+  vi.useFakeTimers();
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 100,
+        children: [
+          { name: "SelectedFrame.method:10", value: 40, children: [{ name: "SelectedFrame.child:11", value: 40 }] },
+          { name: "HoveredFrame.method:20", value: 60, children: [{ name: "HoveredFrame.child:21", value: 60 }] },
+        ],
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /SelectedFrame\.method:10/ }));
+  const hoveredFrame = screen.getByRole("button", { name: /HoveredFrame\.method:20/ });
+  fireEvent.mouseEnter(hoveredFrame);
+  fireEvent.mouseLeave(hoveredFrame);
+  act(() => vi.advanceTimersByTime(130));
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
 
   expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("SelectedFrame.method:10");
   expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).not.toHaveTextContent("HoveredFrame.method:20");
@@ -92,16 +130,119 @@ test("returns to the previous zoom level with Back", () => {
     />,
   );
 
-  expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByRole("button", { name: "Back" })).toBeEnabled();
   expect(screen.queryByRole("button", { name: "root 8" })).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Back" }));
-  expect(screen.getByRole("button", { name: "root8" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "root 8" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
+});
+
+test("walks back through consecutive focused frames and reset returns to root", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 100,
+        children: [
+          {
+            name: "DemoHttpService.handleWork:93",
+            value: 80,
+            children: [{ name: "DemoHttpService.burnCpu:188", value: 60, children: [{ name: "Math.sqrt", value: 40 }] }],
+          },
+        ],
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("DemoHttpService.handleWork:93");
+
+  fireEvent.click(screen.getByRole("button", { name: /DemoHttpService\.burnCpu:188/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("DemoHttpService.burnCpu:188");
+
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("DemoHttpService.handleWork:93");
+
+  fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+  expect(screen.queryByRole("region", { name: "Focused flamegraph state" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^root 100/ })).toBeInTheDocument();
+});
+
+test("clears focus state when a refreshed profile no longer contains the focused path", () => {
+  const { rerender } = render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 10,
+        children: [{ name: "Checkout.handle", value: 10, children: [{ name: "Checkout.parse", value: 10 }] }],
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /Checkout\.handle/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("Checkout.handle");
+
+  rerender(<Flamegraph root={{ name: "root", value: 6, children: [{ name: "Checkout.other", value: 6 }] }} />);
+
+  expect(screen.queryByRole("region", { name: "Focused flamegraph state" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^root 6/ })).toBeInTheDocument();
+});
+
+test("clears focus when a refreshed profile reuses the same path and leaf name under another ancestor", () => {
+  const { rerender } = render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 10,
+        children: [{ name: "Checkout.alpha", value: 10, children: [{ name: "SharedFrame.run", value: 10 }] }],
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /SharedFrame\.run/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("SharedFrame.run");
+
+  rerender(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 10,
+        children: [{ name: "Checkout.beta", value: 10, children: [{ name: "SharedFrame.run", value: 10 }] }],
+      }}
+    />,
+  );
+
+  expect(screen.queryByRole("region", { name: "Focused flamegraph state" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^root 10/ })).toBeInTheDocument();
+});
+
+test("uses child samples as profile basis when the root has no own value", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 0,
+        children: [
+          { name: "Checkout.handle", value: 30 },
+          { name: "Checkout.parse", value: 70 },
+        ],
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: /Checkout\.handle/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
+
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("30.0% of profile");
 });
 
 test("shows real Java demo frame names in the detail panel", () => {
@@ -153,7 +294,7 @@ test("highlights selected Java frames without replacing flamegraph context", () 
   fireEvent.click(burnCpuFrames[0]);
   expect(within(screen.getByLabelText("Selected flamegraph frame")).getAllByText("7")).toHaveLength(2);
 
-  fireEvent.click(screen.getByRole("button", { name: "Focus selected" }));
+  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByText(/Focused stack context/)).toBeInTheDocument();
   expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("DemoHttpService.burnCpu:188");
 });

@@ -77,7 +77,7 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
   if (hasNativeFrame) {
     await expect(nativeFrame).not.toHaveClass(/flame-row-dimmed/);
   }
-  const demoFrame = page.getByRole("button", { name: /DemoHttpService\.(burnCpu|handleWork)/ }).first();
+  const demoFrame = page.getByRole("button", { name: /DemoHttpService\.handleWork/ }).first();
   await expect(demoFrame).toBeVisible();
   await demoFrame.click();
   const selectedFrame = page.getByRole("region", { name: "Selected flamegraph frame" });
@@ -95,13 +95,27 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
   if (hasNativeFrame) {
     await expect(nativeFrame).toHaveClass(/flame-row-dimmed/);
   }
-  await page.getByRole("button", { name: "Focus selected" }).click();
+  await page.getByRole("button", { name: "Focus frame" }).click();
   await expect(page.getByText(/Focused stack context/)).toBeVisible();
+  const focusState = page.getByRole("region", { name: "Focused flamegraph state" });
+  await expect(focusState).toContainText("Focused:");
+  await expect(focusState.getByRole("button", { name: "Back" })).toBeEnabled();
+  await expect(focusState.getByRole("button", { name: "Reset" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Focused flamegraph path" })).toContainText("Focused");
-  await expect(page.getByRole("button", { name: "Back" })).toBeEnabled();
-  await page.getByRole("button", { name: "Back" }).click();
-  await expect(page.getByText(/Search highlights matching frames/)).toBeVisible();
-  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  const initialFocusName = await focusState.locator("code").textContent();
+  const focusedRows = page.getByRole("region", { name: "Flamegraph", exact: true }).locator(".flame-row");
+  const rowCount = await focusedRows.count();
+  expect(rowCount).toBeGreaterThan(0);
+  if (rowCount > 1) {
+    await focusedRows.nth(1).click();
+    await page.getByRole("button", { name: "Focus frame" }).click();
+    await expect(focusState.locator("code")).not.toHaveText(initialFocusName ?? "");
+    await focusState.getByRole("button", { name: "Back" }).click();
+    await expect(focusState.locator("code")).toHaveText(initialFocusName ?? "");
+  }
+  await focusState.getByRole("button", { name: "Reset" }).click();
+  await expect(page.getByRole("region", { name: "Focused flamegraph state" })).toBeHidden();
+  await page.getByRole("button", { name: "Reset view", exact: true }).click();
   await page.getByRole("button", { name: "Top Table" }).click();
   await expect(page.getByRole("region", { name: "Top table" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Flamegraph", exact: true })).toBeHidden();

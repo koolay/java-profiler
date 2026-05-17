@@ -93,6 +93,15 @@ h1, h2, h3, p { margin-top: 0; }
 .flamegraph-tools button.active { border-color: var(--accent); background: rgba(15,118,110,.12); color: var(--accent); font-weight: 700; }
 .flamegraph-tools button:disabled { color: var(--muted); background: #edf1ed; cursor: default; }
 .flamegraph-mode { color: var(--muted); font-size: 12px; line-height: 1.35; margin: 0 0 7px; }
+.focus-status { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin: 0 0 8px; border: 1px solid rgba(12,125,125,.35); border-left: 4px solid var(--accent); background: #eef8f5; padding: 8px 10px; border-radius: 6px; }
+.focus-status > div:first-child { min-width: 0; display: grid; gap: 3px; }
+.focus-status span { color: var(--accent); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.focus-status code { min-width: 0; color: var(--ink); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-status strong { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.focus-status-actions { display: flex; gap: 6px; align-items: center; }
+.focus-status-actions button { border: 1px solid var(--accent); background: #fff; color: var(--accent); padding: 6px 9px; border-radius: 6px; font-weight: 700; }
+.focus-status-actions .focus-status-reset { background: var(--accent); color: #fff; }
+.focus-status-actions button:disabled { border-color: var(--line); background: #edf1ed; color: var(--muted); cursor: default; }
 .warning { color: var(--warn); background: #fff4d7; padding: 6px 9px; border-left: 3px solid var(--warn); }
 .profile-analysis { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 10px; align-items: start; }
 .profile-analysis > .profile-toolbar,

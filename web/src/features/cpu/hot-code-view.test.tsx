@@ -218,7 +218,7 @@ test("reset clears search and selected top table row state", () => {
   expect(within(topTable).getByRole("row", { name: /DemoHttpService\.handleWork/ })).toHaveClass("active");
 
   fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "handlework" } });
-  fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reset view" }));
 
   expect(screen.getByLabelText("Search flamegraph frames")).toHaveValue("");
   expect(within(topTable).getByRole("row", { name: /DemoHttpService\.handleWork/ })).not.toHaveClass("active");
