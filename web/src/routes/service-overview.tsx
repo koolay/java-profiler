@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
+import { Activity, AlertTriangle, Copy, Cpu, Database, Flame, LockKeyhole, Share2 } from "lucide-react";
+import type { ReactNode } from "react";
 import type { ProfileType } from "../api/types";
 import { CpuView } from "../features/cpu/cpu-view";
+import { WallClockView } from "../features/wall-clock/wall-clock-view";
+import { IOView } from "../features/io/io-view";
+import { GCView } from "../features/gc/gc-view";
 import { MemoryView } from "../features/memory/memory-view";
 import { LocksView } from "../features/locks/locks-view";
 import { DeadlocksView } from "../features/deadlocks/deadlocks-view";
@@ -8,8 +13,33 @@ import { TargetStatusView } from "../features/status/target-status-view";
 import { IngestionHealthView } from "../features/ingestion/ingestion-health-view";
 import type { DiagnosisView } from "../app";
 
-const tabs = ["memory", "cpu", "locks", "deadlocks", "status", "ingestion"] as const;
+const tabs = ["memory", "cpu", "wall", "io", "gc", "locks", "deadlocks", "status", "ingestion"] as const;
 type Tab = (typeof tabs)[number];
+
+const navigationGroups: Array<{
+  label: string;
+  items: Array<{ view: DiagnosisView; label: string; shortLabel: string; detail: string; icon: ReactNode }>;
+}> = [
+  {
+    label: "Profiles",
+    items: [
+      { view: "cpu", label: "CPU profiles", shortLabel: "CPU", detail: "MVP", icon: <Cpu size={16} /> },
+      { view: "wall", label: "Wall Clock profiles", shortLabel: "Wall Clock", detail: "phase", icon: <Activity size={16} /> },
+      { view: "io", label: "I/O wait profiles", shortLabel: "I/O", detail: "phase", icon: <Database size={16} /> },
+      { view: "gc", label: "GC pauses", shortLabel: "GC", detail: "events", icon: <Activity size={16} /> },
+      { view: "memory", label: "Allocation profiles", shortLabel: "Allocation", detail: "later", icon: <Flame size={16} /> },
+      { view: "locks", label: "Lock diagnosis", shortLabel: "Locks", detail: "later", icon: <LockKeyhole size={16} /> },
+    ],
+  },
+  {
+    label: "Health",
+    items: [
+      { view: "status", label: "Service status", shortLabel: "Status", detail: "targets", icon: <Activity size={16} /> },
+      { view: "ingestion", label: "Ingestion health", shortLabel: "Ingestion", detail: "batches", icon: <Database size={16} /> },
+      { view: "deadlocks", label: "Deadlock diagnosis", shortLabel: "Deadlocks", detail: "events", icon: <AlertTriangle size={16} /> },
+    ],
+  },
+];
 
 type ServiceOverviewProps = {
   activeView: DiagnosisView;
@@ -19,7 +49,9 @@ type ServiceOverviewProps = {
 export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewProps) {
   const [namespace, setNamespace] = useState("java-profiler-qa");
   const [service, setService] = useState("jdk17-http-demo");
+  const [pod, setPod] = useState("");
   const [rangeMinutes, setRangeMinutes] = useState(60);
+  const [copyStatus, setCopyStatus] = useState("");
   const params = useMemo(() => {
     const end = new Date();
     const start = new Date(end.getTime() - rangeMinutes * 60_000);
@@ -30,13 +62,42 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
       start: start.toISOString(),
       end: end.toISOString(),
     });
+    if (pod.trim()) {
+      value.set("pod", pod.trim());
+    }
     return value;
-  }, [namespace, service, activeView, rangeMinutes]);
+  }, [namespace, service, pod, activeView, rangeMinutes]);
+  const copyContext = async () => {
+    const context = [
+      `view=${activeView}`,
+      `namespace=${namespace}`,
+      `service=${service}`,
+      `pod=${pod.trim() || "<service-query>"}`,
+      `range=${rangeMinutes}m`,
+      `profile_type=${profileTypeFor(activeView)}`,
+    ].join("\n");
+    await navigator.clipboard?.writeText(context);
+    setCopyStatus("Context copied");
+  };
+  const shareView = async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", activeView);
+    for (const [key, value] of params.entries()) url.searchParams.set(key, value);
+    await navigator.clipboard?.writeText(url.toString());
+    setCopyStatus("Permalink copied");
+  };
 
   return (
-    <div className="service-layout">
-      <section className="context-strip" aria-label="Service context">
-        <div className="context-fields">
+    <div className="workbench-shell">
+      <header className="workbench-topbar">
+        <div className="workbench-brand">
+          <div className="brand-mark">JVM</div>
+          <div>
+            <strong>Java Profiler</strong>
+            <span>MVP incident view</span>
+          </div>
+        </div>
+        <div className="context-fields context-fields-topbar" aria-label="Service context">
           <label className="context-field">
             <span>Namespace</span>
             <input value={namespace} onChange={(event) => setNamespace(event.target.value)} />
@@ -44,6 +105,10 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
           <label className="context-field">
             <span>Service</span>
             <input value={service} onChange={(event) => setService(event.target.value)} />
+          </label>
+          <label className="context-field">
+            <span>Pod</span>
+            <input aria-label="Pod filter" placeholder="single Java Pod" value={pod} onChange={(event) => setPod(event.target.value)} />
           </label>
           <label className="context-field context-range">
             <span>Range</span>
@@ -54,27 +119,66 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
               <option value={360}>Last 6h</option>
             </select>
           </label>
-          <div className="context-chip context-timezone" aria-label="Timezone">
-            <span>Timezone</span>
-            <strong>UTC</strong>
-            <small>All timestamps are rendered in UTC.</small>
-          </div>
         </div>
-        <p className="scope-note">Profiles, thread evidence, target state, and ingestion health stay here. Metric trend charts remain in Prometheus.</p>
-      </section>
-      <section className="diagnosis-panel">
-        <div className="tab-row">
-          <nav className="tabs" aria-label="Diagnosis views">
-            {tabs.map((item) => (
-              <button key={item} className={item === activeView ? "active" : ""} onClick={() => onViewChange(item)} type="button">
-                {item}
+        <div className="workbench-actions">
+          <button type="button" onClick={copyContext}><Copy size={15} />Copy Context</button>
+          <button className="primary-action" type="button" onClick={shareView}><Share2 size={15} />Share</button>
+        </div>
+        <span className="sr-only" aria-live="polite">{copyStatus}</span>
+      </header>
+
+      <aside className="workbench-side" aria-label="Java profiler navigation">
+        {navigationGroups.map((group) => (
+          <div className="nav-group" key={group.label}>
+            <div className="side-title">{group.label}</div>
+            {group.items.map((item) => (
+              <button
+                key={item.view}
+                aria-label={item.label}
+                aria-pressed={item.view === activeView}
+                className={`workbench-nav-item${item.view === activeView ? " active" : ""}`}
+                onClick={() => onViewChange(item.view)}
+                type="button"
+              >
+                <span className="nav-label">{item.icon}{item.shortLabel}</span>
+                <span className="nav-count">{item.detail}</span>
               </button>
             ))}
-          </nav>
+          </div>
+        ))}
+        <div className="scope-card">
+          <div className="side-title">Scope</div>
+          <div className="scope-row"><span>Target</span><strong>{pod.trim() ? "Single Pod" : "Service query"}</strong></div>
+          <div className="scope-row"><span>First view</span><strong>CPU only</strong></div>
+          <p>MVP keeps Wall Clock, GC, I/O, service rollup, and A/B comparison out of the first screen.</p>
+        </div>
+      </aside>
+
+      <section className="evidence-main">
+        <div className="evidence-health-strip" aria-label="Evidence health">
+          <div className="health-chip health-chip-ok">
+            <span>Collection</span>
+            <strong>CPU profile</strong>
+          </div>
+          <div className="health-chip">
+            <span>Target scope</span>
+            <strong>{pod.trim() ? "Single Pod" : "Service query"}</strong>
+          </div>
+          <div className="health-chip">
+            <span>Sample rate</span>
+            <strong>99Hz target</strong>
+          </div>
+          <div className="health-chip">
+            <span>Baseline</span>
+            <strong>Pod quota when available</strong>
+          </div>
         </div>
         <div className="diagnosis-content">
           {activeView === "memory" && <MemoryView params={params} />}
           {activeView === "cpu" && <CpuView params={params} />}
+          {activeView === "wall" && <WallClockView params={params} />}
+          {activeView === "io" && <IOView params={params} />}
+          {activeView === "gc" && <GCView params={params} />}
           {activeView === "locks" && <LocksView params={params} />}
           {activeView === "deadlocks" && <DeadlocksView params={params} />}
           {activeView === "status" && <TargetStatusView params={params} />}
@@ -87,6 +191,8 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
 
 function profileTypeFor(tab: Tab): ProfileType {
   if (tab === "cpu") return "java_cpu_nanoseconds";
+  if (tab === "wall") return "java_wall_clock_nanoseconds";
+  if (tab === "io") return "java_io_wait_nanoseconds";
   if (tab === "locks") return "java_lock_delay_nanoseconds";
   return "java_allocation_bytes";
 }

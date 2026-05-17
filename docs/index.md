@@ -3,36 +3,42 @@ layout: home
 
 hero:
   name: Java Profiler
-  text: Kubernetes-native Java profiling documentation
-  tagline: Operate, validate, and evolve a HotSpot-first profiler built around async-profiler and ClickHouse.
+  text: Find the Java stack behind Kubernetes performance problems
+  tagline: "A focused profiler for HotSpot services on Kubernetes: opt-in collection, async-profiler/JFR-derived evidence, ClickHouse storage, and a UI built for Java incident diagnosis."
   actions:
     - theme: brand
-      text: Start with Requirements
-      link: /brainstorms/java-profiler-requirements
+      text: Quickstart
+      link: /getting-started/quickstart
     - theme: alt
-      text: Run the Profiler
-      link: /operations/java-profiling-runbook
+      text: Analyze a Service
+      link: /operations/performance-analysis-user-manual
 
 features:
-  - title: Product Boundary
-    details: Java services on Kubernetes, opt-in through annotations or labels, node-local collection, and bounded profile retention.
-  - title: Real Acceptance
-    details: Acceptance requires non-empty CPU, allocation, and lock profile data from a real Kubernetes workload.
-  - title: Operations First
-    details: Deployment, profiling, performance analysis, and E2E automation guides are grouped for operators and implementers.
+  - title: Production-safe by default
+    details: Profiling is opt-in through Kubernetes metadata, collected node-locally, and retained for 7 days or less.
+  - title: Real Java evidence
+    details: CPU, Wall Clock, Java I/O wait, GC, allocation, lock delay, thread, deadlock, status, and ingestion evidence stay tied to one service and time range.
+  - title: Own the profiling stack
+    details: No required Pyroscope, Parca, or Grafana backend. async-profiler data lands in ClickHouse and a self-owned UI.
 ---
 
-## Start here
+## For service owners
 
-- [Requirements](./brainstorms/java-profiler-requirements.md) defines the product scope, actors, retention policy, and success criteria.
-- [Architecture](./architecture/java-profiler-architecture.md) explains the collector, backend, ClickHouse store, and web UI.
-- [Java Profiling Runbook](./operations/java-profiling-runbook.md) shows how to enable, disable, and validate profiling.
-- [Real Profiling Acceptance Standard](./operations/real-profiling-acceptance-standard.md) defines the evidence required before profiling changes are complete.
+- [Quickstart](./getting-started/quickstart.md): enable profiling and read your first service profile.
+- [Performance Analysis Manual](./operations/performance-analysis-user-manual.md): read CPU, Wall Clock, Java I/O wait, GC, allocation, lock, deadlock, target status, and ingestion evidence.
+- [Java Profiling Runbook](./operations/java-profiling-runbook.md): enable temporary or continuous profiling for a Kubernetes workload.
 
-## Main sections
+## For platform operators
 
-- [Operations](./operations/java-profiling-runbook.md): deployment, profiling, performance analysis, E2E testing, and acceptance.
-- [Research](./research/coroot-node-agent-java-agent.md): upstream references and technology studies.
+- [Deployment and Operations](./operations/deployment-operations-admin-manual.md): install, secure, operate, upgrade, and troubleshoot the profiler.
+- [Real Profiling Acceptance](./operations/real-profiling-acceptance-standard.md): prove CPU, Wall Clock, Java I/O wait, GC, allocation, lock, ClickHouse, UI, and ingestion behavior before shipping changes.
+
+## For contributors
+
+- [Contributing](./contributing/development.md): run local checks, build docs, and execute real acceptance.
+- [Architecture](./architecture/java-profiler-architecture.md): understand the collector, backend, ClickHouse store, contracts, and web UI.
+- [E2E Automation Guide](./operations/e2e-automation-test-guide.md): run browser and real Kubernetes acceptance flows.
+- [Profiling Contracts](./reference/profiling-contracts.md): inspect stable payload and configuration contracts.
 
 ## Local preview
 

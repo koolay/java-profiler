@@ -331,6 +331,56 @@ func (r *SQLRepository) QueryTopStackSamples(ctx context.Context, q ProfileQuery
 	return out, rows.Err()
 }
 
+func (r *SQLRepository) QueryProfileTargetSummary(ctx context.Context, q ProfileQuery) ([]ProfileTargetSummary, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 5000
+	}
+	query := `
+		SELECT namespace, service, pod, container, process_id, jvm_start_time, profile_type, sum(sample_value) AS total_value, count() AS sample_count
+		FROM java_profiler_profile_samples
+		PREWHERE (? = '' OR namespace = ?) AND (? = '' OR service = ?) AND (? = '' OR pod = ?) AND (? = '' OR profile_type = ?)
+		  AND (? = 1 OR ended_at >= ?) AND (? = 1 OR started_at <= ?)
+		GROUP BY namespace, service, pod, container, process_id, jvm_start_time, profile_type
+		ORDER BY total_value DESC
+		LIMIT ?`
+	rows, err := r.db.QueryContext(ctx, query,
+		q.Namespace, q.Namespace,
+		q.Service, q.Service,
+		q.Pod, q.Pod,
+		q.ProfileType.String(), q.ProfileType.String(),
+		zeroTimeFlag(q.Start), q.Start,
+		zeroTimeFlag(q.End), q.End,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ProfileTargetSummary
+	var grandTotal uint64
+	window := domain.TimeWindow{StartedAt: q.Start, EndsAt: q.End}
+	for rows.Next() {
+		var summary ProfileTargetSummary
+		var profileType string
+		if err := rows.Scan(&summary.Namespace, &summary.Service, &summary.Pod, &summary.Container, &summary.ProcessID, &summary.JVMStartTime, &profileType, &summary.TotalValue, &summary.SampleCount); err != nil {
+			return nil, err
+		}
+		summary.ProfileType = profileTypeFromString(profileType)
+		summary.DisplayValue = domain.FormatProfileValue(summary.ProfileType, summary.TotalValue, window)
+		summary.WindowSemantics = summary.ProfileType.Semantics(window)
+		grandTotal += summary.TotalValue
+		out = append(out, summary)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].PercentOfTotal = percentOfTotal(out[i].TotalValue, grandTotal)
+	}
+	return out, nil
+}
+
 func (r *SQLRepository) InsertSnapshots(ctx context.Context, snapshots []ThreadSnapshot, deadlocks []DeadlockEvent) error {
 	for _, snapshot := range snapshots {
 		daemon := uint8(0)
@@ -388,6 +438,90 @@ func (r *SQLRepository) InsertSnapshots(ctx context.Context, snapshots []ThreadS
 		}
 	}
 	return nil
+}
+
+func (r *SQLRepository) InsertJVMEvents(ctx context.Context, events []JVMEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	rows := make([][]any, 0, len(events))
+	for _, event := range events {
+		rows = append(rows, []any{
+			event.EventID,
+			event.BatchID,
+			event.Target.Cluster,
+			event.Target.Namespace,
+			event.Target.Service,
+			event.Target.Pod,
+			event.Target.Container,
+			event.Target.ProcessID,
+			event.Target.JVMStartTime,
+			event.EventType,
+			event.EventAt,
+			event.DurationNS,
+			event.Collector,
+			event.Action,
+			event.Cause,
+			event.Message,
+			event.StackFrames,
+		})
+	}
+	return execMultiRowInsert(ctx, r.db, `
+		INSERT INTO java_profiler_jvm_events
+		(event_id, batch_id, cluster, namespace, service, pod, container, process_id, jvm_start_time, event_type, event_at, duration_ns, collector, action, cause, message, stack_frames)`, rows)
+}
+
+func (r *SQLRepository) QueryJVMEvents(ctx context.Context, q JVMEventQuery) ([]JVMEvent, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 1000
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT event_id, batch_id, cluster, namespace, service, pod, container, process_id, jvm_start_time, event_type, event_at, duration_ns, collector, action, cause, message, stack_frames
+		FROM java_profiler_jvm_events
+		PREWHERE (? = '' OR namespace = ?) AND (? = '' OR service = ?) AND (? = '' OR pod = ?) AND (? = '' OR event_type = ?)
+		  AND (? = 1 OR event_at >= ?) AND (? = 1 OR event_at <= ?)
+		ORDER BY event_at DESC
+		LIMIT ?`,
+		q.Namespace, q.Namespace,
+		q.Service, q.Service,
+		q.Pod, q.Pod,
+		q.EventType, q.EventType,
+		zeroTimeFlag(q.Start), q.Start,
+		zeroTimeFlag(q.End), q.End,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []JVMEvent
+	for rows.Next() {
+		var event JVMEvent
+		if err := rows.Scan(
+			&event.EventID,
+			&event.BatchID,
+			&event.Target.Cluster,
+			&event.Target.Namespace,
+			&event.Target.Service,
+			&event.Target.Pod,
+			&event.Target.Container,
+			&event.Target.ProcessID,
+			&event.Target.JVMStartTime,
+			&event.EventType,
+			&event.EventAt,
+			&event.DurationNS,
+			&event.Collector,
+			&event.Action,
+			&event.Cause,
+			&event.Message,
+			&event.StackFrames,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, event)
+	}
+	return out, rows.Err()
 }
 
 const (

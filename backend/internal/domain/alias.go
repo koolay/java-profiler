@@ -3,15 +3,16 @@ package domain
 import root "github.com/koolay/java-profiler/domain"
 
 type (
-	ProfileType        = root.ProfileType
-	EnablementMode     = root.EnablementMode
-	TargetDesiredState = root.TargetDesiredState
-	StatusReason       = root.StatusReason
-	BatchType          = root.BatchType
-	TargetIdentity     = root.TargetIdentity
-	TimeWindow         = root.TimeWindow
-	RetentionPolicy    = root.RetentionPolicy
-	Confidence         = root.Confidence
+	ProfileType           = root.ProfileType
+	EnablementMode        = root.EnablementMode
+	TargetDesiredState    = root.TargetDesiredState
+	StatusReason          = root.StatusReason
+	BatchType             = root.BatchType
+	TargetIdentity        = root.TargetIdentity
+	TimeWindow            = root.TimeWindow
+	RetentionPolicy       = root.RetentionPolicy
+	Confidence            = root.Confidence
+	ProfileValueSemantics = root.ProfileValueSemantics
 )
 
 const (
@@ -20,6 +21,8 @@ const (
 	ProfileTypeAllocObjects   = root.ProfileTypeAllocObjects
 	ProfileTypeLockContention = root.ProfileTypeLockContention
 	ProfileTypeLockDelay      = root.ProfileTypeLockDelay
+	ProfileTypeWallClock      = root.ProfileTypeWallClock
+	ProfileTypeIOWait         = root.ProfileTypeIOWait
 
 	EnablementDisabled   = root.EnablementDisabled
 	EnablementContinuous = root.EnablementContinuous

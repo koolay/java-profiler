@@ -8,6 +8,8 @@ import java.lang.management.ManagementFactory;
 import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 
 public final class DemoHttpService {
   private static final Object LOCK_MONITOR = new Object();
@@ -92,12 +95,15 @@ public final class DemoHttpService {
     switch (mode) {
       case "cpu" -> operations = burnCpu(durationMs);
       case "alloc" -> operations = allocateObjects(durationMs);
+      case "gc" -> operations = createGcPressure(durationMs);
+      case "io" -> operations = exerciseFileIo(durationMs);
+      case "wall" -> operations = waitWallClock(durationMs);
       case "lock" -> operations = contendLock(durationMs);
       default -> {
         writeJson(
             exchange,
             HttpURLConnection.HTTP_BAD_REQUEST,
-            "{\"error\":\"mode must be one of cpu, alloc, lock\"}");
+            "{\"error\":\"mode must be one of cpu, alloc, gc, io, wall, lock\"}");
         return;
       }
     }
@@ -176,7 +182,7 @@ public final class DemoHttpService {
         HttpURLConnection.HTTP_OK,
         "{"
             + "\"service\":\"jdk17-http-demo\","
-            + "\"endpoints\":[\"/health\",\"/work?mode=cpu|alloc|lock&durationMs=1000\","
+            + "\"endpoints\":[\"/health\",\"/work?mode=cpu|alloc|gc|io|wall|lock&durationMs=1000\","
             + "\"/threads?durationMs=5000\"]"
             + "}");
   }
@@ -201,6 +207,50 @@ public final class DemoHttpService {
         chunks[i] = new byte[8 * 1024];
         operations++;
       }
+    }
+    return operations;
+  }
+
+  private static long createGcPressure(int durationMs) {
+    long deadline = System.nanoTime() + Duration.ofMillis(durationMs).toNanos();
+    long operations = 0;
+    int slot = 0;
+    byte[][] retained = new byte[64][];
+    while (System.nanoTime() < deadline) {
+      for (int i = 0; i < retained.length; i++) {
+        retained[slot] = new byte[256 * 1024];
+        slot = (slot + 1) % retained.length;
+        operations++;
+      }
+      System.gc();
+      LockSupport.parkNanos(Duration.ofMillis(10).toNanos());
+    }
+    return operations;
+  }
+
+  private static long exerciseFileIo(int durationMs) throws IOException {
+    long deadline = System.nanoTime() + Duration.ofMillis(durationMs).toNanos();
+    long operations = 0;
+    Path file = Files.createTempFile("java-profiler-demo-", ".bin");
+    try {
+      byte[] payload = new byte[64 * 1024];
+      while (System.nanoTime() < deadline) {
+        Files.write(file, payload);
+        byte[] readBack = Files.readAllBytes(file);
+        operations += readBack.length;
+      }
+    } finally {
+      Files.deleteIfExists(file);
+    }
+    return operations;
+  }
+
+  private static long waitWallClock(int durationMs) {
+    long deadline = System.nanoTime() + Duration.ofMillis(durationMs).toNanos();
+    long operations = 0;
+    while (System.nanoTime() < deadline) {
+      sleepQuietly(25);
+      operations++;
     }
     return operations;
   }

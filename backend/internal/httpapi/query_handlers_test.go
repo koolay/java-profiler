@@ -105,8 +105,15 @@ func TestTopStacksRouteReturnsSelfAndTotalRows(t *testing.T) {
 		Symbol       string `json:"symbol"`
 		Self         uint64 `json:"self"`
 		Total        uint64 `json:"total"`
+		SelfDisplay  string `json:"self_display"`
+		TotalDisplay string `json:"total_display"`
 		SelfPercent  string `json:"self_percent"`
 		TotalPercent string `json:"total_percent"`
+		Semantics    struct {
+			ValueUnit    string `json:"value_unit"`
+			DisplayUnit  string `json:"display_unit"`
+			PercentBasis string `json:"percent_basis"`
+		} `json:"semantics"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &rows); err != nil {
 		t.Fatal(err)
@@ -117,11 +124,122 @@ func TestTopStacksRouteReturnsSelfAndTotalRows(t *testing.T) {
 	if rows[0].Self != 0 || rows[0].Total != 10 || rows[0].TotalPercent != "100.0%" {
 		t.Fatalf("unexpected handleWork row: %#v", rows[0])
 	}
+	if rows[0].SelfDisplay == "" || rows[0].TotalDisplay == "" || rows[0].Semantics.ValueUnit != "nanoseconds" {
+		t.Fatalf("missing semantic display contract: %#v", rows[0])
+	}
 	snapshot := exporter.Snapshot()
 	if !strings.Contains(snapshot, "java_profiler_http_query_top_stacks_requests_total 1") {
 		t.Fatalf("missing top stacks request metric: %s", snapshot)
 	}
 	if !strings.Contains(snapshot, "java_profiler_query_top_stacks_rows_total 3") {
 		t.Fatalf("missing top stacks row metric: %s", snapshot)
+	}
+}
+
+func TestServiceSummaryRouteReturnsPodJVMContributions(t *testing.T) {
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(200, 0).UTC()
+	payload := app.ProfileBatchRequest{
+		BatchID:     "batch-summary",
+		CollectorID: "collector-a",
+		ReceivedAt:  now,
+		Samples: []profiling.ProfileSample{
+			{Target: domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "checkout-1", ProcessID: 1, JVMStartTime: now}, ProfileType: domain.ProfileTypeCPU, StartedAt: now, EndedAt: now.Add(time.Second), StackID: "a", Frames: []string{"Demo.hot"}, Value: uint64(3 * time.Second)},
+			{Target: domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "checkout-2", ProcessID: 2, JVMStartTime: now}, ProfileType: domain.ProfileTypeCPU, StartedAt: now, EndedAt: now.Add(time.Second), StackID: "b", Frames: []string{"Demo.hot"}, Value: uint64(7 * time.Second)},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/collector/v1/profile-batches", bytes.NewReader(body))
+	ingestReq.Header.Set("Content-Type", "application/json")
+	ingestReq.Header.Set("Authorization", "Bearer collector")
+	ingestRec := httptest.NewRecorder()
+	server.ServeHTTP(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("ingest status = %d body=%s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ui/v1/service-summary?namespace=prod&service=checkout&profile_type=java_cpu_nanoseconds&start="+now.Format(time.RFC3339)+"&end="+now.Add(10*time.Second).Format(time.RFC3339), nil)
+	req.Header.Set("Authorization", "Bearer ui")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("summary status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Targets []struct {
+			Pod            string `json:"pod"`
+			DisplayValue   string `json:"display_value"`
+			PercentOfTotal string `json:"percent_of_total"`
+		} `json:"targets"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Targets) != 2 || response.Targets[0].Pod != "checkout-2" || response.Targets[0].PercentOfTotal != "70.0%" {
+		t.Fatalf("unexpected summary response: %+v", response)
+	}
+}
+
+func TestJVMEventsRouteReturnsGCPauseEvidence(t *testing.T) {
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(300, 0).UTC()
+	payload := app.JVMEventBatchRequest{
+		BatchID:     "batch-gc",
+		CollectorID: "collector-a",
+		ReceivedAt:  now,
+		Events: []profiling.JVMEvent{{
+			EventID:    "gc-1",
+			Target:     domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "checkout-1", ProcessID: 1, JVMStartTime: now},
+			EventType:  "gc_pause",
+			EventAt:    now.Add(time.Second),
+			DurationNS: uint64(42 * time.Millisecond),
+			Collector:  "G1",
+			Action:     "end of minor GC",
+			Cause:      "Allocation Failure",
+		}},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/collector/v1/jvm-event-batches", bytes.NewReader(body))
+	ingestReq.Header.Set("Content-Type", "application/json")
+	ingestReq.Header.Set("Authorization", "Bearer collector")
+	ingestRec := httptest.NewRecorder()
+	server.ServeHTTP(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("JVM event ingest status = %d body=%s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ui/v1/jvm-events?namespace=prod&service=checkout&pod=checkout-1&event_type=gc_pause", nil)
+	req.Header.Set("Authorization", "Bearer ui")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("JVM events status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Events []struct {
+			EventID    string `json:"event_id"`
+			EventType  string `json:"event_type"`
+			DurationNS uint64 `json:"duration_ns"`
+			Collector  string `json:"collector"`
+		} `json:"events"`
+		Partial bool `json:"partial"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Events) != 1 || response.Events[0].EventID != "gc-1" || response.Events[0].DurationNS != uint64(42*time.Millisecond) || response.Events[0].Collector != "G1" {
+		t.Fatalf("unexpected JVM event response: %+v", response)
 	}
 }

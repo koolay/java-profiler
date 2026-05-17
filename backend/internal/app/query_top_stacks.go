@@ -13,13 +13,16 @@ import (
 )
 
 type TopStackRow struct {
-	Symbol       string `json:"symbol"`
-	Location     string `json:"location"`
-	ProfileType  string `json:"profile_type"`
-	Self         uint64 `json:"self"`
-	Total        uint64 `json:"total"`
-	SelfPercent  string `json:"self_percent"`
-	TotalPercent string `json:"total_percent"`
+	Symbol       string                       `json:"symbol"`
+	Location     string                       `json:"location"`
+	ProfileType  string                       `json:"profile_type"`
+	Self         uint64                       `json:"self"`
+	Total        uint64                       `json:"total"`
+	SelfDisplay  string                       `json:"self_display"`
+	TotalDisplay string                       `json:"total_display"`
+	SelfPercent  string                       `json:"self_percent"`
+	TotalPercent string                       `json:"total_percent"`
+	Semantics    domain.ProfileValueSemantics `json:"semantics"`
 }
 
 var topStackExcludedMethods = map[string]struct{}{
@@ -38,7 +41,7 @@ func QueryTopStacks(ctx context.Context, repo ProfileQueryStore, q clickhouse.Pr
 	}
 	recordMetric(exporter, "java_profiler_query_top_stacks_fetch_seconds_total", time.Since(fetchStarted).Seconds())
 	rankStarted := time.Now()
-	rows, stats := buildTopStacks(samples)
+	rows, stats := buildTopStacks(samples, domain.TimeWindow{StartedAt: q.Start, EndsAt: q.End})
 	recordMetric(exporter, "java_profiler_query_top_stacks_rank_seconds_total", time.Since(rankStarted).Seconds())
 	recordMetric(exporter, "java_profiler_query_top_stacks_samples_total", float64(stats.samples))
 	recordMetric(exporter, "java_profiler_query_top_stacks_frames_total", float64(stats.frames))
@@ -47,7 +50,7 @@ func QueryTopStacks(ctx context.Context, repo ProfileQueryStore, q clickhouse.Pr
 }
 
 func rankTopStacks(samples []clickhouse.TopStackSample) []TopStackRow {
-	rows, _ := buildTopStacks(samples)
+	rows, _ := buildTopStacks(samples, domain.TimeWindow{})
 	return rows
 }
 
@@ -56,7 +59,7 @@ type topStackStats struct {
 	frames  int
 }
 
-func buildTopStacks(samples []clickhouse.TopStackSample) ([]TopStackRow, topStackStats) {
+func buildTopStacks(samples []clickhouse.TopStackSample, window domain.TimeWindow) ([]TopStackRow, topStackStats) {
 	type contribution struct {
 		location    string
 		profileType domain.ProfileType
@@ -96,14 +99,18 @@ func buildTopStacks(samples []clickhouse.TopStackSample) ([]TopStackRow, topStac
 
 	rows := make([]TopStackRow, 0, len(byLocation))
 	for location, contribution := range byLocation {
+		semantics := contribution.profileType.Semantics(window)
 		rows = append(rows, TopStackRow{
 			Symbol:       classifier.symbol(location),
 			Location:     contribution.location,
 			ProfileType:  string(contribution.profileType),
 			Self:         contribution.self,
 			Total:        contribution.total,
+			SelfDisplay:  domain.FormatProfileValue(contribution.profileType, contribution.self, window),
+			TotalDisplay: domain.FormatProfileValue(contribution.profileType, contribution.total, window),
 			SelfPercent:  percent(contribution.self, totalSamples),
 			TotalPercent: percent(contribution.total, totalSamples),
+			Semantics:    semantics,
 		})
 	}
 	sort.Slice(rows, func(i, j int) bool {

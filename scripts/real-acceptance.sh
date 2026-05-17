@@ -113,6 +113,10 @@ optional_gap() {
   log "GAP: $*"
 }
 
+json_root_value() {
+  jq --stream -r 'select(.[0] == ["root", "value"]) | .[1]' "$1" | head -n 1
+}
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
@@ -154,7 +158,7 @@ drive_workload_load() {
   local iteration=0
   while [[ "$(date +%s)" -lt "$deadline" ]]; do
     iteration=$((iteration + 1))
-    for mode in cpu alloc; do
+    for mode in cpu alloc gc io wall; do
       load_pids=()
       for _ in $(seq 1 "$cpu_alloc_parallel"); do
         curl -fsS "http://127.0.0.1:${local_port}/work?mode=${mode}&durationMs=3000" >>"$artifact_dir/workload-${mode}-load.log" 2>&1 &
@@ -581,6 +585,19 @@ if [[ "$configure_profiler" == "true" && "$install" != "true" ]]; then
     --set "profiling.targetNamespace=${namespace}" \
     --set "profiling.targetService=${service_name}"
   pass "profiler target filters configured for ${namespace}/${service_name}"
+  if kubectl -n "$namespace" get "deploy/$service_name" >/dev/null 2>&1; then
+    kubectl -n "$namespace" annotate "deploy/$service_name" \
+      "java-profiler.io/acceptance-run=${acceptance_started_at}" \
+      "java-profiler.io/profile-disabled=false" \
+      "java-profiler.io/profile-mode=temporary" \
+      "java-profiler.io/profile-duration=1h" \
+      "java-profiler.io/startup-delay=0s" \
+      "java-profiler.io/snapshot-interval=10s" \
+      --overwrite >/dev/null
+    kubectl -n "$namespace" rollout restart "deploy/$service_name" >/dev/null
+    kubectl -n "$namespace" rollout status "deploy/$service_name" --timeout=180s
+    pass "target workload restarted after profiler configuration to avoid stale async-profiler conflict"
+  fi
 fi
 
 log "## Cluster State"
@@ -610,9 +627,13 @@ pass "all required workloads are rolled out"
 # success before the backend/web processes have opened their ports.
 sleep "${JAVA_PROFILER_ACCEPTANCE_SETTLE_SECONDS:-10}"
 
-kubectl -n "$profiler_namespace" port-forward --address 127.0.0.1 "svc/$release-web" "${web_port}:80" >"$artifact_dir/port-forward-web.log" 2>&1 &
+web_pod="$(kubectl -n "$profiler_namespace" get pod -l app.kubernetes.io/name=java-profiler-web -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | awk '{print $1}')"
+backend_pod="$(kubectl -n "$profiler_namespace" get pod -l app.kubernetes.io/name=java-profiler-backend -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' | awk '{print $1}')"
+[[ -n "$web_pod" ]] || fail "web pod not found for port-forward"
+[[ -n "$backend_pod" ]] || fail "backend pod not found for port-forward"
+kubectl -n "$profiler_namespace" port-forward --address 127.0.0.1 "pod/$web_pod" "${web_port}:80" >"$artifact_dir/port-forward-web.log" 2>&1 &
 cleanup_pids+=("$!")
-kubectl -n "$profiler_namespace" port-forward --address 127.0.0.1 "svc/$release-backend" "${backend_port}:8080" >"$artifact_dir/port-forward-backend.log" 2>&1 &
+kubectl -n "$profiler_namespace" port-forward --address 127.0.0.1 "pod/$backend_pod" "${backend_port}:8080" >"$artifact_dir/port-forward-backend.log" 2>&1 &
 cleanup_pids+=("$!")
 collector_pod="$(kubectl -n "$profiler_namespace" get pod -l app.kubernetes.io/name=java-profiler-collector -o jsonpath='{.items[0].metadata.name}')"
 kubectl -n "$profiler_namespace" port-forward --address 127.0.0.1 "pod/$collector_pod" "${collector_port}:9090" >"$artifact_dir/port-forward-collector.log" 2>&1 &
@@ -625,8 +646,8 @@ pass "port-forwards are ready"
 
 web_status_len="0"
 for _ in $(seq 1 90); do
-  curl -sS "http://127.0.0.1:${web_port}/api/ui/v1/target-status" >"$artifact_dir/web-target-status.json"
-  web_status_len="$(jq 'length' "$artifact_dir/web-target-status.json")"
+  curl -sS "http://127.0.0.1:${web_port}/api/ui/v1/target-status" >"$artifact_dir/web-target-status.json" || true
+  web_status_len="$(jq 'length' "$artifact_dir/web-target-status.json" 2>/dev/null || echo 0)"
   if [[ "$web_status_len" -gt 0 ]]; then
     break
   fi
@@ -678,8 +699,11 @@ else
 fi
 
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_cpu_nanoseconds" >"$artifact_dir/backend-flamegraph-cpu.json"
+curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_wall_clock_nanoseconds" >"$artifact_dir/backend-flamegraph-wall.json"
+curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_io_wait_nanoseconds" >"$artifact_dir/backend-flamegraph-io-wait.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_allocation_bytes" >"$artifact_dir/backend-flamegraph-alloc-bytes.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_lock_delay_nanoseconds" >"$artifact_dir/backend-flamegraph-lock-delay.json"
+curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/jvm-events?${query}&event_type=gc_pause" >"$artifact_dir/backend-jvm-events-gc.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/thread-diagnosis?${query}" >"$artifact_dir/backend-thread-diagnosis.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/deadlocks?${query}" >"$artifact_dir/backend-deadlocks.json"
 ingestion_code="$(curl -sS -o "$artifact_dir/backend-ingestion.txt" -w '%{http_code}' -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/ingestion")"
@@ -688,7 +712,7 @@ curl -sS "http://127.0.0.1:${collector_port}/metrics" >"$artifact_dir/collector-
 curl -sS "http://127.0.0.1:${backend_port}/metrics" >"$artifact_dir/backend-metrics.txt"
 
 kubectl -n "$profiler_namespace" exec deploy/clickhouse -- clickhouse-client --query \
-  "WITH parseDateTime64BestEffort('${start}', 9, 'UTC') AS run_start SELECT 'target_status' t, count() FROM java_profiler.java_profiler_target_status WHERE namespace='${namespace}' AND service='${service_name}' AND status_at >= run_start UNION ALL SELECT 'ingestion_batches', count() FROM java_profiler.java_profiler_ingestion_batches WHERE received_at >= run_start UNION ALL SELECT 'profile_samples', count() FROM java_profiler.java_profiler_profile_samples WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'profile_stacks', count() FROM java_profiler.java_profiler_profile_stacks WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'thread_snapshots', count() FROM java_profiler.java_profiler_thread_snapshots WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'deadlock_events', count() FROM java_profiler.java_profiler_deadlock_events WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'artifact_index', count() FROM java_profiler.java_profiler_artifact_index WHERE created_at >= run_start" \
+  "WITH parseDateTime64BestEffort('${start}', 9, 'UTC') AS run_start SELECT 'target_status' t, count() FROM java_profiler.java_profiler_target_status WHERE namespace='${namespace}' AND service='${service_name}' AND status_at >= run_start UNION ALL SELECT 'ingestion_batches', count() FROM java_profiler.java_profiler_ingestion_batches WHERE received_at >= run_start UNION ALL SELECT 'profile_samples', count() FROM java_profiler.java_profiler_profile_samples WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'profile_stacks', count() FROM java_profiler.java_profiler_profile_stacks WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'jvm_events', count() FROM java_profiler.java_profiler_jvm_events WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'thread_snapshots', count() FROM java_profiler.java_profiler_thread_snapshots WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'deadlock_events', count() FROM java_profiler.java_profiler_deadlock_events WHERE namespace='${namespace}' AND service='${service_name}' AND created_at >= run_start UNION ALL SELECT 'artifact_index', count() FROM java_profiler.java_profiler_artifact_index WHERE created_at >= run_start" \
   >"$artifact_dir/clickhouse-counts.tsv"
 
 kubectl -n "$profiler_namespace" exec deploy/clickhouse -- clickhouse-client --query \
@@ -712,9 +736,13 @@ thread_snapshots="$(awk '$1=="thread_snapshots"{print $2}' "$artifact_dir/clickh
 deadlock_events="$(awk '$1=="deadlock_events"{print $2}' "$artifact_dir/clickhouse-counts.tsv")"
 target_status="$(awk '$1=="target_status"{print $2}' "$artifact_dir/clickhouse-counts.tsv")"
 ingestion_batches="$(awk '$1=="ingestion_batches"{print $2}' "$artifact_dir/clickhouse-counts.tsv")"
-flamegraph_value="$(jq -r '.root.value // 0' "$artifact_dir/backend-flamegraph-cpu.json")"
-alloc_flamegraph_value="$(jq -r '.root.value // 0' "$artifact_dir/backend-flamegraph-alloc-bytes.json")"
-lock_flamegraph_value="$(jq -r '.root.value // 0' "$artifact_dir/backend-flamegraph-lock-delay.json")"
+flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-cpu.json")"
+alloc_flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-alloc-bytes.json")"
+lock_flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-lock-delay.json")"
+wall_flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-wall.json")"
+io_flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-io-wait.json")"
+gc_event_count="$(jq -r '.events | length' "$artifact_dir/backend-jvm-events-gc.json")"
+jvm_events="$(awk '$1=="jvm_events"{print $2}' "$artifact_dir/clickhouse-counts.tsv")"
 read -r dropped_sample_count dropped_stack_count max_truncated max_batch_sample_count accepted_profile_batches rejected_profile_batches <"$artifact_dir/clickhouse-profile-ingestion-metadata.tsv"
 
 [[ "${target_status:-0}" -gt 0 ]] || fail "ClickHouse target_status is empty"
@@ -725,6 +753,24 @@ if [[ "${profile_samples:-0}" -gt 0 && "${profile_stacks:-0}" -gt 0 && "${flameg
   pass "non-empty CPU profile path is working"
 else
   gap "non-empty CPU profile path is not proven: profile_samples=${profile_samples:-0}, profile_stacks=${profile_stacks:-0}, flamegraph.root.value=${flamegraph_value:-0}"
+fi
+
+if [[ "${wall_flamegraph_value:-0}" -gt 0 ]]; then
+  pass "non-empty Wall Clock stack path is working"
+else
+  gap "non-empty Wall Clock stack path is not proven: wall flamegraph.root.value=${wall_flamegraph_value:-0}"
+fi
+
+if [[ "${io_flamegraph_value:-0}" -gt 0 ]]; then
+  pass "non-empty Java I/O wait stack path is working"
+else
+  gap "non-empty Java I/O wait stack path is not proven: io flamegraph.root.value=${io_flamegraph_value:-0}"
+fi
+
+if [[ "${gc_event_count:-0}" -gt 0 && "${jvm_events:-0}" -gt 0 ]]; then
+  pass "non-empty JVM GC event path is working"
+else
+  gap "non-empty JVM GC event path is not proven: jvm_events=${jvm_events:-0}, gc_events=${gc_event_count:-0}"
 fi
 
 if [[ "${alloc_flamegraph_value:-0}" -gt 0 ]]; then

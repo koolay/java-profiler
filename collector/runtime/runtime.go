@@ -262,7 +262,7 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 			return err
 		}
 		batchID := fmt.Sprintf("%s-profile-%d", r.collectorID, started.UnixNano())
-		samples, rawSampleCount, profileErr := r.collectProfiles(ctx, batchID, acceptedTargets)
+		samples, jvmEvents, rawSampleCount, profileErr := r.collectProfiles(ctx, batchID, acceptedTargets)
 		if profileErr != nil {
 			r.exporter.Inc("java_profiler_collector_profiler_failures")
 		}
@@ -272,9 +272,31 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 			log.Printf("profile batch upload failed: batch=%s samples=%d: %v", batchID, len(samples), err)
 			return err
 		}
+		if len(jvmEvents) > 0 {
+			eventBatchID := fmt.Sprintf("%s-jvm-events-%d", r.collectorID, started.UnixNano())
+			if err := r.uploadJVMEvents(ctx, eventBatchID, jvmEvents); err != nil {
+				r.exporter.Inc("java_profiler_collector_upload_failures")
+				r.exporter.Inc("java_profiler_collector_upload_retryable")
+				log.Printf("JVM event batch upload failed: batch=%s events=%d: %v", eventBatchID, len(jvmEvents), err)
+				return err
+			}
+		}
 		r.exporter.Inc("java_profiler_collector_upload_success")
 	}
 	return nil
+}
+
+func (r *Runtime) uploadJVMEvents(ctx context.Context, batchID string, events []profiling.JVMEvent) error {
+	for index := range events {
+		events[index].BatchID = batchID
+	}
+	payload, err := pipeline.BuildJVMEventBatch(batchID, r.collectorID, events)
+	if err != nil {
+		return err
+	}
+	client := r.backend
+	client.URL = pipeline.JVMEventURL(r.backend.URL)
+	return client.Upload(ctx, payload)
 }
 
 func (r *Runtime) uploadProfileSamples(ctx context.Context, batchID string, samples []profiling.ProfileSample, rawSampleCount int) error {
@@ -335,9 +357,9 @@ func chunkProfileSamples(samples []profiling.ProfileSample, maxPerBatch int) [][
 	return chunks
 }
 
-func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets []domain.TargetIdentity) ([]profiling.ProfileSample, int, error) {
+func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets []domain.TargetIdentity) ([]profiling.ProfileSample, []profiling.JVMEvent, int, error) {
 	if len(targets) == 0 {
-		return nil, 0, nil
+		return nil, nil, 0, nil
 	}
 	limit := maxConcurrentProfiles
 	if len(targets) < limit {
@@ -345,6 +367,7 @@ func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets [
 	}
 	type profileResult struct {
 		samples []profiling.ProfileSample
+		events  []profiling.JVMEvent
 		raw     int
 		err     error
 	}
@@ -363,11 +386,12 @@ func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets [
 				results[i].err = err
 				return
 			}
-			results[i] = profileResult{samples: result.Samples, raw: result.RawSampleCount}
+			results[i] = profileResult{samples: result.Samples, events: result.JVMEvents, raw: result.RawSampleCount}
 		}(index, target)
 	}
 	wg.Wait()
 	out := make([]profiling.ProfileSample, 0)
+	events := make([]profiling.JVMEvent, 0)
 	rawSampleCount := 0
 	var firstErr error
 	for _, result := range results {
@@ -378,9 +402,10 @@ func (r *Runtime) collectProfiles(ctx context.Context, batchID string, targets [
 			continue
 		}
 		out = append(out, result.samples...)
+		events = append(events, result.events...)
 		rawSampleCount += result.raw
 	}
-	return out, rawSampleCount, firstErr
+	return out, events, rawSampleCount, firstErr
 }
 
 func (r *Runtime) targetAllowed(target domain.TargetIdentity) bool {

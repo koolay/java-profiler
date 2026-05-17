@@ -314,10 +314,11 @@ func TestCollectProfilesUsesLimitedConcurrency(t *testing.T) {
 
 	done := make(chan struct{})
 	var samples []profiling.ProfileSample
+	var events []profiling.JVMEvent
 	var rawCount int
 	var err error
 	go func() {
-		samples, rawCount, err = rt.collectProfiles(context.Background(), "batch-1", targets)
+		samples, events, rawCount, err = rt.collectProfiles(context.Background(), "batch-1", targets)
 		close(done)
 	}()
 
@@ -347,6 +348,9 @@ func TestCollectProfilesUsesLimitedConcurrency(t *testing.T) {
 	}
 	if len(samples) != len(targets) {
 		t.Fatalf("samples = %d, want %d", len(samples), len(targets))
+	}
+	if len(events) != 0 {
+		t.Fatalf("events = %d, want 0", len(events))
 	}
 	if got := rt.profiler.(*blockingProfileCollector).maxActive; got != maxConcurrentProfiles {
 		t.Fatalf("max active = %d, want %d", got, maxConcurrentProfiles)

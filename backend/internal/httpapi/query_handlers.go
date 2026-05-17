@@ -15,9 +15,29 @@ import (
 type QueryHandlers struct {
 	Profiles       app.ProfileQueryStore
 	Threads        app.ThreadStore
+	JVMEvents      app.JVMEventStore
 	Statuses       app.TargetStatusQueryStore
 	IngestionStore app.IngestionQueryStore
 	Metrics        *metrics.Exporter
+}
+
+func (h QueryHandlers) JVMEventsEvidence(w http.ResponseWriter, r *http.Request) {
+	result, err := h.observe("java_profiler_http_query_jvm_events", func() (any, error) {
+		return app.QueryJVMEvents(r.Context(), h.JVMEvents, clickhouse.JVMEventQuery{
+			Namespace: r.URL.Query().Get("namespace"),
+			Service:   r.URL.Query().Get("service"),
+			Pod:       r.URL.Query().Get("pod"),
+			EventType: r.URL.Query().Get("event_type"),
+			Start:     parseQueryTime(r.URL.Query().Get("start")),
+			End:       parseQueryTime(r.URL.Query().Get("end")),
+			Limit:     parseQueryLimit(r, 500, 5000),
+		})
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, result)
 }
 
 func (h QueryHandlers) Flamegraph(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +63,17 @@ func (h QueryHandlers) Flamegraph(w http.ResponseWriter, r *http.Request) {
 func (h QueryHandlers) TopStacks(w http.ResponseWriter, r *http.Request) {
 	result, err := h.observe("java_profiler_http_query_top_stacks", func() (any, error) {
 		return app.QueryTopStacks(r.Context(), h.Profiles, profileQueryFromRequest(r, 1000), h.Metrics)
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, result)
+}
+
+func (h QueryHandlers) ServiceSummary(w http.ResponseWriter, r *http.Request) {
+	result, err := h.observe("java_profiler_http_query_service_summary", func() (any, error) {
+		return app.QueryServiceProfileSummary(r.Context(), h.Profiles, profileQueryFromRequest(r, 5000), h.Metrics)
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -151,6 +182,11 @@ func (h QueryHandlers) observe(metricPrefix string, fn func() (any, error)) (any
 		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v.Batches)))
 	case []app.TopStackRow:
 		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v)))
+	case app.ServiceProfileSummary:
+		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v.Targets)))
+		if v.Partial {
+			recordMetric(h.Metrics, metricPrefix+"_partial_total", 1)
+		}
 	}
 	return result, err
 }

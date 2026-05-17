@@ -1,0 +1,14 @@
+# Java Profiler Docs
+
+- [Overview](https://koolay.github.io/java-profiler/): Kubernetes-native Java profiling with opt-in collection, async-profiler/JFR-derived evidence, ClickHouse storage, and a Java incident diagnosis UI.
+- [Quickstart](https://koolay.github.io/java-profiler/getting-started/quickstart): Enable temporary profiling, open a service, analyze CPU, Wall Clock, Java I/O wait, GC, allocation, lock evidence, and check ingestion health.
+- [Performance Analysis Manual](https://koolay.github.io/java-profiler/operations/performance-analysis-user-manual): User workflow for CPU, Wall Clock, Java I/O wait, GC, allocation, lock, deadlock, target status, and ingestion analysis.
+- [Java Profiling Runbook](https://koolay.github.io/java-profiler/operations/java-profiling-runbook): Operator workflow for enabling, disabling, validating, and troubleshooting profiling.
+- [Deployment Manual](https://koolay.github.io/java-profiler/operations/deployment-operations-admin-manual): Deployment, security, storage, upgrade, and platform troubleshooting.
+- [Real Profiling Acceptance](https://koolay.github.io/java-profiler/operations/real-profiling-acceptance-standard): Required evidence for profiling, ingestion, ClickHouse, backend API, deployment, demo service, and UI changes.
+- [Contributing](https://koolay.github.io/java-profiler/contributing/development): Development setup, docs build, real acceptance, and screenshot evidence workflow.
+- [Localization](https://koolay.github.io/java-profiler/contributing/localization): Bilingual documentation policy. English is the source language; Chinese covers core user and contributor paths.
+- [中文首页](https://koolay.github.io/java-profiler/zh/): 中文文档入口。
+- [中文快速开始](https://koolay.github.io/java-profiler/zh/getting-started/quickstart): 中文 Quickstart。
+- [Architecture](https://koolay.github.io/java-profiler/architecture/java-profiler-architecture): Collector, backend, ClickHouse, contracts, and web UI architecture.
+- [Profiling Contracts](https://koolay.github.io/java-profiler/reference/profiling-contracts): Stable payload and configuration contracts.

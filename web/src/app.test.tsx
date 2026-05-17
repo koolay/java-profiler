@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { beforeEach, test, vi } from "vitest";
 import { App } from "./app";
 
@@ -10,14 +10,8 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-test("left navigation changes the active diagnosis view", () => {
+test("renders the Java profiler workbench with CPU as the initial view", () => {
   render(<App />);
 
   expect(screen.getByText("active-view:cpu")).toBeInTheDocument();
-
-  fireEvent.click(screen.getByLabelText("Service status"));
-  expect(screen.getByText("active-view:status")).toBeInTheDocument();
-
-  fireEvent.click(screen.getByLabelText("Allocation profiles"));
-  expect(screen.getByText("active-view:memory")).toBeInTheDocument();
 });

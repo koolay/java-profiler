@@ -35,6 +35,22 @@ type ThreadSnapshotBatchPayload struct {
 	Deadlocks   []profiling.DeadlockEvent  `json:"Deadlocks"`
 }
 
+type JVMEventBatchPayload struct {
+	BatchID     string               `json:"batch_id"`
+	CollectorID string               `json:"collector_id"`
+	ReceivedAt  time.Time            `json:"received_at"`
+	Events      []profiling.JVMEvent `json:"events"`
+}
+
+func BuildJVMEventBatch(batchID, collectorID string, events []profiling.JVMEvent) (Batch, error) {
+	payload := JVMEventBatchPayload{BatchID: batchID, CollectorID: collectorID, ReceivedAt: time.Now().UTC(), Events: events}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return Batch{}, err
+	}
+	return Batch{ID: batchID, Type: "jvm_event", Bytes: len(data), CreatedAt: payload.ReceivedAt, Payload: data}, nil
+}
+
 func BuildThreadSnapshotBatch(batchID, collectorID string, snapshots []profiling.ThreadSnapshot, deadlocks []profiling.DeadlockEvent) (Batch, error) {
 	payload := ThreadSnapshotBatchPayload{BatchID: batchID, CollectorID: collectorID, ReceivedAt: time.Now().UTC(), Snapshots: snapshots, Deadlocks: deadlocks}
 	data, err := json.Marshal(payload)
@@ -92,4 +108,11 @@ func ThreadSnapshotURL(profileURL string) string {
 		return strings.Replace(profileURL, "/profile-batches", "/thread-snapshot-batches", 1)
 	}
 	return strings.TrimRight(profileURL, "/") + "/thread-snapshot-batches"
+}
+
+func JVMEventURL(profileURL string) string {
+	if strings.Contains(profileURL, "/profile-batches") {
+		return strings.Replace(profileURL, "/profile-batches", "/jvm-event-batches", 1)
+	}
+	return strings.TrimRight(profileURL, "/") + "/jvm-event-batches"
 }

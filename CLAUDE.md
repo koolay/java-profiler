@@ -47,3 +47,10 @@ Use the research note for implementation context:
 - Read `README.md` first for the project summary.
 - Read `docs/brainstorms/java-profiler-requirements.md` before making product decisions.
 - Read `docs/research/coroot-node-agent-java-agent.md` when reasoning about Coroot or async-profiler behavior.
+
+## Design System
+
+Always read `DESIGN.md` before making any visual or UI decisions.
+All font choices, colors, spacing, layout density, and aesthetic direction are defined there.
+Do not deviate without explicit user approval.
+In QA or review mode, flag UI code that does not match `DESIGN.md`.

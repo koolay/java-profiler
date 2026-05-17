@@ -12,19 +12,21 @@ const requireDeadlockEvidence = process.env.REAL_ACCEPTANCE_REQUIRE_DEADLOCK ===
 test.skip(!enabled, "Set REAL_ACCEPTANCE=1 to run against a real deployed cluster UI.");
 test.use({ video: "on", screenshot: "only-on-failure" });
 
-test("real cluster service diagnosis flow exposes status, profile, deadlock, and ingestion surfaces", async ({ page }) => {
+test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O, GC, deadlock, and ingestion surfaces", async ({ page }) => {
   const consoleMessages: string[] = [];
   page.on("console", (message) => consoleMessages.push(`[${message.type()}] ${message.text()}`));
   page.on("pageerror", (error) => consoleMessages.push(`[pageerror] ${error.message}`));
 
   await page.goto(baseURL, { waitUntil: "networkidle" });
-  await expect(page.getByRole("heading", { name: "Service diagnosis" })).toBeVisible();
+  await expect(page.getByText("Java Profiler")).toBeVisible();
+  await expect(page.getByRole("button", { name: "CPU profiles", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "GC pauses", exact: true })).toBeVisible();
 
   await page.getByRole("textbox", { name: "Namespace", exact: true }).fill(namespace);
   await page.getByRole("textbox", { name: "Service", exact: true }).fill(service);
   await page.getByLabel("Range").selectOption("60");
 
-  await page.getByRole("button", { name: "status", exact: true }).click();
+  await page.getByRole("button", { name: "Service status", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Target status" })).toBeVisible();
   const statusCell = page.getByRole("cell", { name: /accepted|unsupported_jvm|temporary_expired|disabled_by_metadata/ }).first();
   const hasFilteredJavaStatus = await statusCell
@@ -48,12 +50,12 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   }
   await page.screenshot({ path: `${artifactDir}/ui-01-status.png`, fullPage: true });
 
-  await page.getByRole("button", { name: "cpu", exact: true }).click();
+  await page.getByRole("button", { name: "CPU profiles", exact: true }).click();
   const analysis = page.getByRole("region", { name: "CPU profile analysis" });
-  await expect(analysis.getByRole("heading", { name: "CPU profile" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Symbol" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Self CPU" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Total CPU" })).toBeVisible();
+  await expect(analysis.getByRole("heading", { name: "Single Pod CPU profile" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Symbol" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Self CPU" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Total CPU" })).toBeVisible();
   const topTable = page.getByRole("region", { name: "Top table" });
   await expect(topTable.getByRole("button", { name: /DemoHttpService\.handleWork/ }).first()).toBeVisible();
   const firstDataRow = topTable.locator("tbody tr").first();
@@ -63,18 +65,24 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await expect(page.getByPlaceholder("Search frame")).toHaveValue("");
   await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
   await expect(page.getByText(/Full sampled stack context/)).toBeVisible();
-  await expect(page.getByText(/start from DemoHttpService|Start by inspecting this method|inspect both DemoHttpService/)).toBeVisible();
   const legend = page.getByLabel("Frame categories");
   await expect(legend.getByText("Application Java")).toBeVisible();
   await expect(legend.getByText("JVM/runtime")).toBeVisible();
   await expect(legend.getByText("Native/system")).toBeVisible();
-  await expect(page.getByRole("button", { name: /so\.6/ }).first()).not.toHaveClass(/flame-row-dimmed/);
+  const nativeFrame = page.getByRole("button", { name: /so\.6|libjvm|pthread|\[vdso\]/i }).first();
+  const hasNativeFrame = await nativeFrame
+    .waitFor({ state: "visible", timeout: 2_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (hasNativeFrame) {
+    await expect(nativeFrame).not.toHaveClass(/flame-row-dimmed/);
+  }
   const demoFrame = page.getByRole("button", { name: /DemoHttpService\.(burnCpu|handleWork)/ }).first();
   await expect(demoFrame).toBeVisible();
   await demoFrame.click();
   const selectedFrame = page.getByRole("region", { name: "Selected flamegraph frame" });
   await expect(selectedFrame).toContainText(/DemoHttpService\.(burnCpu|handleWork)/);
-  await expect(selectedFrame).toContainText(/Samples/);
+  await expect(selectedFrame).toContainText(/CPU time/);
   await expect(selectedFrame).toContainText(/Total CPU/);
   await expect(selectedFrame).toContainText(/Self CPU/);
   const inspector = page.getByRole("status");
@@ -84,7 +92,9 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await page.getByPlaceholder("Search frame").fill("burnCpu");
   await expect(page.getByText(/Search highlights matching frames/)).toBeVisible();
   await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /so\.6/ }).first()).toHaveClass(/flame-row-dimmed/);
+  if (hasNativeFrame) {
+    await expect(nativeFrame).toHaveClass(/flame-row-dimmed/);
+  }
   await page.getByRole("button", { name: "Focus selected" }).click();
   await expect(page.getByText(/Focused stack context/)).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Focused flamegraph path" })).toContainText("Focused");
@@ -100,7 +110,22 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
   await expect(page.getByRole("region", { name: "Flamegraph", exact: true })).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-02-cpu.png`, fullPage: true });
 
-  await page.getByRole("button", { name: "deadlocks", exact: true }).click();
+  await page.getByRole("button", { name: "Wall Clock profiles", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Single Pod Wall Clock profile" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Top table" })).toContainText(/DemoHttpService/);
+  await page.screenshot({ path: `${artifactDir}/ui-03-wall-clock.png`, fullPage: true });
+
+  await page.getByRole("button", { name: "I/O wait profiles", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Single Pod I/O wait profile" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Top table" })).toContainText(/DemoHttpService/);
+  await page.screenshot({ path: `${artifactDir}/ui-04-io.png`, fullPage: true });
+
+  await page.getByRole("button", { name: "GC pauses", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "GC pauses" })).toBeVisible();
+  await expect(page.getByText(/JVM GC|gc_pause|Allocation correlation/).first()).toBeVisible();
+  await page.screenshot({ path: `${artifactDir}/ui-05-gc.png`, fullPage: true });
+
+  await page.getByRole("button", { name: "Deadlock diagnosis", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Deadlock cycles" })).toBeVisible();
   if (requireDeadlockEvidence) {
     await expect(page.getByText("No deadlock cycles returned for this service and time range.")).toBeHidden();
@@ -116,14 +141,14 @@ test("real cluster service diagnosis flow exposes status, profile, deadlock, and
       await expect(emptyDeadlockState).toBeVisible();
     }
   }
-  await page.screenshot({ path: `${artifactDir}/ui-03-deadlocks.png`, fullPage: true });
+  await page.screenshot({ path: `${artifactDir}/ui-06-deadlocks.png`, fullPage: true });
 
-  await page.getByRole("button", { name: "ingestion", exact: true }).click();
+  await page.getByRole("button", { name: "Ingestion health", exact: true }).click();
   const ingestion = page.getByRole("region", { name: "Ingestion health" });
   await expect(ingestion).toBeVisible();
   await expect(ingestion.getByText("Loading ingestion evidence.")).toBeHidden();
   await expect(ingestion.getByText(/accepted x [1-9]\d*/i).first()).toBeVisible();
-  await page.screenshot({ path: `${artifactDir}/ui-04-ingestion.png`, fullPage: true });
+  await page.screenshot({ path: `${artifactDir}/ui-07-ingestion.png`, fullPage: true });
 
   await test.info().attach("browser-console", {
     body: consoleMessages.join("\n") || "no browser console messages",

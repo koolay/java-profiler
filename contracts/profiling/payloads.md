@@ -42,6 +42,8 @@ Stable v1 profile types:
 - `java_allocation_objects`
 - `java_lock_contention_count`
 - `java_lock_delay_nanoseconds`
+- `java_wall_clock_nanoseconds`
+- `java_io_wait_nanoseconds`
 
 ## Batch types
 
@@ -49,6 +51,7 @@ Stable batch types:
 
 - `profile`
 - `thread_snapshot`
+- `jvm_event`
 - `target_status`
 - `collector_heartbeat`
 - `ingestion`
@@ -63,6 +66,13 @@ Profile batches are sent to `/api/collector/v1/profile-batches`.
 - `CollectorID`: stable collector instance id
 - `ReceivedAt`: collector-side batch creation time
 - `Samples`: profile samples
+
+JVM event batches are sent to `/api/collector/v1/jvm-event-batches`.
+
+- `batch_id`: unique collector-generated batch id
+- `collector_id`: stable collector instance id
+- `received_at`: collector-side batch creation time
+- `events`: JVM-scoped events such as `gc_pause` with `event_id`, `target`, `event_type`, `event_at`, `duration_ns`, `collector`, `action`, `cause`, `message`, and optional `stack_frames`
 
 Target status batches are sent to `/api/collector/v1/target-status-batches`.
 

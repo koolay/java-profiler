@@ -52,3 +52,22 @@ func TestBuildProfileBatchIncludesMetadata(t *testing.T) {
 		t.Fatalf("metadata should mark the batch as truncated")
 	}
 }
+
+func TestBuildJVMEventBatchUsesStableJSONKeys(t *testing.T) {
+	batch, err := BuildJVMEventBatch("batch-gc", "collector-a", []profiling.JVMEvent{{EventID: "gc-1", EventType: "gc_pause"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if batch.Type != "jvm_event" {
+		t.Fatalf("batch type = %q", batch.Type)
+	}
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(batch.Payload, &wire); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"batch_id", "collector_id", "received_at", "events"} {
+		if _, ok := wire[key]; !ok {
+			t.Fatalf("JVM event payload missing wire key %q: %s", key, string(batch.Payload))
+		}
+	}
+}

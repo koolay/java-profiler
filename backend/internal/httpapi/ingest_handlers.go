@@ -14,8 +14,54 @@ import (
 type IngestHandlers struct {
 	Profiles        app.ProfileBatchIngestor
 	ThreadSnapshots app.ThreadSnapshotIngestor
+	JVMEvents       app.JVMEventIngestor
 	TargetStatuses  app.TargetStatusIngestor
 	Metrics         *metrics.Exporter
+}
+
+func (h IngestHandlers) JVMEventBatch(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_requests_total", 1)
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_errors_total", 1)
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_duration_seconds_total", time.Since(started).Seconds())
+		return
+	}
+	defer r.Body.Close()
+	var req app.JVMEventBatchRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_requests_total", 1)
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_errors_total", 1)
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_duration_seconds_total", time.Since(started).Seconds())
+		return
+	}
+	result, err := h.JVMEvents.Ingest(r.Context(), req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_requests_total", 1)
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_errors_total", 1)
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_duration_seconds_total", time.Since(started).Seconds())
+		return
+	}
+	recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_requests_total", 1)
+	recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_duration_seconds_total", time.Since(started).Seconds())
+	recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_rows_total", float64(len(req.Events)))
+	status := http.StatusAccepted
+	if result.Status == clickhouse.IngestionRejected {
+		status = http.StatusBadRequest
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_rejected_total", 1)
+	}
+	if result.Status == clickhouse.IngestionRetryable {
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_retryable_total", 1)
+	}
+	if result.Status == clickhouse.IngestionAccepted {
+		recordMetric(h.Metrics, "java_profiler_http_ingest_jvm_event_accepted_total", 1)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 func (h IngestHandlers) ProfileBatch(w http.ResponseWriter, r *http.Request) {
