@@ -1,5 +1,7 @@
 # java-profiler
 
+[![Docs](https://img.shields.io/badge/docs-online-blue?style=flat-square)](https://koolay.github.io/java-profiler/) [![中文文档](https://img.shields.io/badge/docs-中文文档-2b90d9?style=flat-square)](https://koolay.github.io/java-profiler/zh/) [![GitHub stars](https://img.shields.io/github/stars/koolay/java-profiler?style=flat-square)](https://github.com/koolay/java-profiler)
+
 Java performance profiling for Kubernetes services. Find where a HotSpot JVM is spending CPU, allocating memory, waiting on locks, pausing for GC, or blocking on Java I/O, using real async-profiler/JFR-derived data and a service-focused UI.
 
 [Docs](https://koolay.github.io/java-profiler/) · [中文文档](https://koolay.github.io/java-profiler/zh/) · [Quickstart](https://koolay.github.io/java-profiler/getting-started/quickstart) · [Analyze a service](https://koolay.github.io/java-profiler/operations/performance-analysis-user-manual) · [Contributing](https://koolay.github.io/java-profiler/contributing/development)

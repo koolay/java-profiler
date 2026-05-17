@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: Java Profiler
-  text: Find the Java stack behind Kubernetes performance problems
+  text: Low-overhead Java profiling for Kubernetes incidents
   tagline: "A focused profiler for HotSpot services on Kubernetes: opt-in collection, async-profiler/JFR-derived evidence, ClickHouse storage, and a UI built for Java incident diagnosis."
   actions:
     - theme: brand
@@ -12,15 +12,30 @@ hero:
     - theme: alt
       text: Analyze a Service
       link: /operations/performance-analysis-user-manual
+    - theme: alt
+      text: GitHub
+      link: https://github.com/koolay/java-profiler
 
 features:
-  - title: Production-safe by default
+  - title: Opt-in by default
     details: Profiling is opt-in through Kubernetes metadata, collected node-locally, and retained for 7 days or less.
   - title: Real Java evidence
     details: CPU, Wall Clock, Java I/O wait, GC, allocation, lock delay, thread, deadlock, status, and ingestion evidence stay tied to one service and time range.
   - title: Own the profiling stack
     details: No required Pyroscope, Parca, or Grafana backend. async-profiler data lands in ClickHouse and a self-owned UI.
+  - title: Fast time to first signal
+    details: The first usable path is status, then CPU, then Wall Clock or I/O when the incident needs deeper evidence.
 ---
+
+[![Docs](https://img.shields.io/badge/docs-online-blue?style=flat-square)](https://koolay.github.io/java-profiler/) [![中文文档](https://img.shields.io/badge/docs-中文文档-2b90d9?style=flat-square)](https://koolay.github.io/java-profiler/zh/) [![GitHub stars](https://img.shields.io/github/stars/koolay/java-profiler?style=flat-square)](https://github.com/koolay/java-profiler)
+
+![Real CPU profile analysis from the acceptance environment](./assets/screenshots/real-cpu-analysis.png)
+
+## 3-minute path
+
+1. Open [Quickstart](./getting-started/quickstart.md) and enable profiling with Kubernetes metadata.
+2. Open the target service, then check `status` first to confirm the JVM was accepted.
+3. Move from `cpu` to `wall`, `io`, `gc`, `locks`, and `ingestion` to get from symptom to evidence.
 
 ## For service owners
 
@@ -39,6 +54,12 @@ features:
 - [Architecture](./architecture/java-profiler-architecture.md): understand the collector, backend, ClickHouse store, contracts, and web UI.
 - [E2E Automation Guide](./operations/e2e-automation-test-guide.md): run browser and real Kubernetes acceptance flows.
 - [Profiling Contracts](./reference/profiling-contracts.md): inspect stable payload and configuration contracts.
+- [GitHub Issues](https://github.com/koolay/java-profiler/issues): report bugs and request changes.
+
+## Trust and localization
+
+- Use the English / 简体中文 switch in the top bar when you want the localized path.
+- The real screenshots on this page come from the acceptance environment, not mocked UI state.
 
 ## Local preview
 
