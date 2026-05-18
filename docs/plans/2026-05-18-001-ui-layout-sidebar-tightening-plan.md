@@ -49,6 +49,7 @@ The current workbench presentation can make the CPU and allocation pages feel un
 - `web/src/features/gc/gc-view.tsx` should keep GC summary cards readable at the narrower sidebar density.
 - `web/tests/real-acceptance.spec.ts` should continue validating the real workflow and capture updated screenshots.
 - `docs/index.md`, `docs/zh/index.md`, `docs/operations/performance-analysis-user-manual.md`, and the Chinese manual should point at the refreshed screenshot assets without changing the established doc structure.
+- Preserve the existing flamegraph focus-navigation precedent documented in `docs/plans/spec-flamegraph-focus-navigation.md` so layout tightening does not erase the established Focus/Back/Reset interaction model.
 
 ## Verification
 

@@ -50,21 +50,31 @@ try {
 
   await page.getByRole("button", { name: "Allocation profiles", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Allocation sources" })).toBeVisible();
-  await expect(page.locator(".flamegraph-stack button").first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "Top table" }).locator("tbody button").first()).toBeVisible();
   await page.screenshot({ path: path.join(outDir, "real-allocation-analysis.png"), fullPage: true });
 
   await page.getByRole("button", { name: "Wall Clock profiles", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Single Pod Wall Clock profile" })).toBeVisible();
-  await expect(page.locator(".flamegraph-stack button").first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "Top table" }).locator("tbody button").first()).toBeVisible();
   await page.screenshot({ path: path.join(outDir, "real-wall-clock.png"), fullPage: true });
 
   await page.getByRole("button", { name: "I/O wait profiles", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Single Pod I/O wait profile" })).toBeVisible();
-  await expect(page.locator(".flamegraph-stack button").first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "Top table" }).locator("tbody button").first()).toBeVisible();
   await page.screenshot({ path: path.join(outDir, "real-io-wait.png"), fullPage: true });
 
   await page.getByRole("button", { name: "GC pauses", exact: true }).click();
   await expect(page.getByRole("heading", { name: "GC pauses" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "GC summary" })).toBeVisible();
+  const gcEventRow = page.locator(".gc-event-row").first();
+  const gcEmptyState = page.getByText("No GC pause event evidence in this range.");
+  const gcEventVisible = await gcEventRow
+    .waitFor({ state: "visible", timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!gcEventVisible) {
+    await expect(gcEmptyState).toBeVisible();
+  }
   await page.screenshot({ path: path.join(outDir, "real-gc-pauses.png"), fullPage: true });
 
   await page.getByRole("button", { name: "Deadlock diagnosis", exact: true }).click();

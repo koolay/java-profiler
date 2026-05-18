@@ -89,6 +89,7 @@ test("renders top table and flame graph in both mode", () => {
   expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toHaveClass("flame-row-match");
   expect(screen.getByRole("button", { name: /so\.6/ })).not.toHaveClass("flame-row-dimmed");
   expect(screen.getByRole("status")).toHaveTextContent("DemoHttpService.handleWork");
+  expect(screen.queryByLabelText("Selected flamegraph frame")).not.toBeInTheDocument();
 });
 
 test("renders backend top rows with self and total CPU values", () => {

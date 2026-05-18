@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  KUBECONFIG=/Users/huwl/backup/localk8s.yaml scripts/real-acceptance.sh [options]
+  KUBECONFIG=$HOME/backup/localk8s.yaml scripts/real-acceptance.sh [options]
 
 Options:
   --install                 Create namespace, auth secret, ClickHouse, Helm release, and Java workload before testing.
@@ -22,8 +22,8 @@ Options:
   --skip-browser            Skip Playwright UI screenshots/video.
   -h, --help                Show this help.
 
-Environment:
-  KUBECONFIG                Required. Example: /Users/huwl/backup/localk8s.yaml.
+  Environment:
+  KUBECONFIG                Required. Example: $HOME/backup/localk8s.yaml.
   BACKEND_IMAGE             Default: ghcr.io/koolay/java-profiler-backend:0.1.0.
   COLLECTOR_IMAGE           Default: ghcr.io/koolay/java-profiler-collector:0.1.0.
   WEB_IMAGE                 Default: ghcr.io/koolay/java-profiler-web:0.1.0.
@@ -71,14 +71,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-: "${KUBECONFIG:?KUBECONFIG is required, for example /Users/huwl/backup/localk8s.yaml}"
+: "${KUBECONFIG:?KUBECONFIG is required, for example $HOME/backup/localk8s.yaml}"
 
 export NO_PROXY='*'
 export no_proxy='*'
 
-backend_image="${BACKEND_IMAGE:-ghcr.io/koolay/java-profiler-backend:0.1.0}"
-collector_image="${COLLECTOR_IMAGE:-ghcr.io/koolay/java-profiler-collector:0.1.0}"
-web_image="${WEB_IMAGE:-ghcr.io/koolay/java-profiler-web:0.1.0}"
+if [[ "$load_local_images" == "true" ]]; then
+  backend_image="${BACKEND_IMAGE:-java-profiler-backend:qa-amd64}"
+  collector_image="${COLLECTOR_IMAGE:-java-profiler-collector:qa-amd64}"
+  web_image="${WEB_IMAGE:-java-profiler-web:qa-amd64}"
+else
+  backend_image="${BACKEND_IMAGE:-ghcr.io/koolay/java-profiler-backend:0.1.0}"
+  collector_image="${COLLECTOR_IMAGE:-ghcr.io/koolay/java-profiler-collector:0.1.0}"
+  web_image="${WEB_IMAGE:-ghcr.io/koolay/java-profiler-web:0.1.0}"
+fi
 clickhouse_image="${CLICKHOUSE_IMAGE:-docker.m.daocloud.io/clickhouse/clickhouse-server:24.8}"
 java_workload_image="${JAVA_WORKLOAD_IMAGE:-docker.m.daocloud.io/eclipse-temurin:21-jdk}"
 java_workload_prebuilt="${JAVA_WORKLOAD_PREBUILT:-0}"

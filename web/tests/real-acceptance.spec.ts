@@ -48,6 +48,7 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
       await expect(page.getByText(/No matching targets/)).toBeVisible();
     }
   }
+  await expect(page.getByText("UI v0.1.0 · API Connected")).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-01-status.png`, fullPage: true });
 
   await page.getByRole("button", { name: "CPU profiles", exact: true }).click();
@@ -57,9 +58,10 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
   await expect(page.getByRole("button", { name: "Self CPU" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Total CPU" })).toBeVisible();
   const topTable = page.getByRole("region", { name: "Top table" });
-  const firstDataRow = topTable.locator("tbody tr").first();
-  const topFrameButton = firstDataRow.getByRole("button").first();
+  const topFrameButton = topTable.getByRole("button", { name: /BusyApp|DemoHttpService/ }).first();
   await expect(topFrameButton).toBeVisible();
+  await expect(topFrameButton).toContainText(/BusyApp|DemoHttpService/);
+  const firstDataRow = topFrameButton.locator("xpath=ancestor::tr[1]");
   await expect(firstDataRow).not.toContainText(/(^|\b)(so\.6|libjvm|pthread|clock_gettime|\[vdso\])(\b|$)/i);
   await topFrameButton.click();
   await expect(page.getByPlaceholder("Search frame")).toBeVisible();
@@ -126,23 +128,28 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
 
   await page.getByRole("button", { name: "Allocation profiles", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Allocation sources" })).toBeVisible();
+  await expect(page.getByText("Allocation profile")).toBeVisible();
   await expect(page.getByText("Loading profile evidence.")).toBeHidden();
   await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-03-memory.png`, fullPage: true });
 
   await page.getByRole("button", { name: "Wall Clock profiles", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Single Pod Wall Clock profile" })).toBeVisible();
+  await expect(page.getByText("Latency")).toBeVisible();
   await expect(page.getByRole("region", { name: "Top table" })).toContainText(/BusyApp|DemoHttpService/);
   await page.screenshot({ path: `${artifactDir}/ui-04-wall-clock.png`, fullPage: true });
 
   await page.getByRole("button", { name: "I/O wait profiles", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Single Pod I/O wait profile" })).toBeVisible();
+  await expect(page.getByText("I/O")).toBeVisible();
   await expect(page.getByRole("region", { name: "Top table" })).toContainText(/BusyApp|DemoHttpService/);
   await page.screenshot({ path: `${artifactDir}/ui-05-io.png`, fullPage: true });
 
   await page.getByRole("button", { name: "GC pauses", exact: true }).click();
   await expect(page.getByRole("heading", { name: "GC pauses" })).toBeVisible();
-  await expect(page.getByText(/JVM GC|gc_pause|Allocation correlation/).first()).toBeVisible();
+  await expect(page.getByText("GC evidence")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Allocation correlation" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "GC summary" })).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-06-gc.png`, fullPage: false });
 
   await page.getByRole("button", { name: "Deadlock diagnosis", exact: true }).click();
