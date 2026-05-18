@@ -17,11 +17,13 @@ export function IOView({ params }: { params: URLSearchParams }) {
         topRows={!topRowsError && topRows && topRows.length > 0 ? topRows : undefined}
         profileWindow={profileWindow(params)}
         profileType="java_io_wait_nanoseconds"
+        analysisLabel="I/O wait profile analysis"
         title="Single Pod I/O wait profile"
-        description="I/O wait evidence highlights Java socket or file blocking paths when backend evidence can preserve stack ownership."
+        description="I/O wait evidence highlights socket or file blocking paths. If the flamegraph is empty, the top table may still show correlated Java methods."
         valueLabel="I/O wait"
         selfColumnLabel="Self I/O"
         totalColumnLabel="Total I/O"
+        flamegraphEmptyMessage="No I/O flamegraph samples returned for this service and time range. The top table may still show correlated Java methods."
       />
     </section>
   );

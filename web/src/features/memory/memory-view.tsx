@@ -21,6 +21,15 @@ export function MemoryView({ params }: { params: URLSearchParams }) {
 				root={data?.root ?? fallback.root}
 				metadata={data?.metadata}
 				emptyMessage="No allocation samples returned. Allocation profiling is disabled by default in this environment because CPU-only profiling is the validated safe mode."
+				showInspector
+				showSelectedDetail={false}
+				showSelectedFrameAction
+				valueLabel="Allocated bytes"
+				selectedFrameActionLabel="Focus frame"
+				inspectorTotalLabel="Total Allocated"
+				inspectorSelfLabel="Self Allocated"
+				detailTotalPercentLabel="Total Allocated %"
+				detailSelfPercentLabel="Self Allocated %"
 			/>
 		</section>
 	);

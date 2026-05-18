@@ -33,26 +33,45 @@ try {
   await page.getByRole("textbox", { name: "Service", exact: true }).fill(service);
   await page.getByLabel("Range").selectOption("360");
 
-  await page.getByRole("button", { name: "status", exact: true }).click();
+  await page.getByRole("button", { name: "Service status", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Target status" })).toBeVisible();
   await expect(page.getByRole("cell", { name: /accepted|unsupported_jvm|temporary_expired|disabled_by_metadata/ }).first()).toBeVisible();
   await page.screenshot({ path: path.join(outDir, "real-target-status.png"), fullPage: true });
 
-  await page.getByRole("button", { name: "cpu", exact: true }).click();
-  await expect(page.getByRole("region", { name: "CPU profile analysis" }).getByRole("heading", { name: "CPU profile" })).toBeVisible();
+  await page.getByRole("button", { name: "CPU profiles", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Single Pod CPU profile" })).toBeVisible();
   const topTable = page.getByRole("region", { name: "Top table" });
-  const demoFrame = topTable.getByRole("button", { name: /DemoHttpService\.(burnCpu|handleWork|allocateObjects)/ }).first();
-  await expect(demoFrame).toBeVisible();
-  await demoFrame.click();
+  const cpuFrame = topTable.locator("tbody button").first();
+  await expect(cpuFrame).toBeVisible();
+  await cpuFrame.click();
   await expect(page.getByRole("region", { name: "Selected flamegraph frame" })).toBeVisible();
   await page.getByRole("button", { name: "Both" }).click();
   await page.screenshot({ path: path.join(outDir, "real-cpu-analysis.png"), fullPage: true });
 
-  await page.getByRole("button", { name: "deadlocks", exact: true }).click();
+  await page.getByRole("button", { name: "Allocation profiles", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Allocation sources" })).toBeVisible();
+  await expect(page.locator(".flamegraph-stack button").first()).toBeVisible();
+  await page.screenshot({ path: path.join(outDir, "real-allocation-analysis.png"), fullPage: true });
+
+  await page.getByRole("button", { name: "Wall Clock profiles", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Single Pod Wall Clock profile" })).toBeVisible();
+  await expect(page.locator(".flamegraph-stack button").first()).toBeVisible();
+  await page.screenshot({ path: path.join(outDir, "real-wall-clock.png"), fullPage: true });
+
+  await page.getByRole("button", { name: "I/O wait profiles", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Single Pod I/O wait profile" })).toBeVisible();
+  await expect(page.locator(".flamegraph-stack button").first()).toBeVisible();
+  await page.screenshot({ path: path.join(outDir, "real-io-wait.png"), fullPage: true });
+
+  await page.getByRole("button", { name: "GC pauses", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "GC pauses" })).toBeVisible();
+  await page.screenshot({ path: path.join(outDir, "real-gc-pauses.png"), fullPage: true });
+
+  await page.getByRole("button", { name: "Deadlock diagnosis", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Deadlock cycles" })).toBeVisible();
   await page.screenshot({ path: path.join(outDir, "real-deadlocks.png"), fullPage: true });
 
-  await page.getByRole("button", { name: "ingestion", exact: true }).click();
+  await page.getByRole("button", { name: "Ingestion health", exact: true }).click();
   const ingestion = page.getByRole("region", { name: "Ingestion health" });
   await expect(ingestion).toBeVisible();
   await expect(ingestion.getByText(/accepted x [1-9]\d*/i).first()).toBeVisible();

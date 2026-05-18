@@ -23,19 +23,19 @@ const navigationGroups: Array<{
   {
     label: "Profiles",
     items: [
-      { view: "cpu", label: "CPU profiles", shortLabel: "CPU", detail: "MVP", icon: <Cpu size={16} /> },
-      { view: "wall", label: "Wall Clock profiles", shortLabel: "Wall Clock", detail: "phase", icon: <Activity size={16} /> },
-      { view: "io", label: "I/O wait profiles", shortLabel: "I/O", detail: "phase", icon: <Database size={16} /> },
+      { view: "cpu", label: "CPU profiles", shortLabel: "CPU", detail: "core", icon: <Cpu size={16} /> },
+      { view: "wall", label: "Wall Clock profiles", shortLabel: "Latency", detail: "latency", icon: <Activity size={16} /> },
+      { view: "io", label: "I/O wait profiles", shortLabel: "I/O", detail: "blocking", icon: <Database size={16} /> },
       { view: "gc", label: "GC pauses", shortLabel: "GC", detail: "events", icon: <Activity size={16} /> },
-      { view: "memory", label: "Allocation profiles", shortLabel: "Allocation", detail: "later", icon: <Flame size={16} /> },
-      { view: "locks", label: "Lock diagnosis", shortLabel: "Locks", detail: "later", icon: <LockKeyhole size={16} /> },
+      { view: "memory", label: "Allocation profiles", shortLabel: "Alloc", detail: "alloc", icon: <Flame size={16} /> },
+      { view: "locks", label: "Lock diagnosis", shortLabel: "Locks", detail: "locks", icon: <LockKeyhole size={16} /> },
     ],
   },
   {
     label: "Health",
     items: [
-      { view: "status", label: "Service status", shortLabel: "Status", detail: "targets", icon: <Activity size={16} /> },
-      { view: "ingestion", label: "Ingestion health", shortLabel: "Ingestion", detail: "batches", icon: <Database size={16} /> },
+      { view: "status", label: "Service status", shortLabel: "Targets", detail: "targets", icon: <Activity size={16} /> },
+      { view: "ingestion", label: "Ingestion health", shortLabel: "Batches", detail: "batches", icon: <Database size={16} /> },
       { view: "deadlocks", label: "Deadlock diagnosis", shortLabel: "Deadlocks", detail: "events", icon: <AlertTriangle size={16} /> },
     ],
   },
@@ -94,7 +94,7 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
           <div className="brand-mark">JVM</div>
           <div>
             <strong>Java Profiler</strong>
-            <span>MVP incident view</span>
+            <span>Incident workbench</span>
           </div>
         </div>
         <div className="context-fields context-fields-topbar" aria-label="Service context">
@@ -121,7 +121,7 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
           </label>
         </div>
         <div className="workbench-actions">
-          <button type="button" onClick={copyContext}><Copy size={15} />Copy Context</button>
+          <button type="button" onClick={copyContext}><Copy size={15} />Copy</button>
           <button className="primary-action" type="button" onClick={shareView}><Share2 size={15} />Share</button>
         </div>
         <span className="sr-only" aria-live="polite">{copyStatus}</span>
@@ -149,8 +149,7 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
         <div className="scope-card">
           <div className="side-title">Scope</div>
           <div className="scope-row"><span>Target</span><strong>{pod.trim() ? "Single Pod" : "Service query"}</strong></div>
-          <div className="scope-row"><span>First view</span><strong>CPU only</strong></div>
-          <p>MVP keeps Wall Clock, GC, I/O, service rollup, and A/B comparison out of the first screen.</p>
+          <div className="scope-row"><span>Runtime</span><strong>UI v0.1.0 · API Connected</strong></div>
         </div>
       </aside>
 
@@ -158,7 +157,7 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
         <div className="evidence-health-strip" aria-label="Evidence health">
           <div className="health-chip health-chip-ok">
             <span>Collection</span>
-            <strong>CPU profile</strong>
+            <strong>{collectionLabelForView(activeView)}</strong>
           </div>
           <div className="health-chip">
             <span>Target scope</span>
@@ -195,4 +194,16 @@ function profileTypeFor(tab: Tab): ProfileType {
   if (tab === "io") return "java_io_wait_nanoseconds";
   if (tab === "locks") return "java_lock_delay_nanoseconds";
   return "java_allocation_bytes";
+}
+
+function collectionLabelForView(view: DiagnosisView) {
+  if (view === "cpu") return "CPU profile";
+  if (view === "wall") return "Wall Clock profile";
+  if (view === "io") return "I/O wait profile";
+  if (view === "gc") return "GC evidence";
+  if (view === "locks") return "Lock profile";
+  if (view === "memory") return "Allocation profile";
+  if (view === "deadlocks") return "Deadlock evidence";
+  if (view === "status") return "Target status";
+  return "Ingestion health";
 }

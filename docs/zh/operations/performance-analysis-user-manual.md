@@ -45,6 +45,16 @@ GC 视图把 JVM GC event evidence 与同一时间窗口内的 allocation profil
 
 ![真实 GC pause 和 allocation correlation](../../assets/screenshots/real-gc-pauses.png)
 
+### Allocation pressure
+
+分配压力视图用于分析 heap usage、allocation rate 或 GC pressure 上升时的对象创建路径。先从最大的 allocation symbol 看起，再沿调用栈往下找真正触发分配的代码路径。
+
+- allocation profile 会展示在所选 service 和时间范围内的对象创建位置。
+- 先用 flame graph 查看完整 sampled stack context，再判断哪条调用路径最可疑。
+- 最新的 allocation 验收截图展示的是当前的宽布局和 selected-frame 面板。
+
+![真实 allocation profile 分析](../../assets/screenshots/real-allocation-analysis.png)
+
 ### Deadlock diagnosis
 
 死锁视图用于确认选定服务和时间范围内是否有 cycle 证据；真实运行也可能呈现经过验证的空状态。

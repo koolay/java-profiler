@@ -29,7 +29,7 @@ features:
 
 [![Docs](https://img.shields.io/badge/docs-online-blue?style=flat-square)](https://koolay.github.io/java-profiler/) [![中文文档](https://img.shields.io/badge/docs-中文文档-2b90d9?style=flat-square)](https://koolay.github.io/java-profiler/zh/) [![GitHub stars](https://img.shields.io/github/stars/koolay/java-profiler?style=flat-square)](https://github.com/koolay/java-profiler)
 
-![Real CPU profile analysis from the acceptance environment](./assets/screenshots/real-cpu-analysis.png)
+![Real allocation profile analysis from the acceptance environment](./assets/screenshots/real-allocation-analysis.png)
 
 ## 3-minute path
 

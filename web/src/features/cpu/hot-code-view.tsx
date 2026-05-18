@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FlamegraphNode, PartialMetadata, TopStackRow } from "../../api/types";
 import { Flamegraph } from "../../visualization/flamegraph";
 
@@ -8,11 +8,13 @@ type Props = {
   topRows?: TopStackRow[];
   profileWindow?: { start: Date; end: Date; durationMs: number };
   profileType?: string;
+  analysisLabel?: string;
   title?: string;
   description?: string;
   valueLabel?: string;
   selfColumnLabel?: string;
   totalColumnLabel?: string;
+  flamegraphEmptyMessage?: string;
 };
 
 type HotFrame = {
@@ -32,7 +34,7 @@ type HotFrame = {
 type ViewMode = "top-table" | "flame-graph" | "both";
 type SortKey = "total" | "self" | "symbol";
 
-export function HotCodeView({ root, metadata, topRows, profileWindow, profileType = "java_cpu_nanoseconds", title = "Single Pod CPU profile", description = "Top table ranks Java methods by CPU time. Values are rendered from nanoseconds into incident-readable time and average cores.", valueLabel = "CPU time", selfColumnLabel = "Self CPU", totalColumnLabel = "Total CPU" }: Props) {
+export function HotCodeView({ root, metadata, topRows, profileWindow, profileType = "java_cpu_nanoseconds", analysisLabel = "CPU profile analysis", title = "Single Pod CPU profile", description = "Top table ranks Java methods by CPU time. Values are rendered from nanoseconds into incident-readable time and average cores.", valueLabel = "CPU time", selfColumnLabel = "Self CPU", totalColumnLabel = "Total CPU", flamegraphEmptyMessage }: Props) {
   const fallbackFrames = useMemo(() => collectHotJavaFrames(root), [root]);
   const hotFrames = useMemo(() => (topRows && topRows.length > 0 ? topRows.map(topRowToHotFrame) : fallbackFrames), [fallbackFrames, topRows]);
   const [selectedName, setSelectedName] = useState<string | undefined>();
@@ -46,11 +48,19 @@ export function HotCodeView({ root, metadata, topRows, profileWindow, profileTyp
   const highlightQuery = selected ? selected.fullSymbol || selected.name || selected.symbol : "";
   const valueFormatter = (value: number) => formatProfileValue(profileType, value, profileWindow);
 
+  useEffect(() => {
+    if (!selected) return;
+    const activeRow = Array.from(document.querySelectorAll<HTMLButtonElement>("button[data-frame-name]")).find((button) => button.dataset.frameName === selected.name);
+    if (activeRow && typeof activeRow.scrollIntoView === "function") {
+      activeRow.scrollIntoView({ block: "nearest" });
+    }
+  }, [selected?.name]);
+
   if (hotFrames.length === 0) {
     return (
-      <section className="profile-analysis" aria-label="CPU profile analysis">
-        <h2>CPU profile</h2>
-        <p className="flamegraph-empty">No application Java frames were found in this CPU profile. Use the flame graph to inspect runtime or native frames.</p>
+      <section className="profile-analysis profile-analysis-wide" aria-label={analysisLabel}>
+        <h2>{title}</h2>
+        <p className="flamegraph-empty">No application Java frames were found in this profile. Use the flame graph to inspect runtime or native frames.</p>
         <div className="profile-flamegraph">
           <Flamegraph root={root} metadata={metadata} />
         </div>
@@ -59,7 +69,7 @@ export function HotCodeView({ root, metadata, topRows, profileWindow, profileTyp
   }
 
   return (
-    <section className="profile-analysis" aria-label="CPU profile analysis">
+    <section className="profile-analysis profile-analysis-wide" aria-label={analysisLabel}>
       <div className="profile-toolbar profile-toolbar-compact">
         <div className="profile-toolbar-copy">
           <h2>{title}</h2>
@@ -78,7 +88,7 @@ export function HotCodeView({ root, metadata, topRows, profileWindow, profileTyp
         </div>
         <div>
           <span>Percent basis</span>
-          <strong>Returned CPU profile</strong>
+          <strong>Returned profile</strong>
         </div>
         <div>
           <span>Window</span>
@@ -92,17 +102,23 @@ export function HotCodeView({ root, metadata, topRows, profileWindow, profileTyp
             <Flamegraph
               root={root}
               metadata={metadata}
+              emptyMessage={flamegraphEmptyMessage}
               highlightQuery={highlightQuery}
               searchQuery={searchQuery}
               onSearchQueryChange={setSearchQuery}
               onReset={() => setSelectedName(undefined)}
               formatValue={valueFormatter}
               valueLabel={valueLabel}
+              showSelectedDetail={false}
+              onFrameSelect={setSelectedName}
+              inspectorTotalLabel={totalColumnLabel}
+              inspectorSelfLabel={selfColumnLabel}
+              detailTotalPercentLabel={`${totalColumnLabel} %`}
+              detailSelfPercentLabel={`${selfColumnLabel} %`}
             />
           </div>
         )}
       </div>
-      <SelectedFramePanel frame={selected ?? fallbackSelected} valueFormatter={valueFormatter} selfColumnLabel={selfColumnLabel} totalColumnLabel={totalColumnLabel} />
     </section>
   );
 }
@@ -250,7 +266,7 @@ function TopTable({
           {frames.slice(0, 20).map((frame) => (
             <tr key={frame.name} className={explicitSelection && frame.name === selected?.name ? "active" : ""}>
               <td>
-                <button onClick={() => onSelect(frame.name)}>
+                <button data-frame-name={frame.name} onClick={() => onSelect(frame.name)}>
                   <span>{frame.symbol}</span>
                   <small>{frame.line ? `${frame.className}:${frame.line}` : frame.fullSymbol}</small>
                 </button>
@@ -286,49 +302,6 @@ function topRowToHotFrame(row: TopStackRow): HotFrame {
     selfPercent: row.self_percent,
     totalPercent: row.total_percent,
   };
-}
-
-function SelectedFramePanel({ frame, valueFormatter, selfColumnLabel, totalColumnLabel }: { frame?: HotFrame; valueFormatter: (value: number) => string; selfColumnLabel: string; totalColumnLabel: string }) {
-  if (!frame) return null;
-  const copyText = `${frame.fullSymbol}${frame.line ? `:${frame.line}` : ""}`;
-  const copyFrame = () => {
-    if (navigator.clipboard) {
-      void navigator.clipboard.writeText(copyText);
-    }
-  };
-  const copyPermalink = () => {
-    if (navigator.clipboard) {
-      const url = new URL(window.location.href);
-      url.searchParams.set("frame", copyText);
-      void navigator.clipboard.writeText(url.toString());
-    }
-  };
-  return (
-    <aside className="selected-frame-panel" aria-label="Selected Java frame">
-      <div>
-        <span>Selected Java frame</span>
-        <strong title={frame.fullSymbol}>{frame.symbol}</strong>
-      </div>
-      <dl>
-        <div>
-          <dt>{selfColumnLabel}</dt>
-          <dd>{frame.selfDisplay ?? valueFormatter(frame.self)} <span>{formatPercent(frame.selfPercent)}</span></dd>
-        </div>
-        <div>
-          <dt>{totalColumnLabel}</dt>
-          <dd>{frame.totalDisplay ?? valueFormatter(frame.total)} <span>{formatPercent(frame.totalPercent)}</span></dd>
-        </div>
-        <div>
-          <dt>Location</dt>
-          <dd>{frame.line ? `${frame.className}:${frame.line}` : frame.className}</dd>
-        </div>
-      </dl>
-      <div className="selected-frame-actions">
-        <button type="button" onClick={copyFrame}>Copy frame</button>
-        <button type="button" onClick={copyPermalink}>Permalink</button>
-      </div>
-    </aside>
-  );
 }
 
 function formatProfileValue(profileType: string, value: number, profileWindow?: { durationMs: number }) {

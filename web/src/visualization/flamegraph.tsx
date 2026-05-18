@@ -12,6 +12,15 @@ type Props = {
   onReset?: () => void;
   formatValue?: (value: number) => string;
   valueLabel?: string;
+  showInspector?: boolean;
+  showSelectedDetail?: boolean;
+  showSelectedFrameAction?: boolean;
+  selectedFrameActionLabel?: string;
+  inspectorTotalLabel?: string;
+  inspectorSelfLabel?: string;
+  detailTotalPercentLabel?: string;
+  detailSelfPercentLabel?: string;
+  onFrameSelect?: (frameName: string) => void;
 };
 
 type Frame = FlamegraphNode & {
@@ -40,7 +49,7 @@ type FocusState = FocusPoint & {
 
 const rootFocus: FocusState = { path: "root", history: [] };
 
-export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight, searchQuery, onSearchQueryChange, onReset, formatValue = defaultFormatValue, valueLabel = "Samples" }: Props) {
+export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight, searchQuery, onSearchQueryChange, onReset, formatValue = defaultFormatValue, valueLabel = "Samples", showInspector = true, showSelectedDetail = true, showSelectedFrameAction = true, selectedFrameActionLabel = "Focus frame", inspectorTotalLabel = "Total CPU", inspectorSelfLabel = "Self CPU", detailTotalPercentLabel = "Total CPU", detailSelfPercentLabel = "Self CPU", onFrameSelect }: Props) {
   const [internalQuery, setInternalQuery] = useState("");
   const [focus, setFocus] = useState<FocusState>(rootFocus);
   const [selectedPath, setSelectedPath] = useState("root");
@@ -133,7 +142,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
             ? "Search highlights matching frames and keeps the sampled stack context visible."
             : "Full sampled stack context. Width shows total resource share under the current root; vertical position is stack hierarchy."}
       </p>
-      {metadata?.partial && <p className="warning">Partial result: {(metadata.reasons ?? ["query budget"]).join(", ")}.</p>}
+      {metadata?.partial && <p className="warning">{partialResultMessage(metadata?.reasons)}</p>}
       {insight && <p className="profile-insight">{insight}</p>}
       {zoomed && focusedFrame && (
         <div className="focus-status" role="region" aria-label="Focused flamegraph state">
@@ -161,14 +170,17 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
           ))}
         </nav>
       )}
-      {hasSamples && inspectedFrame && selectedFrame && (
+      {showInspector && hasSamples && inspectedFrame && selectedFrame && (
         <FrameInspector
           frame={inspectedFrame}
           onFocus={() => zoomToPath(inspectedFrame.path)}
           onMouseEnter={() => inspectPath(inspectedFrame.path)}
           onMouseLeave={clearInspectedPathSoon}
           formatValue={formatValue}
-          valueLabel={valueLabel}
+          totalLabel={inspectorTotalLabel}
+          selfLabel={inspectorSelfLabel}
+          showSelectedFrameAction={showSelectedFrameAction}
+          selectedFrameActionLabel={selectedFrameActionLabel}
         />
       )}
       {hasSamples ? (
@@ -185,12 +197,13 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
               onClick={() => {
                 setSelectedPath(frame.path);
                 inspectPath(frame.path);
+                onFrameSelect?.(frame.name);
               }}
               onFocus={() => inspectPath(frame.path)}
               onBlur={clearInspectedPathSoon}
               onMouseEnter={() => inspectPath(frame.path)}
               onMouseLeave={clearInspectedPathSoon}
-              aria-describedby="flamegraph-frame-inspector"
+              aria-describedby={showInspector ? "flamegraph-frame-inspector" : undefined}
               aria-label={`${formatFrameLabel(frame.name)} ${displayFrameValue(frame, formatValue)}`}
             >
               <span className="flame-frame">{formatFrameLabel(frame.name)}</span>
@@ -201,7 +214,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
       ) : (
         <p className="flamegraph-empty">{query.trim() ? `No frames match "${query.trim()}".` : emptyMessage}</p>
       )}
-      {hasSamples && selectedFrame && (
+      {showSelectedDetail && hasSamples && selectedFrame && (
         <div className="flamegraph-detail" role="region" aria-label="Selected flamegraph frame">
           <div>
             <span>Selected frame</span>
@@ -213,15 +226,11 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
               <dd>{displayFrameValue(selectedFrame, formatValue)}</dd>
             </div>
             <div>
-              <dt>Self</dt>
-              <dd>{formatValue(selectedFrame.self)}</dd>
-            </div>
-            <div>
-              <dt>Total CPU</dt>
+              <dt>{detailTotalPercentLabel}</dt>
               <dd>{selectedFrame.totalPercent.toFixed(1)}%</dd>
             </div>
             <div>
-              <dt>Self CPU</dt>
+              <dt>{detailSelfPercentLabel}</dt>
               <dd>{selectedFrame.selfPercent.toFixed(1)}%</dd>
             </div>
             <div>
@@ -289,7 +298,31 @@ function displayFrameValue(frame: Frame, formatValue: (value: number) => string)
   return frame.display_value ?? formatValue(frame.value);
 }
 
-function FrameInspector({ frame, onFocus, onMouseEnter, onMouseLeave, formatValue, valueLabel }: { frame: Frame; onFocus: () => void; onMouseEnter: () => void; onMouseLeave: () => void; formatValue: (value: number) => string; valueLabel: string }) {
+function partialResultMessage(reasons?: string[]) {
+  const reasonList = reasons ?? ["query budget"];
+  if (reasonList.includes("node_limit")) {
+    return "Showing a partial flamegraph because the frame budget was reached.";
+  }
+  if (reasonList.includes("query budget")) {
+    return "Showing a partial flamegraph because the query budget was reached.";
+  }
+  return `Showing a partial flamegraph because ${reasonList.join(", ")}.`;
+}
+
+function FrameInspector({ frame, onFocus, onMouseEnter, onMouseLeave, formatValue, totalLabel, selfLabel, showSelectedFrameAction, selectedFrameActionLabel }: { frame: Frame; onFocus: () => void; onMouseEnter: () => void; onMouseLeave: () => void; formatValue: (value: number) => string; totalLabel: string; selfLabel: string; showSelectedFrameAction: boolean; selectedFrameActionLabel: string }) {
+  const copyText = frame.name;
+  const copyFrame = () => {
+    if (navigator.clipboard) {
+      void navigator.clipboard.writeText(copyText);
+    }
+  };
+  const copyPermalink = () => {
+    if (navigator.clipboard) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("frame", copyText);
+      void navigator.clipboard.writeText(url.toString());
+    }
+  };
   return (
     <div className={`flamegraph-tooltip flamegraph-tooltip-${frame.category}`} id="flamegraph-frame-inspector" role="status" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div>
@@ -298,11 +331,11 @@ function FrameInspector({ frame, onFocus, onMouseEnter, onMouseLeave, formatValu
       </div>
       <dl>
         <div>
-          <dt>Total {valueLabel}</dt>
+          <dt>{totalLabel}</dt>
           <dd>{displayFrameValue(frame, formatValue)} <span>{frame.totalPercent.toFixed(1)}%</span></dd>
         </div>
         <div>
-          <dt>Self CPU</dt>
+          <dt>{selfLabel}</dt>
           <dd>{formatValue(frame.self)} <span>{frame.selfPercent.toFixed(1)}%</span></dd>
         </div>
         <div>
@@ -310,7 +343,11 @@ function FrameInspector({ frame, onFocus, onMouseEnter, onMouseLeave, formatValu
           <dd>{frame.depth}</dd>
         </div>
       </dl>
-      <button type="button" onClick={onFocus}>Focus frame</button>
+      <div className="flamegraph-tooltip-actions">
+        {showSelectedFrameAction && <button type="button" className="primary-action" onClick={onFocus}>{selectedFrameActionLabel}</button>}
+        <button type="button" onClick={copyFrame}>Copy frame</button>
+        <button type="button" onClick={copyPermalink}>Permalink</button>
+      </div>
     </div>
   );
 }

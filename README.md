@@ -77,9 +77,11 @@ The first version targets Java services running on Kubernetes, HotSpot-compatibl
 
 These screenshots come from a real Kubernetes acceptance environment, not mocked UI state.
 
-![CPU profile analysis showing real DemoHttpService hotspots](docs/assets/screenshots/real-cpu-analysis.png)
+![Real allocation profile analysis from the acceptance environment](docs/assets/screenshots/real-allocation-analysis.png)
 
 - [Target status evidence](docs/assets/screenshots/real-target-status.png)
+- [CPU profile analysis](docs/assets/screenshots/real-cpu-analysis.png)
+- [Allocation evidence](docs/assets/screenshots/real-allocation-analysis.png)
 - [Wall Clock latency evidence](docs/assets/screenshots/real-wall-clock.png)
 - [Java I/O wait evidence](docs/assets/screenshots/real-io-wait.png)
 - [GC pause and allocation correlation](docs/assets/screenshots/real-gc-pauses.png)

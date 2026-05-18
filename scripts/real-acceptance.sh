@@ -449,16 +449,27 @@ spec:
                 '  public static void main(String[] args) throws Exception {' \
                 '    for (int t = 0; t < 4; t++) {' \
                 '      Thread worker = new Thread(() -> {' \
-                '        long x = 0;' \
-                '        while (true) {' \
-                '          byte[] payload = new byte[128 * 1024];' \
-                '          for (int i = 0; i < payload.length; i += 4096) payload[i] = (byte)i;' \
-                '          sink = payload;' \
-                '          for (int i = 0; i < 500000; i++) x += i;' \
-                '          if (x == Long.MIN_VALUE) System.out.println(x);' \
-                '          synchronized (LOCK) {' \
-                '            try { Thread.sleep(3); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }' \
+                '        java.nio.file.Path ioFile = null;' \
+                '        try {' \
+                '          ioFile = java.nio.file.Files.createTempFile("busy-", ".bin");' \
+                '          long x = 0;' \
+                '          while (true) {' \
+                '            byte[] payload = new byte[64 * 1024];' \
+                '            for (int i = 0; i < payload.length; i += 4096) payload[i] = (byte)i;' \
+                '            java.nio.file.Files.write(ioFile, payload);' \
+                '            java.nio.file.Files.readAllBytes(ioFile);' \
+                '            sink = payload;' \
+                '            for (int i = 0; i < 500000; i++) x += i;' \
+                '            if ((x & 0x3fff) == 0) System.gc();' \
+                '            if (x == Long.MIN_VALUE) System.out.println(x);' \
+                '            synchronized (LOCK) {' \
+                '              try { Thread.sleep(3); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }' \
+                '            }' \
                 '          }' \
+                '        } catch (Exception e) {' \
+                '          throw new RuntimeException(e);' \
+                '        } finally {' \
+                '          if (ioFile != null) try { java.nio.file.Files.deleteIfExists(ioFile); } catch (Exception ignored) {}' \
                 '        }' \
                 '      }, "busy-worker-" + t);' \
                 '      worker.setDaemon(false);' \
@@ -576,6 +587,9 @@ compare_clickhouse_state() {
 
 if [[ "$configure_profiler" == "true" && "$install" != "true" ]]; then
   log "## Configure Profiler Target Filters"
+  if [[ "$load_local_images" == "true" ]]; then
+    load_images_into_node
+  fi
   helm upgrade --install "$release" ./deploy/helm \
     --namespace "$profiler_namespace" \
     --reuse-values \
@@ -585,6 +599,15 @@ if [[ "$configure_profiler" == "true" && "$install" != "true" ]]; then
     --set "profiling.targetNamespace=${namespace}" \
     --set "profiling.targetService=${service_name}"
   pass "profiler target filters configured for ${namespace}/${service_name}"
+  if [[ "$load_local_images" == "true" ]]; then
+    kubectl -n "$profiler_namespace" rollout restart "deploy/$release-backend" >/dev/null
+    kubectl -n "$profiler_namespace" rollout restart "deploy/$release-web" >/dev/null
+    kubectl -n "$profiler_namespace" rollout restart "daemonset/$release-collector" >/dev/null
+    kubectl -n "$profiler_namespace" rollout status "deploy/$release-backend" --timeout=180s
+    kubectl -n "$profiler_namespace" rollout status "deploy/$release-web" --timeout=180s
+    kubectl -n "$profiler_namespace" rollout status "daemonset/$release-collector" --timeout=180s
+    pass "profiler runtime restarted after loading local images"
+  fi
   if kubectl -n "$namespace" get "deploy/$service_name" >/dev/null 2>&1; then
     kubectl -n "$namespace" annotate "deploy/$service_name" \
       "java-profiler.io/acceptance-run=${acceptance_started_at}" \

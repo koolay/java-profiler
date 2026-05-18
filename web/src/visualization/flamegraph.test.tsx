@@ -12,7 +12,7 @@ test("renders flamegraph frames and partial warning", () => {
   expect(screen.getByText("Checkout.handle")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Checkout\.handle/ })).toHaveClass("flame-row-application");
   expect(screen.getByRole("button", { name: /Thread\.run/ })).toHaveClass("flame-row-runtime");
-  expect(screen.getByText(/Partial result/)).toBeInTheDocument();
+  expect(screen.getByText(/partial flamegraph/i)).toBeInTheDocument();
   const legend = screen.getByLabelText("Frame categories");
   expect(within(legend).getByText("Application Java")).toBeInTheDocument();
   expect(within(legend).getByText("JVM/runtime")).toBeInTheDocument();
@@ -43,14 +43,14 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
   const inspector = screen.getByRole("status");
   expect(within(inspector).getByText("Native/system")).toBeInTheDocument();
   expect(within(inspector).getByText("libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis")).toBeInTheDocument();
-  expect(within(inspector).getByText("Total Samples")).toBeInTheDocument();
+  expect(within(inspector).getByText("Total CPU")).toBeInTheDocument();
   expect(within(inspector).getByText("Self CPU")).toBeInTheDocument();
 
   fireEvent.click(nativeFrame);
   const detail = screen.getByLabelText("Selected flamegraph frame");
   expect(within(detail).getByText("libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis")).toBeInTheDocument();
   expect(within(detail).getByText("66.7%")).toBeInTheDocument();
-  expect(within(detail).getByText("Self CPU")).toBeInTheDocument();
+  expect(within(detail).getAllByText("Self CPU")).toHaveLength(1);
 
   fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByText("BusyApp.lambda$main$0:14")).toBeInTheDocument();
@@ -91,6 +91,33 @@ test("focuses the frame currently shown in the inspector", () => {
 
   expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("HoveredFrame.method:20");
   expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).not.toHaveTextContent("SelectedFrame.method:10");
+});
+
+test("renders allocation labels without cpu terminology when inspector is hidden", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 20,
+        children: [{ name: "AllocFrame.write", value: 12, children: [{ name: "AllocFrame.child", value: 12 }] }],
+      }}
+      showInspector={false}
+      showSelectedFrameAction
+      valueLabel="Allocated bytes"
+      selectedFrameActionLabel="Focus frame"
+      inspectorTotalLabel="Total Allocated"
+      inspectorSelfLabel="Self Allocated"
+      detailTotalPercentLabel="Total Allocated %"
+      detailSelfPercentLabel="Self Allocated %"
+    />,
+  );
+
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  const detail = screen.getByLabelText("Selected flamegraph frame");
+  expect(within(detail).getByText("Allocated bytes")).toBeInTheDocument();
+  expect(within(detail).getByText("Self Allocated %")).toBeInTheDocument();
+  expect(within(detail).getByText("Total Allocated %")).toBeInTheDocument();
+  expect(screen.queryByText("Self CPU")).not.toBeInTheDocument();
 });
 
 test("returns to the selected frame after hover inspection expires", () => {
@@ -292,7 +319,7 @@ test("highlights selected Java frames without replacing flamegraph context", () 
   expect(screen.getByText(/Full sampled stack context/)).toBeInTheDocument();
 
   fireEvent.click(burnCpuFrames[0]);
-  expect(within(screen.getByLabelText("Selected flamegraph frame")).getAllByText("7")).toHaveLength(2);
+  expect(within(screen.getByLabelText("Selected flamegraph frame")).getAllByText("7")).toHaveLength(1);
 
   fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByText(/Focused stack context/)).toBeInTheDocument();

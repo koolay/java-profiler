@@ -57,6 +57,12 @@ Use GC pauses when request latency or throughput changes line up with JVM pause 
 
 Use allocation profiles when heap usage, allocation rate, or GC pressure rises. Start with the largest allocation symbols, then inspect the stack paths that lead to those allocations.
 
+- Allocation profiles show where object creation happens under the selected service and time range.
+- Use the flame graph to inspect full sampled stack context before deciding which call path is responsible.
+- The latest allocation acceptance screenshot shows the current wide layout and selected-frame panel.
+
+![Real allocation profile analysis](../assets/screenshots/real-allocation-analysis.png)
+
 ## Analyze lock contention
 
 Use lock diagnosis when request latency or thread state suggests blocking. Lock-delay profiles point to synchronized or monitor paths where threads spend time waiting.
