@@ -82,6 +82,17 @@ func (h QueryHandlers) ServiceSummary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
+func (h QueryHandlers) ServiceSelectors(w http.ResponseWriter, r *http.Request) {
+	result, err := h.observe("java_profiler_http_query_service_selectors", func() (any, error) {
+		return app.QueryServiceSelectors(r.Context(), h.Profiles, profileQueryFromRequest(r, 5000))
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, result)
+}
+
 func (h QueryHandlers) ThreadDiagnosis(w http.ResponseWriter, r *http.Request) {
 	result, err := h.observe("java_profiler_http_query_thread_diagnosis", func() (any, error) {
 		return app.QueryThreadDiagnosis(

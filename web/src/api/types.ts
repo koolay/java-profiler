@@ -35,6 +35,36 @@ export type FlamegraphResponse = {
   semantics?: ProfileValueSemantics;
 };
 
+export type ProfileSelector = {
+  namespace: string;
+  service: string;
+  pod: string;
+};
+
+export type ServiceSelectors = {
+  targets: ProfileSelector[];
+};
+
+export type ProfileTargetSummary = {
+  namespace: string;
+  service: string;
+  pod: string;
+  container: string;
+  process_id: number;
+  jvm_start_time: string;
+  profile_type: ProfileType | string;
+  total_value: number;
+  display_value: string;
+  sample_count: number;
+  percent_of_total: string;
+  semantics: ProfileValueSemantics;
+};
+
+export type ServiceProfileSummary = {
+  targets: ProfileTargetSummary[];
+  partial: boolean;
+};
+
 export type TopStackRow = {
   symbol: string;
   location: string;

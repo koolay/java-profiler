@@ -243,3 +243,57 @@ func TestJVMEventsRouteReturnsGCPauseEvidence(t *testing.T) {
 		t.Fatalf("unexpected JVM event response: %+v", response)
 	}
 }
+
+func TestServiceSelectorsRouteReturnsDistinctTargets(t *testing.T) {
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(200, 0).UTC()
+	payload := app.ProfileBatchRequest{
+		BatchID:     "batch-selectors",
+		CollectorID: "collector-a",
+		ReceivedAt:  now,
+		Samples: []profiling.ProfileSample{
+			{Target: domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "checkout-1", ProcessID: 1, JVMStartTime: now}, ProfileType: domain.ProfileTypeCPU, StartedAt: now, EndedAt: now.Add(time.Second), StackID: "a", Frames: []string{"Demo.hot"}, Value: uint64(3 * time.Second)},
+			{Target: domain.TargetIdentity{Namespace: "prod", Service: "payments", Pod: "payments-1", ProcessID: 2, JVMStartTime: now}, ProfileType: domain.ProfileTypeCPU, StartedAt: now, EndedAt: now.Add(time.Second), StackID: "b", Frames: []string{"Demo.hot"}, Value: uint64(7 * time.Second)},
+			{Target: domain.TargetIdentity{Namespace: "staging", Service: "checkout", Pod: "checkout-staging", ProcessID: 3, JVMStartTime: now}, ProfileType: domain.ProfileTypeCPU, StartedAt: now, EndedAt: now.Add(time.Second), StackID: "c", Frames: []string{"Demo.hot"}, Value: uint64(5 * time.Second)},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/collector/v1/profile-batches", bytes.NewReader(body))
+	ingestReq.Header.Set("Content-Type", "application/json")
+	ingestReq.Header.Set("Authorization", "Bearer collector")
+	ingestRec := httptest.NewRecorder()
+	server.ServeHTTP(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("ingest status = %d body=%s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ui/v1/service-selectors?start="+now.Format(time.RFC3339)+"&end="+now.Add(10*time.Second).Format(time.RFC3339), nil)
+	req.Header.Set("Authorization", "Bearer ui")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("selectors status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Targets []struct {
+			Namespace string `json:"namespace"`
+			Service   string `json:"service"`
+			Pod       string `json:"pod"`
+		} `json:"targets"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Targets) != 3 {
+		t.Fatalf("unexpected selector response: %+v", response)
+	}
+	if response.Targets[0].Namespace != "prod" || response.Targets[0].Service != "checkout" || response.Targets[0].Pod != "checkout-1" {
+		t.Fatalf("unexpected first selector: %+v", response)
+	}
+}

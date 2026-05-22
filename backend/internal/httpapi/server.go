@@ -76,6 +76,7 @@ func NewServer(cfg ServerConfig, exporter *metrics.Exporter) (http.Handler, erro
 	mux.Handle("/api/ui/v1/flamegraph", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.Flamegraph)))
 	mux.Handle("/api/ui/v1/top-stacks", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.TopStacks)))
 	mux.Handle("/api/ui/v1/service-summary", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.ServiceSummary)))
+	mux.Handle("/api/ui/v1/service-selectors", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.ServiceSelectors)))
 	mux.Handle("/api/ui/v1/thread-diagnosis", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.ThreadDiagnosis)))
 	mux.Handle("/api/ui/v1/deadlocks", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.Deadlocks)))
 	mux.Handle("/api/ui/v1/jvm-events", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.JVMEventsEvidence)))

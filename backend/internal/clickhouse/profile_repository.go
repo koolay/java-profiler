@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -50,6 +51,12 @@ type ProfileTargetSummary struct {
 	SampleCount     int                          `json:"sample_count"`
 	PercentOfTotal  string                       `json:"percent_of_total"`
 	WindowSemantics domain.ProfileValueSemantics `json:"semantics"`
+}
+
+type ProfileSelector struct {
+	Namespace string `json:"namespace"`
+	Service   string `json:"service"`
+	Pod       string `json:"pod"`
 }
 
 type JVMEventQuery struct {
@@ -228,6 +235,33 @@ func (r *ProfileRepository) QueryProfileTargetSummary(_ context.Context, q Profi
 			WindowSemantics: item.sample.ProfileType.Semantics(window),
 		})
 	}
+	return out, nil
+}
+
+func (r *ProfileRepository) QueryProfileSelectors(_ context.Context, q ProfileQuery) ([]ProfileSelector, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	seen := map[string]ProfileSelector{}
+	for _, sample := range r.samples {
+		if !profileSampleMatches(sample, q) {
+			continue
+		}
+		key := sample.Target.Namespace + "\x00" + sample.Target.Service + "\x00" + sample.Target.Pod
+		seen[key] = ProfileSelector{Namespace: sample.Target.Namespace, Service: sample.Target.Service, Pod: sample.Target.Pod}
+	}
+	out := make([]ProfileSelector, 0, len(seen))
+	for _, selector := range seen {
+		out = append(out, selector)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Namespace != out[j].Namespace {
+			return out[i].Namespace < out[j].Namespace
+		}
+		if out[i].Service != out[j].Service {
+			return out[i].Service < out[j].Service
+		}
+		return out[i].Pod < out[j].Pod
+	})
 	return out, nil
 }
 

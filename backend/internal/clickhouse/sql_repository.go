@@ -381,6 +381,39 @@ func (r *SQLRepository) QueryProfileTargetSummary(ctx context.Context, q Profile
 	return out, nil
 }
 
+func (r *SQLRepository) QueryProfileSelectors(ctx context.Context, q ProfileQuery) ([]ProfileSelector, error) {
+	query := `
+		SELECT DISTINCT namespace, service, pod
+		FROM java_profiler_profile_samples
+		PREWHERE (? = '' OR namespace = ?) AND (? = '' OR service = ?) AND (? = '' OR pod = ?) AND (? = '' OR profile_type = ?)
+		  AND (? = 1 OR ended_at >= ?) AND (? = 1 OR started_at <= ?)
+		ORDER BY namespace, service, pod`
+	rows, err := r.db.QueryContext(ctx, query,
+		q.Namespace, q.Namespace,
+		q.Service, q.Service,
+		q.Pod, q.Pod,
+		q.ProfileType.String(), q.ProfileType.String(),
+		zeroTimeFlag(q.Start), q.Start,
+		zeroTimeFlag(q.End), q.End,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ProfileSelector, 0)
+	for rows.Next() {
+		var selector ProfileSelector
+		if err := rows.Scan(&selector.Namespace, &selector.Service, &selector.Pod); err != nil {
+			return nil, err
+		}
+		out = append(out, selector)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (r *SQLRepository) InsertSnapshots(ctx context.Context, snapshots []ThreadSnapshot, deadlocks []DeadlockEvent) error {
 	for _, snapshot := range snapshots {
 		daemon := uint8(0)

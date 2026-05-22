@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Activity, AlertTriangle, Copy, Cpu, Database, Flame, LockKeyhole, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ProfileType } from "../api/types";
+import { getServiceSelectors } from "../api/client";
+import type { ProfileType, ServiceSelectors } from "../api/types";
 import { CpuView } from "../features/cpu/cpu-view";
 import { WallClockView } from "../features/wall-clock/wall-clock-view";
 import { IOView } from "../features/io/io-view";
@@ -12,6 +13,8 @@ import { DeadlocksView } from "../features/deadlocks/deadlocks-view";
 import { TargetStatusView } from "../features/status/target-status-view";
 import { IngestionHealthView } from "../features/ingestion/ingestion-health-view";
 import type { DiagnosisView } from "../app";
+import { useAPI } from "../api/use-api";
+import { buildSelectorCatalog } from "./service-overview-selectors";
 
 const tabs = ["memory", "cpu", "wall", "io", "gc", "locks", "deadlocks", "status", "ingestion"] as const;
 type Tab = (typeof tabs)[number];
@@ -52,6 +55,15 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
   const [pod, setPod] = useState("");
   const [rangeMinutes, setRangeMinutes] = useState(60);
   const [copyStatus, setCopyStatus] = useState("");
+  const selectorParams = useMemo(() => {
+    const end = new Date();
+    const start = new Date(end.getTime() - rangeMinutes * 60_000);
+    return new URLSearchParams({
+      start: start.toISOString(),
+      end: end.toISOString(),
+      limit: "5000",
+    });
+  }, [rangeMinutes]);
   const params = useMemo(() => {
     const end = new Date();
     const start = new Date(end.getTime() - rangeMinutes * 60_000);
@@ -67,6 +79,12 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
     }
     return value;
   }, [namespace, service, pod, activeView, rangeMinutes]);
+  const emptySummary: ServiceSelectors = { targets: [] };
+  const selectorSummary = useAPI(() => getServiceSelectors(selectorParams), [selectorParams.toString()], emptySummary);
+  const selectorCatalog = useMemo(
+    () => buildSelectorCatalog(selectorSummary.data?.targets ?? [], { namespace, service, pod }),
+    [namespace, pod, selectorSummary.data, service],
+  );
   const copyContext = async () => {
     const context = [
       `view=${activeView}`,
@@ -100,15 +118,50 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
         <div className="context-fields context-fields-topbar" aria-label="Service context">
           <label className="context-field">
             <span>Namespace</span>
-            <input value={namespace} onChange={(event) => setNamespace(event.target.value)} />
+            <input
+              autoComplete="off"
+              list="namespace-candidates"
+              spellCheck={false}
+              value={namespace}
+              onChange={(event) => setNamespace(event.target.value)}
+            />
+            <datalist id="namespace-candidates">
+              {selectorCatalog.namespaces.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
           </label>
           <label className="context-field">
             <span>Service</span>
-            <input value={service} onChange={(event) => setService(event.target.value)} />
+            <input
+              autoComplete="off"
+              list="service-candidates"
+              spellCheck={false}
+              value={service}
+              onChange={(event) => setService(event.target.value)}
+            />
+            <datalist id="service-candidates">
+              {selectorCatalog.services.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
           </label>
           <label className="context-field">
             <span>Pod</span>
-            <input aria-label="Pod filter" placeholder="single Java Pod" value={pod} onChange={(event) => setPod(event.target.value)} />
+            <input
+              aria-label="Pod filter"
+              autoComplete="off"
+              list="pod-candidates"
+              placeholder="single Java Pod"
+              spellCheck={false}
+              value={pod}
+              onChange={(event) => setPod(event.target.value)}
+            />
+            <datalist id="pod-candidates">
+              {selectorCatalog.pods.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
           </label>
           <label className="context-field context-range">
             <span>Range</span>

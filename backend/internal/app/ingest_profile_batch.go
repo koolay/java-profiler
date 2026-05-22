@@ -42,6 +42,7 @@ type ProfileQueryStore interface {
 	QueryFlamegraphSamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.FlamegraphSample, error)
 	QueryTopStackSamples(context.Context, clickhouse.ProfileQuery) ([]clickhouse.TopStackSample, error)
 	QueryProfileTargetSummary(context.Context, clickhouse.ProfileQuery) ([]clickhouse.ProfileTargetSummary, error)
+	QueryProfileSelectors(context.Context, clickhouse.ProfileQuery) ([]clickhouse.ProfileSelector, error)
 }
 
 type IngestionStore interface {
