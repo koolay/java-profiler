@@ -259,18 +259,18 @@ scripts/real-acceptance.sh \
   --artifact-dir /tmp/java-profiler-jdk17-demo-e2e
 ```
 
-如果要验证一个已有的非 demo 服务，例如 `kd-cosmic-xk/mservice`，可以保留 `--service mservice`，并通过 `JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS` 指定真实可用的 HTTP 路径，例如：
+如果要验证一个已有的非 demo 服务，可以保留你自己的 `--service`，并通过 `JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS` 指定真实可用的 HTTP 路径，例如：
 
 ```bash
 KUBECONFIG=/path/to/kubeconfig \
 JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS=/profile-load/ \
 scripts/real-acceptance.sh \
   --configure-profiler \
-  --namespace kd-cosmic-xk \
+  --namespace <your-namespace> \
   --profiler-namespace java-profiler-qa \
-  --service mservice \
+  --service <your-service> \
   --require-full-profiling \
-  --artifact-dir /tmp/java-profiler-mservice-e2e
+  --artifact-dir /tmp/java-profiler-non-demo-e2e
 ```
 
 如果状态变成 `profiler_conflict`，通常是前一次运行已把 async-profiler 加载进同一个 JVM，而 collector/backend 又重启过。滚动目标 demo Pod 后重新运行严格验收。
