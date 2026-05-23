@@ -118,7 +118,7 @@ npm run docs:build
 
 For changes touching collector profiling, ingestion, ClickHouse storage, backend query APIs, deployment, the demo service, or profile UI, run real Kubernetes acceptance. See [Contributing](docs/contributing/development.md) and the [Real Profiling Acceptance Standard](docs/operations/real-profiling-acceptance-standard.md).
 
-If you are validating an existing non-demo workload, keep the same acceptance workflow but set `JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS` to one or more real HTTP paths on that service, such as `/profile-load/`, so the acceptance script can drive load without the JDK demo endpoints.
+If you are validating an existing non-demo workload, keep the same acceptance workflow but set `JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS` to one or more HTTP paths that actually exist on that service.
 
 ## Documentation
 

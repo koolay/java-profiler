@@ -263,7 +263,7 @@ scripts/real-acceptance.sh \
 
 ```bash
 KUBECONFIG=/path/to/kubeconfig \
-JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS=/profile-load/ \
+JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS=/your-real-path/ \
 scripts/real-acceptance.sh \
   --configure-profiler \
   --namespace <your-namespace> \
