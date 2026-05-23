@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 
 type SelectorFieldProps = {
+  className?: string;
   label: string;
   value: string;
   candidates: string[];
@@ -19,7 +20,7 @@ function dedupe(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
-export function SelectorField({ label, value, candidates, placeholder, loading, onChange }: SelectorFieldProps) {
+export function SelectorField({ className, label, value, candidates, placeholder, loading, onChange }: SelectorFieldProps) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const rootRef = useRef<HTMLLabelElement | null>(null);
@@ -91,7 +92,7 @@ export function SelectorField({ label, value, candidates, placeholder, loading, 
   };
 
   return (
-    <label className={`context-field selector-field${open ? " is-open" : ""}`} ref={rootRef}>
+    <label className={`context-field selector-field${className ? ` ${className}` : ""}${open ? " is-open" : ""}`} ref={rootRef}>
       <div className="selector-field-head">
         <span>{label}</span>
         {loading ? (

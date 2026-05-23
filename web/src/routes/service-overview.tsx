@@ -45,7 +45,13 @@ const navigationGroups: Array<{
   },
 ];
 
-const DEFAULT_WINDOW_MS = 60 * 60 * 1000;
+const TIME_RANGE_PRESETS = [
+  { label: "5m", value: 5 * 60 * 1000 },
+  { label: "15m", value: 15 * 60 * 1000 },
+  { label: "30m", value: 30 * 60 * 1000 },
+  { label: "1h", value: 60 * 60 * 1000 },
+] as const;
+type TimeRangePreset = (typeof TIME_RANGE_PRESETS)[number]["label"] | "custom";
 
 function pad(value: number) {
   return value.toString().padStart(2, "0");
@@ -83,8 +89,10 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
   const [namespace, setNamespace] = useState("");
   const [service, setService] = useState("");
   const [pod, setPod] = useState("");
-  const [windowStart, setWindowStart] = useState(() => formatDateTimeLocal(new Date(Date.now() - DEFAULT_WINDOW_MS)));
+  const [windowStart, setWindowStart] = useState(() => formatDateTimeLocal(new Date(Date.now() - 15 * 60 * 1000)));
   const [windowEnd, setWindowEnd] = useState(() => formatDateTimeLocal(new Date()));
+  const [timeRangePreset, setTimeRangePreset] = useState<TimeRangePreset>("15m");
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
   const handleNamespaceChange = (nextNamespace: string) => {
     setNamespace(nextNamespace);
@@ -103,6 +111,8 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
     const start = parseDateTimeLocal(nextStart);
     const end = parseDateTimeLocal(windowEnd);
     setWindowStart(nextStart);
+    setTimeRangePreset("custom");
+    setCustomRangeOpen(true);
     if (start.getTime() > end.getTime()) {
       setWindowEnd(nextStart);
     }
@@ -111,9 +121,30 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
     const start = parseDateTimeLocal(windowStart);
     const end = parseDateTimeLocal(nextEnd);
     setWindowEnd(nextEnd);
+    setTimeRangePreset("custom");
+    setCustomRangeOpen(true);
     if (end.getTime() < start.getTime()) {
       setWindowStart(nextEnd);
     }
+  };
+  const setPresetWindow = (preset: TimeRangePreset) => {
+    if (preset === "custom") {
+      setTimeRangePreset("custom");
+      setCustomRangeOpen((current) => !current);
+      return;
+    }
+
+    const presetConfig = TIME_RANGE_PRESETS.find((item) => item.label === preset);
+    if (!presetConfig) {
+      return;
+    }
+
+    const end = new Date();
+    const start = new Date(end.getTime() - presetConfig.value);
+    setWindowStart(formatDateTimeLocal(start));
+    setWindowEnd(formatDateTimeLocal(end));
+    setTimeRangePreset(preset);
+    setCustomRangeOpen(false);
   };
   const selectorParams = useMemo(() => {
     return new URLSearchParams({
@@ -172,42 +203,78 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
             <span>Incident workbench</span>
           </div>
         </div>
-        <div className="context-fields context-fields-topbar" aria-label="Service context">
-          <SelectorField
-            candidates={selectorCatalog.namespaces}
-            label="Namespace"
-            loading={selectorSummary.loading}
-            onChange={handleNamespaceChange}
-            placeholder="All namespaces"
-            value={namespace}
-          />
-          <SelectorField
-            candidates={selectorCatalog.services}
-            label="Service"
-            loading={selectorSummary.loading}
-            onChange={handleServiceChange}
-            placeholder="All services"
-            value={service}
-          />
-          <SelectorField
-            candidates={selectorCatalog.pods}
-            label="Pod"
-            loading={selectorSummary.loading}
-            onChange={setPod}
-            placeholder="single Java Pod"
-            value={pod}
-          />
-          <div className="context-field context-time-range">
-            <span>Time range</span>
-            <div className="time-range-inputs">
-              <label>
-                <span>From</span>
-                <input type="datetime-local" step={1} value={windowStart} onChange={(event) => updateWindowStart(event.target.value)} />
-              </label>
-              <label>
-                <span>To</span>
-                <input type="datetime-local" step={1} value={windowEnd} onChange={(event) => updateWindowEnd(event.target.value)} />
-              </label>
+        <div className="workbench-context">
+          <div className="context-fields context-fields-topbar" aria-label="Service context">
+            <SelectorField
+              className="selector-field selector-field-namespace"
+              candidates={selectorCatalog.namespaces}
+              label="Namespace"
+              loading={selectorSummary.loading}
+              onChange={handleNamespaceChange}
+              placeholder="All namespaces"
+              value={namespace}
+            />
+            <span className="context-arrow" aria-hidden="true">
+              →
+            </span>
+            <SelectorField
+              className="selector-field selector-field-service"
+              candidates={selectorCatalog.services}
+              label="Service"
+              loading={selectorSummary.loading}
+              onChange={handleServiceChange}
+              placeholder="All services"
+              value={service}
+            />
+            <span className="context-arrow" aria-hidden="true">
+              →
+            </span>
+            <SelectorField
+              className="selector-field selector-field-pod"
+              candidates={selectorCatalog.pods}
+              label="Pod"
+              loading={selectorSummary.loading}
+              onChange={setPod}
+              placeholder="single Java Pod"
+              value={pod}
+            />
+            <span className="context-arrow context-arrow-time" aria-hidden="true">
+              |
+            </span>
+            <div className="context-field context-time-range">
+              <span>Time range</span>
+              <div className="time-range-presets" role="group" aria-label="Time range presets">
+                {TIME_RANGE_PRESETS.map((preset) => (
+                  <button
+                    className={timeRangePreset === preset.label ? "active" : ""}
+                    key={preset.label}
+                    onClick={() => setPresetWindow(preset.label)}
+                    type="button"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+                <button
+                  aria-expanded={customRangeOpen}
+                  className={`time-range-custom-toggle${timeRangePreset === "custom" ? " active" : ""}`}
+                  onClick={() => setPresetWindow("custom")}
+                  type="button"
+                >
+                  Custom
+                </button>
+              </div>
+              {customRangeOpen ? (
+                <div className="time-range-inputs">
+                  <label>
+                    <span>From</span>
+                    <input type="datetime-local" step={1} value={windowStart} onChange={(event) => updateWindowStart(event.target.value)} />
+                  </label>
+                  <label>
+                    <span>To</span>
+                    <input type="datetime-local" step={1} value={windowEnd} onChange={(event) => updateWindowEnd(event.target.value)} />
+                  </label>
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="context-field context-field-note">
@@ -224,7 +291,7 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
           </div>
         </div>
         <div className="workbench-actions">
-          <button type="button" onClick={copyContext}><Copy size={15} />Copy</button>
+          <button className="ghost-action" type="button" onClick={copyContext}><Copy size={14} />Copy Link</button>
           <button className="primary-action" type="button" onClick={shareView}><Share2 size={15} />Share</button>
         </div>
         <span className="sr-only" aria-live="polite">{copyStatus}</span>
