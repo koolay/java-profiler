@@ -78,3 +78,4 @@ temp/
 cache/
 .tmp/
 docs/plans/
+.fabro/
