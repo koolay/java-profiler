@@ -52,7 +52,7 @@ test("shows GC summary cards before the event list", async () => {
   expect(screen.getByRole("heading", { name: "Allocation correlation" })).toBeInTheDocument();
   expect(screen.getAllByRole("article")).toHaveLength(2);
   expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toBeInTheDocument();
-  expect(screen.getByText("Focus frame")).toBeInTheDocument();
+  expect(screen.queryByText("Focus frame")).not.toBeInTheDocument();
   expect(screen.getByText("Copy frame")).toBeInTheDocument();
   expect(screen.getByText("Permalink")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Selected flamegraph frame" })).not.toBeInTheDocument();

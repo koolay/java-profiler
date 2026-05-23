@@ -45,13 +45,12 @@ test("service diagnosis surface loads", async ({ page }) => {
   await expect(page.getByRole("region", { name: "CPU profile analysis" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Single Pod CPU profile" })).toBeVisible();
   await expect(page.getByPlaceholder("Search frame")).toBeVisible();
-  await page.getByRole("button", { name: /DemoHttpService\.handleWork:93/ }).click();
-  await page.getByRole("button", { name: "Focus frame" }).click();
+  const flameRows = page.locator(".flame-row");
+  await flameRows.filter({ hasText: /DemoHttpService\.handleWork:93/ }).first().click();
   const focusState = page.getByRole("region", { name: "Focused flamegraph state" });
   await expect(focusState).toContainText("Focused:");
   await expect(focusState).toContainText(/DemoHttpService\.handleWork/);
-  await page.getByRole("button", { name: /DemoHttpService\.burnCpu:188/ }).click();
-  await page.getByRole("button", { name: "Focus frame" }).click();
+  await flameRows.filter({ hasText: /DemoHttpService\.burnCpu:188/ }).first().click();
   await expect(focusState).toContainText(/DemoHttpService\.burnCpu/);
   await focusState.getByRole("button", { name: "Back" }).click();
   await expect(focusState).toContainText(/DemoHttpService\.handleWork/);

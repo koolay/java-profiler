@@ -14,8 +14,6 @@ type Props = {
   valueLabel?: string;
   showInspector?: boolean;
   showSelectedDetail?: boolean;
-  showSelectedFrameAction?: boolean;
-  selectedFrameActionLabel?: string;
   inspectorTotalLabel?: string;
   inspectorSelfLabel?: string;
   detailTotalPercentLabel?: string;
@@ -47,9 +45,14 @@ type FocusState = FocusPoint & {
   history: FocusPoint[];
 };
 
+type ZoomTrailEntry = {
+  path: string;
+  label: string;
+};
+
 const rootFocus: FocusState = { path: "root", history: [] };
 
-export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight, searchQuery, onSearchQueryChange, onReset, formatValue = defaultFormatValue, valueLabel = "Samples", showInspector = true, showSelectedDetail = true, showSelectedFrameAction = true, selectedFrameActionLabel = "Focus frame", inspectorTotalLabel = "Total CPU", inspectorSelfLabel = "Self CPU", detailTotalPercentLabel = "Total CPU", detailSelfPercentLabel = "Self CPU", onFrameSelect }: Props) {
+export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight, searchQuery, onSearchQueryChange, onReset, formatValue = defaultFormatValue, valueLabel = "Samples", showInspector = true, showSelectedDetail = true, inspectorTotalLabel = "Total CPU", inspectorSelfLabel = "Self CPU", detailTotalPercentLabel = "Total CPU", detailSelfPercentLabel = "Self CPU", onFrameSelect }: Props) {
   const [internalQuery, setInternalQuery] = useState("");
   const [focus, setFocus] = useState<FocusState>(rootFocus);
   const [selectedPath, setSelectedPath] = useState("root");
@@ -77,7 +80,12 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
   const inspectedFrame = visibleFrames.find((frame) => frame.path === hoveredPath) ?? selectedFrame;
   const focusedFrame = zoomed ? visibleFrames.find((frame) => frame.path === zoomPath) : undefined;
   const focusedPercent = focusedFrame ? (Math.max(0, focusedFrame.value) / profileTotalValue(root)) * 100 : 0;
-  const zoomTrail = zoomed ? ["root", ...focus.history.slice(1).map((entry) => entry.path), zoomPath].map((path) => findByPath(root, path)?.name ?? "root") : [];
+  const zoomTrail: ZoomTrailEntry[] = zoomed
+    ? [...focus.history.map((entry) => entry.path), zoomPath].map((path) => ({
+        path,
+        label: findByPath(root, path)?.name ?? "root",
+      }))
+    : [];
   useEffect(() => {
     if (focusValid) return;
     setFocus(rootFocus);
@@ -112,7 +120,11 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
     const signature = framePathSignature(root, path);
     if (!signature) return;
     const current: FocusPoint = { path: zoomPath, signature: zoomPath === "root" ? undefined : framePathSignature(root, zoomPath) };
-    setFocus((state) => ({ path, signature, history: [...state.history, current] }));
+    setFocus((state) => {
+      const existingIndex = state.history.findIndex((entry) => entry.path === path);
+      const history = existingIndex >= 0 ? state.history.slice(0, existingIndex) : [...state.history, current];
+      return { path, signature, history };
+    });
     setSelectedPath(path);
     cancelHoverClear();
     setHoveredPath(undefined);
@@ -164,23 +176,30 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
       </div>
       {zoomed && (
         <nav className="focus-breadcrumb" aria-label="Focused flamegraph path">
-          <span>Focused</span>
-          {zoomTrail.map((label, index) => (
-            <code key={`${label}-${index}`}>{formatFrameLabel(label)}</code>
+          <span>Focused path</span>
+          {zoomTrail.map((entry, index) => (
+            <button
+              key={`${entry.path}-${index}`}
+              type="button"
+              className={`focus-breadcrumb-chip${entry.path === zoomPath ? " focus-breadcrumb-current" : ""}`}
+              onClick={() => zoomToPath(entry.path)}
+              disabled={entry.path === zoomPath}
+              aria-current={entry.path === zoomPath ? "page" : undefined}
+              title={entry.path === zoomPath ? "Current focus" : `Zoom to ${formatFrameLabel(entry.label)}`}
+            >
+              {formatFrameLabel(entry.label)}
+            </button>
           ))}
         </nav>
       )}
       {showInspector && hasSamples && inspectedFrame && selectedFrame && (
         <FrameInspector
           frame={inspectedFrame}
-          onFocus={() => zoomToPath(inspectedFrame.path)}
           onMouseEnter={() => inspectPath(inspectedFrame.path)}
           onMouseLeave={clearInspectedPathSoon}
           formatValue={formatValue}
           totalLabel={inspectorTotalLabel}
           selfLabel={inspectorSelfLabel}
-          showSelectedFrameAction={showSelectedFrameAction}
-          selectedFrameActionLabel={selectedFrameActionLabel}
         />
       )}
       {hasSamples ? (
@@ -196,6 +215,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
               }}
               onClick={() => {
                 setSelectedPath(frame.path);
+                zoomToPath(frame.path);
                 inspectPath(frame.path);
                 onFrameSelect?.(frame.name);
               }}
@@ -309,7 +329,7 @@ function partialResultMessage(reasons?: string[]) {
   return `Showing a partial flamegraph because ${reasonList.join(", ")}.`;
 }
 
-function FrameInspector({ frame, onFocus, onMouseEnter, onMouseLeave, formatValue, totalLabel, selfLabel, showSelectedFrameAction, selectedFrameActionLabel }: { frame: Frame; onFocus: () => void; onMouseEnter: () => void; onMouseLeave: () => void; formatValue: (value: number) => string; totalLabel: string; selfLabel: string; showSelectedFrameAction: boolean; selectedFrameActionLabel: string }) {
+function FrameInspector({ frame, onMouseEnter, onMouseLeave, formatValue, totalLabel, selfLabel }: { frame: Frame; onMouseEnter: () => void; onMouseLeave: () => void; formatValue: (value: number) => string; totalLabel: string; selfLabel: string }) {
   const copyText = frame.name;
   const copyFrame = () => {
     if (navigator.clipboard) {
@@ -344,7 +364,6 @@ function FrameInspector({ frame, onFocus, onMouseEnter, onMouseLeave, formatValu
         </div>
       </dl>
       <div className="flamegraph-tooltip-actions">
-        {showSelectedFrameAction && <button type="button" className="primary-action" onClick={onFocus}>{selectedFrameActionLabel}</button>}
         <button type="button" onClick={copyFrame}>Copy frame</button>
         <button type="button" onClick={copyPermalink}>Permalink</button>
       </div>

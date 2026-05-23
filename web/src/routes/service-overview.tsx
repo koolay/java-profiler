@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Activity, AlertTriangle, Copy, Cpu, Database, Flame, LockKeyhole, Share2 } from "lucide-react";
+import { Activity, AlertTriangle, Copy, Cpu, Database, Flame, LockKeyhole, Loader2, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { getServiceSelectors } from "../api/client";
 import type { ProfileType, ServiceSelectors } from "../api/types";
@@ -15,6 +15,7 @@ import { IngestionHealthView } from "../features/ingestion/ingestion-health-view
 import type { DiagnosisView } from "../app";
 import { useAPI } from "../api/use-api";
 import { buildSelectorCatalog } from "./service-overview-selectors";
+import { SelectorField } from "./service-overview-selector-field";
 
 const tabs = ["memory", "cpu", "wall", "io", "gc", "locks", "deadlocks", "status", "ingestion"] as const;
 type Tab = (typeof tabs)[number];
@@ -44,41 +45,96 @@ const navigationGroups: Array<{
   },
 ];
 
+const DEFAULT_WINDOW_MS = 60 * 60 * 1000;
+
+function pad(value: number) {
+  return value.toString().padStart(2, "0");
+}
+
+function formatDateTimeLocal(date: Date) {
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+    ":",
+    pad(date.getSeconds()),
+  ].join("");
+}
+
+function parseDateTimeLocal(value: string) {
+  const [datePart = "", timePart = ""] = value.split("T");
+  const [year = "0", month = "0", day = "0"] = datePart.split("-");
+  const [hours = "0", minutes = "0", seconds = "0"] = timePart.split(":");
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes), Number(seconds));
+}
+
 type ServiceOverviewProps = {
   activeView: DiagnosisView;
   onViewChange: (view: DiagnosisView) => void;
 };
 
 export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewProps) {
-  const [namespace, setNamespace] = useState("java-profiler-qa");
-  const [service, setService] = useState("jdk17-http-demo");
+  const [namespace, setNamespace] = useState("");
+  const [service, setService] = useState("");
   const [pod, setPod] = useState("");
-  const [rangeMinutes, setRangeMinutes] = useState(60);
+  const [windowStart, setWindowStart] = useState(() => formatDateTimeLocal(new Date(Date.now() - DEFAULT_WINDOW_MS)));
+  const [windowEnd, setWindowEnd] = useState(() => formatDateTimeLocal(new Date()));
   const [copyStatus, setCopyStatus] = useState("");
+  const handleNamespaceChange = (nextNamespace: string) => {
+    setNamespace(nextNamespace);
+    if (nextNamespace.trim() !== namespace.trim()) {
+      setService("");
+      setPod("");
+    }
+  };
+  const handleServiceChange = (nextService: string) => {
+    setService(nextService);
+    if (nextService.trim() !== service.trim()) {
+      setPod("");
+    }
+  };
+  const updateWindowStart = (nextStart: string) => {
+    const start = parseDateTimeLocal(nextStart);
+    const end = parseDateTimeLocal(windowEnd);
+    setWindowStart(nextStart);
+    if (start.getTime() > end.getTime()) {
+      setWindowEnd(nextStart);
+    }
+  };
+  const updateWindowEnd = (nextEnd: string) => {
+    const start = parseDateTimeLocal(windowStart);
+    const end = parseDateTimeLocal(nextEnd);
+    setWindowEnd(nextEnd);
+    if (end.getTime() < start.getTime()) {
+      setWindowStart(nextEnd);
+    }
+  };
   const selectorParams = useMemo(() => {
-    const end = new Date();
-    const start = new Date(end.getTime() - rangeMinutes * 60_000);
     return new URLSearchParams({
-      start: start.toISOString(),
-      end: end.toISOString(),
+      start: parseDateTimeLocal(windowStart).toISOString(),
+      end: parseDateTimeLocal(windowEnd).toISOString(),
       limit: "5000",
     });
-  }, [rangeMinutes]);
+  }, [windowEnd, windowStart]);
   const params = useMemo(() => {
-    const end = new Date();
-    const start = new Date(end.getTime() - rangeMinutes * 60_000);
     const value = new URLSearchParams({
       namespace,
       service,
       profile_type: profileTypeFor(activeView),
-      start: start.toISOString(),
-      end: end.toISOString(),
+      start: parseDateTimeLocal(windowStart).toISOString(),
+      end: parseDateTimeLocal(windowEnd).toISOString(),
     });
     if (pod.trim()) {
       value.set("pod", pod.trim());
     }
     return value;
-  }, [namespace, service, pod, activeView, rangeMinutes]);
+  }, [activeView, namespace, pod, service, windowEnd, windowStart]);
   const emptySummary: ServiceSelectors = { targets: [] };
   const selectorSummary = useAPI(() => getServiceSelectors(selectorParams), [selectorParams.toString()], emptySummary);
   const selectorCatalog = useMemo(
@@ -91,7 +147,8 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
       `namespace=${namespace}`,
       `service=${service}`,
       `pod=${pod.trim() || "<service-query>"}`,
-      `range=${rangeMinutes}m`,
+      `start=${parseDateTimeLocal(windowStart).toISOString()}`,
+      `end=${parseDateTimeLocal(windowEnd).toISOString()}`,
       `profile_type=${profileTypeFor(activeView)}`,
     ].join("\n");
     await navigator.clipboard?.writeText(context);
@@ -116,62 +173,55 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
           </div>
         </div>
         <div className="context-fields context-fields-topbar" aria-label="Service context">
-          <label className="context-field">
-            <span>Namespace</span>
-            <input
-              autoComplete="off"
-              list="namespace-candidates"
-              spellCheck={false}
-              value={namespace}
-              onChange={(event) => setNamespace(event.target.value)}
-            />
-            <datalist id="namespace-candidates">
-              {selectorCatalog.namespaces.map((option) => (
-                <option key={option} value={option} />
-              ))}
-            </datalist>
-          </label>
-          <label className="context-field">
-            <span>Service</span>
-            <input
-              autoComplete="off"
-              list="service-candidates"
-              spellCheck={false}
-              value={service}
-              onChange={(event) => setService(event.target.value)}
-            />
-            <datalist id="service-candidates">
-              {selectorCatalog.services.map((option) => (
-                <option key={option} value={option} />
-              ))}
-            </datalist>
-          </label>
-          <label className="context-field">
-            <span>Pod</span>
-            <input
-              aria-label="Pod filter"
-              autoComplete="off"
-              list="pod-candidates"
-              placeholder="single Java Pod"
-              spellCheck={false}
-              value={pod}
-              onChange={(event) => setPod(event.target.value)}
-            />
-            <datalist id="pod-candidates">
-              {selectorCatalog.pods.map((option) => (
-                <option key={option} value={option} />
-              ))}
-            </datalist>
-          </label>
-          <label className="context-field context-range">
-            <span>Range</span>
-            <select value={rangeMinutes} onChange={(event) => setRangeMinutes(Number(event.target.value))}>
-              <option value={15}>Last 15m</option>
-              <option value={30}>Last 30m</option>
-              <option value={60}>Last 1h</option>
-              <option value={360}>Last 6h</option>
-            </select>
-          </label>
+          <SelectorField
+            candidates={selectorCatalog.namespaces}
+            label="Namespace"
+            loading={selectorSummary.loading}
+            onChange={handleNamespaceChange}
+            placeholder="All namespaces"
+            value={namespace}
+          />
+          <SelectorField
+            candidates={selectorCatalog.services}
+            label="Service"
+            loading={selectorSummary.loading}
+            onChange={handleServiceChange}
+            placeholder="All services"
+            value={service}
+          />
+          <SelectorField
+            candidates={selectorCatalog.pods}
+            label="Pod"
+            loading={selectorSummary.loading}
+            onChange={setPod}
+            placeholder="single Java Pod"
+            value={pod}
+          />
+          <div className="context-field context-time-range">
+            <span>Time range</span>
+            <div className="time-range-inputs">
+              <label>
+                <span>From</span>
+                <input type="datetime-local" step={1} value={windowStart} onChange={(event) => updateWindowStart(event.target.value)} />
+              </label>
+              <label>
+                <span>To</span>
+                <input type="datetime-local" step={1} value={windowEnd} onChange={(event) => updateWindowEnd(event.target.value)} />
+              </label>
+            </div>
+          </div>
+          <div className="context-field context-field-note">
+            {selectorSummary.loading ? (
+              <span className="selector-status" aria-live="polite">
+                <Loader2 size={12} className="selector-spinner" />
+                Refreshing live suggestions
+              </span>
+            ) : selectorSummary.error ? (
+              <span className="warning">Selector suggestions unavailable. You can still type any value.</span>
+            ) : (
+              <span>Choose from live suggestions or type a value directly.</span>
+            )}
+          </div>
         </div>
         <div className="workbench-actions">
           <button type="button" onClick={copyContext}><Copy size={15} />Copy</button>

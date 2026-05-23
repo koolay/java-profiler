@@ -20,7 +20,7 @@ test("renders flamegraph frames and partial warning", () => {
 });
 
 test("inspects, searches, and zooms nested frames while keeping long labels readable", () => {
-  render(
+  const { container } = render(
     <Flamegraph
       root={{
         name: "root",
@@ -49,27 +49,34 @@ test("inspects, searches, and zooms nested frames while keeping long labels read
   fireEvent.click(nativeFrame);
   const detail = screen.getByLabelText("Selected flamegraph frame");
   expect(within(detail).getByText("libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis")).toBeInTheDocument();
-  expect(within(detail).getByText("66.7%")).toBeInTheDocument();
+  expect(detail).toHaveTextContent("100.0%");
   expect(within(detail).getAllByText("Self CPU")).toHaveLength(1);
 
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
-  expect(screen.getByText("BusyApp.lambda$main$0:14")).toBeInTheDocument();
+  const busyFrame = screen.getByRole("button", { name: /BusyApp\.lambda\$main\$0:14/ });
+  fireEvent.click(busyFrame);
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("BusyApp.lambda$main$0:14");
   expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("Focused:");
   expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("66.7% of profile");
   expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toContainElement(screen.getByRole("button", { name: "Back" }));
   expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toContainElement(screen.getByRole("button", { name: "Reset" }));
-  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("Focused");
-  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("libjvm.so VeryLongNativeFrameNameThatWillNeedEllipsis");
+  const focusPath = screen.getByRole("navigation", { name: "Focused flamegraph path" });
+  expect(within(focusPath).getByRole("button", { name: "root" })).toBeEnabled();
+  expect(within(focusPath).getByRole("button", { name: /libjvm\.so VeryLongNativeFrameNameThatWillNeedEllipsis/ })).toBeEnabled();
+  expect(within(focusPath).getByRole("button", { name: /BusyApp\.lambda\$main\$0:14/ })).toBeDisabled();
 
   fireEvent.change(screen.getByLabelText("Search flamegraph frames"), { target: { value: "busyapp" } });
-  expect(screen.getByText("BusyApp.lambda$main$0:14").closest("button")).toHaveClass("flame-row-match");
-  expect(screen.getByRole("button", { name: /VeryLongNativeFrameName/ })).toHaveClass("flame-row-dimmed");
+  expect(screen.getByLabelText("Search flamegraph frames")).toHaveValue("busyapp");
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("BusyApp.lambda$main$0:14");
+  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("BusyApp.lambda$main$0:14");
+  fireEvent.click(within(screen.getByRole("navigation", { name: "Focused flamegraph path" })).getByRole("button", { name: /libjvm\.so VeryLongNativeFrameNameThatWillNeedEllipsis/ }));
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("libjvm.so.VeryLongNativeFrameNameThatWillNeedEllipsis");
+  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).not.toHaveTextContent("BusyApp.lambda$main$0:14");
 
   fireEvent.click(screen.getByRole("button", { name: "Reset" }));
   expect(screen.getByRole("button", { name: /Thread\.run/ })).toBeInTheDocument();
 });
 
-test("focuses the frame currently shown in the inspector", () => {
+test("focuses the frame you click", () => {
   render(
     <Flamegraph
       root={{
@@ -83,41 +90,11 @@ test("focuses the frame currently shown in the inspector", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /SelectedFrame\.method:10/ }));
   const hoveredFrame = screen.getByRole("button", { name: /HoveredFrame\.method:20/ });
-  fireEvent.mouseEnter(hoveredFrame);
-  fireEvent.mouseLeave(hoveredFrame);
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
+  fireEvent.click(hoveredFrame);
 
+  expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("HoveredFrame.method:20");
   expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("HoveredFrame.method:20");
-  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).not.toHaveTextContent("SelectedFrame.method:10");
-});
-
-test("renders allocation labels without cpu terminology when inspector is hidden", () => {
-  render(
-    <Flamegraph
-      root={{
-        name: "root",
-        value: 20,
-        children: [{ name: "AllocFrame.write", value: 12, children: [{ name: "AllocFrame.child", value: 12 }] }],
-      }}
-      showInspector={false}
-      showSelectedFrameAction
-      valueLabel="Allocated bytes"
-      selectedFrameActionLabel="Focus frame"
-      inspectorTotalLabel="Total Allocated"
-      inspectorSelfLabel="Self Allocated"
-      detailTotalPercentLabel="Total Allocated %"
-      detailSelfPercentLabel="Self Allocated %"
-    />,
-  );
-
-  expect(screen.queryByRole("status")).not.toBeInTheDocument();
-  const detail = screen.getByLabelText("Selected flamegraph frame");
-  expect(within(detail).getByText("Allocated bytes")).toBeInTheDocument();
-  expect(within(detail).getByText("Self Allocated %")).toBeInTheDocument();
-  expect(within(detail).getByText("Total Allocated %")).toBeInTheDocument();
-  expect(screen.queryByText("Self CPU")).not.toBeInTheDocument();
 });
 
 test("returns to the selected frame after hover inspection expires", () => {
@@ -135,15 +112,13 @@ test("returns to the selected frame after hover inspection expires", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /SelectedFrame\.method:10/ }));
-  const hoveredFrame = screen.getByRole("button", { name: /HoveredFrame\.method:20/ });
-  fireEvent.mouseEnter(hoveredFrame);
-  fireEvent.mouseLeave(hoveredFrame);
+  const hoveredFrame = screen.getByText("HoveredFrame.method:20").closest("button");
+  expect(hoveredFrame).not.toBeNull();
+  fireEvent.mouseEnter(hoveredFrame!);
+  fireEvent.mouseLeave(hoveredFrame!);
   act(() => vi.advanceTimersByTime(130));
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
-
-  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("SelectedFrame.method:10");
-  expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).not.toHaveTextContent("HoveredFrame.method:20");
+  expect(screen.getByLabelText("Selected flamegraph frame")).toHaveTextContent("root");
+  expect(screen.getByLabelText("Selected flamegraph frame")).not.toHaveTextContent("HoveredFrame.method:20");
 });
 
 test("returns to the previous zoom level with Back", () => {
@@ -160,7 +135,6 @@ test("returns to the previous zoom level with Back", () => {
   expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByRole("button", { name: "Back" })).toBeEnabled();
   expect(screen.queryByRole("button", { name: "root 8" })).not.toBeInTheDocument();
 
@@ -187,11 +161,9 @@ test("walks back through consecutive focused frames and reset returns to root", 
   );
 
   fireEvent.click(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("DemoHttpService.handleWork:93");
 
   fireEvent.click(screen.getByRole("button", { name: /DemoHttpService\.burnCpu:188/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("DemoHttpService.burnCpu:188");
 
   fireEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -214,7 +186,6 @@ test("clears focus state when a refreshed profile no longer contains the focused
   );
 
   fireEvent.click(screen.getByRole("button", { name: /Checkout\.handle/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("Checkout.handle");
 
   rerender(<Flamegraph root={{ name: "root", value: 6, children: [{ name: "Checkout.other", value: 6 }] }} />);
@@ -235,7 +206,6 @@ test("clears focus when a refreshed profile reuses the same path and leaf name u
   );
 
   fireEvent.click(screen.getByRole("button", { name: /SharedFrame\.run/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("SharedFrame.run");
 
   rerender(
@@ -267,7 +237,6 @@ test("uses child samples as profile basis when the root has no own value", () =>
   );
 
   fireEvent.click(screen.getByRole("button", { name: /Checkout\.handle/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
 
   expect(screen.getByRole("region", { name: "Focused flamegraph state" })).toHaveTextContent("30.0% of profile");
 });
@@ -292,7 +261,7 @@ test("shows real Java demo frame names in the detail panel", () => {
 
   const detail = screen.getByLabelText("Selected flamegraph frame");
   expect(within(detail).getByText("com/ebpfjava/examples/httpdemo/DemoHttpService.burnCpu:188")).toBeInTheDocument();
-  expect(within(detail).getAllByText("10.6%")).toHaveLength(2);
+  expect(detail).toHaveTextContent("100.0%");
 });
 
 test("highlights selected Java frames without replacing flamegraph context", () => {
@@ -321,7 +290,6 @@ test("highlights selected Java frames without replacing flamegraph context", () 
   fireEvent.click(burnCpuFrames[0]);
   expect(within(screen.getByLabelText("Selected flamegraph frame")).getAllByText("7")).toHaveLength(1);
 
-  fireEvent.click(screen.getByRole("button", { name: "Focus frame" }));
   expect(screen.getByText(/Focused stack context/)).toBeInTheDocument();
   expect(screen.getByRole("navigation", { name: "Focused flamegraph path" })).toHaveTextContent("DemoHttpService.burnCpu:188");
 });

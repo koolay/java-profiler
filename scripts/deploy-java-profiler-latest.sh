@@ -4,7 +4,11 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/deploy-java-profiler-latest.sh
+  scripts/deploy-java-profiler-latest.sh \
+    --target-namespace <namespace> \
+    --target-deployment <deployment> \
+    --target-container <container> \
+    [--target-service <service>]
 
 Deploy the latest java-profiler control plane image set, configure profiling
 for the target workload, and expose the Web UI on localhost.
@@ -12,10 +16,6 @@ for the target workload, and expose the Web UI on localhost.
 Defaults:
   KUBECONFIG                 $HOME/backup/localk8s.yaml
   PROFILER_NAMESPACE         java-profiler
-  TARGET_NAMESPACE           kd-cosmic-xk
-  TARGET_DEPLOYMENT          mservice
-  TARGET_CONTAINER           mservice
-  TARGET_SERVICE             mservice
   LOCAL_UI_PORT              18081
   AUTH_SECRET                java-profiler-auth
   CLICKHOUSE_IMAGE           docker.m.daocloud.io/clickhouse/clickhouse-server:24.8
@@ -30,6 +30,10 @@ Defaults:
   ENABLE_ALLOCATION_AND_LOCK_JFR true
 
 Optional overrides:
+  TARGET_NAMESPACE           Target Kubernetes namespace.
+  TARGET_DEPLOYMENT          Target Deployment name.
+  TARGET_CONTAINER           Target container name inside the Deployment.
+  TARGET_SERVICE             Target service name used by the profiler.
   JAVA_PROFILER_VERSION      Pin a specific release tag instead of auto-detecting the latest.
   BACKEND_IMAGE              Override backend image reference.
   COLLECTOR_IMAGE            Override collector image reference.
@@ -49,7 +53,11 @@ Optional overrides:
 
 Example:
   export KUBECONFIG=$HOME/backup/localk8s.yaml
-  scripts/deploy-java-profiler-latest.sh
+  scripts/deploy-java-profiler-latest.sh \
+    --target-namespace <namespace> \
+    --target-deployment <deployment> \
+    --target-container <container> \
+    --target-service <service>
 USAGE
 }
 
@@ -283,10 +291,6 @@ main() {
   export KUBECONFIG="${KUBECONFIG:-$HOME/backup/localk8s.yaml}"
 
   PROFILER_NAMESPACE="${PROFILER_NAMESPACE:-}"
-  TARGET_NAMESPACE="${TARGET_NAMESPACE:-kd-cosmic-xk}"
-  TARGET_DEPLOYMENT="${TARGET_DEPLOYMENT:-mservice}"
-  TARGET_CONTAINER="${TARGET_CONTAINER:-mservice}"
-  TARGET_SERVICE="${TARGET_SERVICE:-${TARGET_DEPLOYMENT}}"
   RELEASE_NAME="${RELEASE_NAME:-java-profiler}"
   LOCAL_UI_PORT="${LOCAL_UI_PORT:-18081}"
   AUTH_SECRET="${AUTH_SECRET:-java-profiler-auth}"
@@ -308,6 +312,42 @@ main() {
   ARTIFACT_DIR="${ARTIFACT_DIR:-/tmp/java-profiler-deploy-$(date +%Y%m%d-%H%M%S)}"
   mkdir -p "$ARTIFACT_DIR"
   UI_PORT_FORWARD_PID=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target-namespace)
+        TARGET_NAMESPACE="${2:-}"
+        shift 2
+        ;;
+      --target-deployment)
+        TARGET_DEPLOYMENT="${2:-}"
+        shift 2
+        ;;
+      --target-container)
+        TARGET_CONTAINER="${2:-}"
+        shift 2
+        ;;
+      --target-service)
+        TARGET_SERVICE="${2:-}"
+        shift 2
+        ;;
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "unknown argument: $1"
+        ;;
+    esac
+  done
+
+  TARGET_NAMESPACE="${TARGET_NAMESPACE:-}"
+  TARGET_DEPLOYMENT="${TARGET_DEPLOYMENT:-}"
+  TARGET_CONTAINER="${TARGET_CONTAINER:-}"
+  TARGET_SERVICE="${TARGET_SERVICE:-${TARGET_DEPLOYMENT}}"
+  [[ -n "$TARGET_NAMESPACE" ]] || fail "missing required target namespace; pass --target-namespace or set TARGET_NAMESPACE"
+  [[ -n "$TARGET_DEPLOYMENT" ]] || fail "missing required target deployment; pass --target-deployment or set TARGET_DEPLOYMENT"
+  [[ -n "$TARGET_CONTAINER" ]] || fail "missing required target container; pass --target-container or set TARGET_CONTAINER"
 
   cleanup() {
     local status=$?
