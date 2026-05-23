@@ -12,11 +12,23 @@ export function CpuView({ params }: { params: URLSearchParams }) {
 	const profileWindow = getProfileWindow(params);
 	return (
 		<section>
-			{error && <p className="warning">Backend unavailable: {error}</p>}
-			{topRowsError && <p className="warning">Top table unavailable: {topRowsError}</p>}
-			<HotCodeView root={root} metadata={data?.metadata} topRows={usableTopRows} profileWindow={profileWindow} profileType="java_cpu_nanoseconds" title="Single Pod CPU profile" description="Top table ranks Java methods by CPU time. Values are rendered from nanoseconds into incident-readable time and average cores." valueLabel="CPU time" selfColumnLabel="Self CPU" totalColumnLabel="Total CPU" />
-		</section>
-	);
+      {error && <p className="warning">Backend unavailable: {error}</p>}
+      {topRowsError && <p className="warning">Top table unavailable: {topRowsError}</p>}
+      <HotCodeView
+        root={root}
+        metadata={data?.metadata}
+        topRows={usableTopRows}
+        profileWindow={profileWindow}
+        profileType="java_cpu_nanoseconds"
+        title="Single Pod CPU profile"
+        description="Top table ranks Java methods by CPU time. Values are rendered from nanoseconds into incident-readable time and average cores."
+        valueLabel="CPU time"
+        selfColumnLabel="Self CPU"
+        totalColumnLabel="Total CPU"
+        flamegraphEmptyMessage="No CPU profile samples returned for this service and time range. Check Target status for an enabled Java target before inspecting the flame graph."
+      />
+    </section>
+  );
 }
 
 function getProfileWindow(params: URLSearchParams) {

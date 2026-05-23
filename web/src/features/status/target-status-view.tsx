@@ -8,8 +8,10 @@ const empty: TargetStatus[] = [];
 export function TargetStatusView({ params, statuses }: { params: URLSearchParams; statuses?: TargetStatus[] }) {
   const [javaTargetsOnly, setJavaTargetsOnly] = useState(true);
   const loaded = useAPI(() => getTargetStatus(params), [params.toString()], empty);
+  const liveQuery = statuses === undefined;
   const allStatuses = statuses ?? loaded.data ?? empty;
   const visible = javaTargetsOnly ? allStatuses.filter(isAcceptedJavaTarget) : allStatuses;
+  const emptyMessage = getEmptyMessage(allStatuses, visible, javaTargetsOnly);
   return (
     <section aria-label="Target status">
       <h2>Target status</h2>
@@ -17,8 +19,8 @@ export function TargetStatusView({ params, statuses }: { params: URLSearchParams
         <input type="checkbox" checked={javaTargetsOnly} onChange={(event) => setJavaTargetsOnly(event.target.checked)} />
         Java targets only
       </label>
-      {loaded.error && !statuses && <p className="warning">Backend unavailable: {loaded.error}. Check the backend pod, ClickHouse schema, and Web API proxy.</p>}
-      {!loaded.loading && !loaded.error && visible.length === 0 && <p className="muted">No matching targets for this namespace, service, Pod, JVM, or time range. Confirm the selector and profiling metadata.</p>}
+      {loaded.error && liveQuery && <p className="warning">Backend unavailable: {loaded.error}. Check the backend pod, ClickHouse schema, and Web API proxy.</p>}
+      {(!liveQuery || !loaded.loading) && !loaded.error && visible.length === 0 && <p className="muted">{emptyMessage}</p>}
       <div className="table-scroll" role="region" aria-label="Target status results" tabIndex={0}>
         <table className="status-table">
           <thead>
@@ -45,6 +47,32 @@ export function TargetStatusView({ params, statuses }: { params: URLSearchParams
 
 function isAcceptedJavaTarget(status: TargetStatus) {
   return status.reason === "accepted" || status.message.toLowerCase().includes("hotspot-compatible jvm");
+}
+
+function getEmptyMessage(allStatuses: TargetStatus[], visibleStatuses: TargetStatus[], javaTargetsOnly: boolean) {
+  if (visibleStatuses.length > 0) {
+    return "";
+  }
+  if (allStatuses.length === 0) {
+    return "No matching targets for this namespace, service, Pod, JVM, or time range. Confirm the selector and profiling metadata.";
+  }
+  if (javaTargetsOnly) {
+    const counts = summarizeReasons(allStatuses);
+    return `No enabled Java targets are visible in this scope. ${counts} Uncheck \"Java targets only\" to inspect the blocked targets.`;
+  }
+  return "No matching targets for this namespace, service, Pod, JVM, or time range. Confirm the selector and profiling metadata.";
+}
+
+function summarizeReasons(statuses: TargetStatus[]) {
+  const counts = new Map<string, number>();
+  for (const status of statuses) {
+    counts.set(status.reason, (counts.get(status.reason) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3)
+    .map(([reason, count]) => `${count} ${reason}`)
+    .join(", ") + ".";
 }
 
 function formatSeen(value?: string) {

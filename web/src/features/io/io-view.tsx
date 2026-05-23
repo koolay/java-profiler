@@ -23,7 +23,7 @@ export function IOView({ params }: { params: URLSearchParams }) {
         valueLabel="I/O wait"
         selfColumnLabel="Self I/O"
         totalColumnLabel="Total I/O"
-        flamegraphEmptyMessage="No I/O flamegraph samples returned for this service and time range. The top table may still show correlated Java methods."
+        flamegraphEmptyMessage="No I/O flamegraph samples returned for this service and time range. Check Target status to confirm the target is enabled before inspecting the flamegraph."
       />
     </section>
   );

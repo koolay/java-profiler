@@ -60,7 +60,7 @@ export function HotCodeView({ root, metadata, topRows, profileWindow, profileTyp
     return (
       <section className="profile-analysis profile-analysis-wide" aria-label={analysisLabel}>
         <h2>{title}</h2>
-        <p className="flamegraph-empty">No application Java frames were found in this profile. Use the flame graph to inspect runtime or native frames.</p>
+        <p className="flamegraph-empty">{flamegraphEmptyMessage ?? "No application Java frames were found in this profile. Use the flame graph to inspect runtime or native frames."}</p>
         <div className="profile-flamegraph">
           <Flamegraph root={root} metadata={metadata} />
         </div>
