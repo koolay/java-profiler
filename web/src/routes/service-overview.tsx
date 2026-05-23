@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, AlertTriangle, Copy, Cpu, Database, Flame, LockKeyhole, Loader2, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { getServiceSelectors } from "../api/client";
@@ -73,6 +73,37 @@ function formatDateTimeLocal(date: Date) {
   ].join("");
 }
 
+function formatDisplayDateTime(value: string) {
+  const date = parseDateTimeLocal(value);
+  return [
+    date.getFullYear(),
+    "/",
+    pad(date.getMonth() + 1),
+    "/",
+    pad(date.getDate()),
+    ", ",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+    ":",
+    pad(date.getSeconds()),
+  ].join("");
+}
+
+function formatDurationLabel(startValue: string, endValue: string) {
+  const start = parseDateTimeLocal(startValue).getTime();
+  const end = parseDateTimeLocal(endValue).getTime();
+  const totalMinutes = Math.max(0, Math.round((end - start) / 60000));
+
+  if (totalMinutes < 60) {
+    return `${Math.max(totalMinutes, 1)}m`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 function parseDateTimeLocal(value: string) {
   const [datePart = "", timePart = ""] = value.split("T");
   const [year = "0", month = "0", day = "0"] = datePart.split("-");
@@ -94,6 +125,28 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
   const [timeRangePreset, setTimeRangePreset] = useState<TimeRangePreset>("15m");
   const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
+  const timeRangeRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      if (customRangeOpen && timeRangeRef.current && !timeRangeRef.current.contains(event.target as Node)) {
+        setCustomRangeOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setCustomRangeOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [customRangeOpen]);
   const handleNamespaceChange = (nextNamespace: string) => {
     setNamespace(nextNamespace);
     if (nextNamespace.trim() !== namespace.trim()) {
@@ -172,6 +225,8 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
     () => buildSelectorCatalog(selectorSummary.data?.targets ?? [], { namespace, service, pod }),
     [namespace, pod, selectorSummary.data, service],
   );
+  const customRangeSummary = formatDurationLabel(windowStart, windowEnd);
+  const customRangeDisplay = `${formatDisplayDateTime(windowStart)} → ${formatDisplayDateTime(windowEnd)}`;
   const copyContext = async () => {
     const context = [
       `view=${activeView}`,
@@ -241,7 +296,7 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
             <span className="context-arrow context-arrow-time" aria-hidden="true">
               |
             </span>
-            <div className="context-field context-time-range">
+            <div className="context-field context-time-range" ref={timeRangeRef}>
               <span>Time range</span>
               <div className="time-range-presets" role="group" aria-label="Time range presets">
                 {TIME_RANGE_PRESETS.map((preset) => (
@@ -256,23 +311,28 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
                 ))}
                 <button
                   aria-expanded={customRangeOpen}
+                  aria-label="Custom"
                   className={`time-range-custom-toggle${timeRangePreset === "custom" ? " active" : ""}`}
+                  title={`Custom time range: ${customRangeDisplay} (${customRangeSummary})`}
                   onClick={() => setPresetWindow("custom")}
                   type="button"
                 >
                   Custom
                 </button>
               </div>
+              {timeRangePreset === "custom" ? <div className="time-range-summary">{customRangeDisplay}</div> : null}
               {customRangeOpen ? (
-                <div className="time-range-inputs">
-                  <label>
-                    <span>From</span>
-                    <input type="datetime-local" step={1} value={windowStart} onChange={(event) => updateWindowStart(event.target.value)} />
-                  </label>
-                  <label>
-                    <span>To</span>
-                    <input type="datetime-local" step={1} value={windowEnd} onChange={(event) => updateWindowEnd(event.target.value)} />
-                  </label>
+                <div className="time-range-popover" aria-label="Custom time range">
+                  <div className="time-range-inputs">
+                    <label>
+                      <span>From</span>
+                      <input type="datetime-local" step={1} value={windowStart} onChange={(event) => updateWindowStart(event.target.value)} />
+                    </label>
+                    <label>
+                      <span>To</span>
+                      <input type="datetime-local" step={1} value={windowEnd} onChange={(event) => updateWindowEnd(event.target.value)} />
+                    </label>
+                  </div>
                 </div>
               ) : null}
             </div>

@@ -32,6 +32,7 @@ test("starts with empty selectors and compact time presets", () => {
 
   fireEvent.click(screen.getByRole("button", { name: "Custom" }));
 
+  expect(screen.getByText(/\d{4}\/\d{2}\/\d{2}, \d{2}:\d{2}:\d{2} → \d{4}\/\d{2}\/\d{2}, \d{2}:\d{2}:\d{2}/)).toBeInTheDocument();
   expect(screen.getByLabelText("From")).toHaveAttribute("type", "datetime-local");
   expect(screen.getByLabelText("To")).toHaveAttribute("type", "datetime-local");
 });
