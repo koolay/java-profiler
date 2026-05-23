@@ -17,6 +17,7 @@ Acceptance must prove that a user can locate a real Java performance bottleneck 
 - Build and deploy the latest local code before acceptance.
 - Use the JDK HTTP demo service as the profiling target unless a task explicitly names another Java service.
 - The deployed backend, collector, and web pods must run the image tags built from the current workspace.
+- When validating an existing non-demo workload, set `JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS` to one or more comma-separated HTTP paths that actually exist on that service, such as `/profile-load/`, so the acceptance script can drive real CPU/allocation/lock load without relying on the JDK demo endpoints.
 - Prefer approved base images from the project/user-provided mirror list. For the real acceptance collector image, the default runtime base image is `ghcr.io/koolay/library/alpine:3.18.0`.
 
 Recommended current-workspace setup:

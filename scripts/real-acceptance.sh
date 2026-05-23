@@ -32,6 +32,9 @@ Options:
   JAVA_WORKLOAD_PREBUILT    Set to 1 when JAVA_WORKLOAD_IMAGE already starts a CPU-busy Java app.
   JAVA_PROFILER_HIGH_VOLUME_SECONDS
                             Default: 240 when --high-volume is set.
+  JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS
+                            Optional comma-separated HTTP path suffixes to hammer when the service is not the JDK17 demo.
+                            Example: /profile-load/
   UI_TOKEN                  Default: qa-ui-token.
   COLLECTOR_TOKEN           Default: qa-collector-token.
   CLICKHOUSE_USER           Default: default.
@@ -147,6 +150,11 @@ drive_workload_load() {
     lock_parallel="${JAVA_PROFILER_LOCK_PARALLELISM:-8}"
   fi
   local service_port
+  local load_paths_csv="${JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS:-}"
+  local -a load_paths=()
+  if [[ -n "$load_paths_csv" ]]; then
+    IFS=',' read -r -a load_paths <<<"$load_paths_csv"
+  fi
   service_port="$(kubectl -n "$namespace" get "svc/$service_name" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true)"
   if [[ -z "$service_port" ]]; then
     log "- workload service ${namespace}/${service_name} has no Service; assuming in-pod load is already active for ${duration}s"
@@ -155,6 +163,42 @@ drive_workload_load() {
   fi
   kubectl -n "$namespace" port-forward --address 127.0.0.1 "svc/$service_name" "${local_port}:${service_port}" >"$artifact_dir/port-forward-workload.log" 2>&1 &
   cleanup_pids+=("$!")
+  local readiness_url="http://127.0.0.1:${local_port}/health"
+  if [[ "${#load_paths[@]}" -gt 0 ]]; then
+    if [[ "${load_paths[0]}" == http://* || "${load_paths[0]}" == https://* ]]; then
+      readiness_url="${load_paths[0]}"
+    else
+      readiness_url="http://127.0.0.1:${local_port}${load_paths[0]}"
+    fi
+  fi
+  if [[ "${#load_paths[@]}" -gt 0 && "$service_name" != "jdk17-http-demo" ]]; then
+    if ! wait_http "$readiness_url"; then
+      log "- workload service did not respond on configured load path ${readiness_url}; skipping generic load driver"
+      return 0
+    fi
+    log "- workload service is not the JDK17 HTTP demo; driving generic HTTP load for ${duration}s on ${#load_paths[@]} configured path(s)"
+    local request_parallel="$cpu_alloc_parallel"
+    local path_target
+    local path_request_pids=()
+    local deadline=$(( $(date +%s) + duration ))
+    while [[ "$(date +%s)" -lt "$deadline" ]]; do
+      for path_target in "${load_paths[@]}"; do
+        path_request_pids=()
+        for _ in $(seq 1 "$request_parallel"); do
+          if [[ "$path_target" == http://* || "$path_target" == https://* ]]; then
+            curl -fsS "$path_target" >>"$artifact_dir/workload-generic-load.log" 2>&1 &
+          else
+            curl -fsS "http://127.0.0.1:${local_port}${path_target}" >>"$artifact_dir/workload-generic-load.log" 2>&1 &
+          fi
+          path_request_pids+=("$!")
+        done
+        for load_pid in "${path_request_pids[@]}"; do
+          wait "$load_pid" || true
+        done
+      done
+    done
+    return 0
+  fi
   if ! wait_http "http://127.0.0.1:${local_port}/health"; then
     log "- workload service is not the JDK17 HTTP demo; skipping endpoint load driver"
     return 0
