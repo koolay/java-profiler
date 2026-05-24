@@ -2,17 +2,21 @@ import { getFlamegraph, getTopStacks } from "../../api/client";
 import type { FlamegraphResponse } from "../../api/types";
 import { useAPI } from "../../api/use-api";
 import { HotCodeView } from "../cpu/hot-code-view";
+import { ProfileEvidenceBanner, useProfileEvidence } from "../profile-evidence/profile-evidence-banner";
 
 export function IOView({ params }: { params: URLSearchParams }) {
   const fallback: FlamegraphResponse = { root: { name: params.get("service") ?? "service", value: 0, children: [] }, metadata: { partial: false } };
   const { data, error } = useAPI(() => getFlamegraph(params), [params.toString()], fallback);
   const { data: topRows, error: topRowsError } = useAPI(() => getTopStacks(params), [params.toString()], []);
+  const root = data?.root ?? fallback.root;
+  const evidence = useProfileEvidence(params, root);
   return (
     <section>
       {error && <p className="warning">Backend unavailable: {error}</p>}
       {topRowsError && <p className="warning">Top table unavailable: {topRowsError}</p>}
+      <ProfileEvidenceBanner evidence={evidence} />
       <HotCodeView
-        root={data?.root ?? fallback.root}
+        root={root}
         metadata={data?.metadata}
         topRows={!topRowsError && topRows && topRows.length > 0 ? topRows : undefined}
         profileWindow={profileWindow(params)}

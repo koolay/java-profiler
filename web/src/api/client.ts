@@ -1,13 +1,26 @@
-import type { AllocationSummary, DeadlockEvent, FlamegraphResponse, IngestionHealth, JVMEventEvidence, ServiceProfileSummary, ServiceSelectors, TargetStatus, ThreadDiagnosis, TopStackRow } from "./types";
+import { APIError } from "./types";
+import type { APIErrorBody, AllocationSummary, DeadlockEvent, FlamegraphResponse, IngestionHealth, JVMEventEvidence, ServiceProfileSummary, ServiceSelectors, TargetStatus, ThreadDiagnosis, TopStackRow } from "./types";
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 
 async function getJSON<T>(path: string): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, { credentials: "include" });
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw await parseAPIError(response);
   }
   return response.json() as Promise<T>;
+}
+
+async function parseAPIError(response: Response) {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      return new APIError(response.status, response.statusText, (await response.json()) as APIErrorBody);
+    } catch {
+      return new APIError(response.status, response.statusText);
+    }
+  }
+  return new APIError(response.status, response.statusText);
 }
 
 export function getFlamegraph(params: URLSearchParams) {

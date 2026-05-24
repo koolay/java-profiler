@@ -27,6 +27,32 @@ const (
 
 var ErrInvalidAllocationSummaryQuery = errors.New("invalid allocation summary query")
 
+type AllocationSummaryValidationCode string
+
+const (
+	AllocationSummaryValidationNamespaceRequired          AllocationSummaryValidationCode = "namespace_required"
+	AllocationSummaryValidationInvalidProfileType         AllocationSummaryValidationCode = "invalid_profile_type"
+	AllocationSummaryValidationInvalidJVM                 AllocationSummaryValidationCode = "invalid_jvm"
+	AllocationSummaryValidationInvalidTimeRange           AllocationSummaryValidationCode = "invalid_time_range"
+	AllocationSummaryValidationRangeExceeded              AllocationSummaryValidationCode = "range_exceeded"
+	AllocationSummaryValidationNamespaceOnlyRangeExceeded AllocationSummaryValidationCode = "namespace_only_range_exceeded"
+)
+
+type AllocationSummaryValidationError struct {
+	Code            AllocationSummaryValidationCode
+	Field           string
+	Message         string
+	SuggestedAction string
+}
+
+func (e AllocationSummaryValidationError) Error() string {
+	return fmt.Sprintf("%s: %s", ErrInvalidAllocationSummaryQuery.Error(), e.Message)
+}
+
+func (e AllocationSummaryValidationError) Unwrap() error {
+	return ErrInvalidAllocationSummaryQuery
+}
+
 type AllocationSummaryQuery struct {
 	Namespace      string
 	Service        string
@@ -122,6 +148,10 @@ func QueryAllocationSummary(ctx context.Context, repo ProfileQueryStore, statuse
 		RequestedScope: allocationScope(q, true),
 		EffectiveScope: allocationScope(normalized, false),
 		Semantics:      normalized.ProfileType.Semantics(window),
+		TopPaths:       []AllocationTopPath{},
+		TopSelfFrames:  []AllocationTopSelfFrame{},
+		Insights:       []AllocationInsight{},
+		Limitations:    []AllocationLimitation{},
 	}
 	result.Coverage.ProfileType = normalized.ProfileType.String()
 	result.Coverage.ValueUnit = result.Semantics.ValueUnit
@@ -188,25 +218,55 @@ func normalizeAllocationSummaryQuery(q AllocationSummaryQuery) (AllocationSummar
 	q.Container = normalizeScopeValue(q.Container)
 	q.JVM = normalizeScopeValue(q.JVM)
 	if q.Namespace == "" {
-		return q, fmt.Errorf("%w: namespace is required", ErrInvalidAllocationSummaryQuery)
+		return q, AllocationSummaryValidationError{
+			Code:            AllocationSummaryValidationNamespaceRequired,
+			Field:           "namespace",
+			Message:         "Allocation summary requires a namespace.",
+			SuggestedAction: "Select a namespace before opening allocation Top Table evidence.",
+		}
 	}
 	if q.ProfileType != domain.ProfileTypeAllocBytes && q.ProfileType != domain.ProfileTypeAllocObjects {
-		return q, fmt.Errorf("%w: profile_type must be java_allocation_bytes or java_allocation_objects", ErrInvalidAllocationSummaryQuery)
+		return q, AllocationSummaryValidationError{
+			Code:            AllocationSummaryValidationInvalidProfileType,
+			Field:           "profile_type",
+			Message:         "Allocation summary supports java_allocation_bytes or java_allocation_objects.",
+			SuggestedAction: "Use an allocation profile type for allocation Top Table evidence.",
+		}
 	}
 	if q.JVM != "" {
 		processID, err := strconv.Atoi(q.JVM)
 		if err != nil || processID <= 0 {
-			return q, fmt.Errorf("%w: jvm must be a positive process id", ErrInvalidAllocationSummaryQuery)
+			return q, AllocationSummaryValidationError{
+				Code:            AllocationSummaryValidationInvalidJVM,
+				Field:           "jvm",
+				Message:         "Allocation summary JVM scope must be a positive process id.",
+				SuggestedAction: "Select a JVM from live suggestions or clear the JVM filter.",
+			}
 		}
 	}
 	if q.Start.IsZero() || q.End.IsZero() || !q.Start.Before(q.End) {
-		return q, fmt.Errorf("%w: start and end must define a valid range", ErrInvalidAllocationSummaryQuery)
+		return q, AllocationSummaryValidationError{
+			Code:            AllocationSummaryValidationInvalidTimeRange,
+			Field:           "time_range",
+			Message:         "Allocation summary requires a valid start and end time range.",
+			SuggestedAction: "Choose a valid time range before opening allocation Top Table evidence.",
+		}
 	}
 	if q.End.Sub(q.Start) > MaxAllocationSummaryRange {
-		return q, fmt.Errorf("%w: time range exceeds retention window", ErrInvalidAllocationSummaryQuery)
+		return q, AllocationSummaryValidationError{
+			Code:            AllocationSummaryValidationRangeExceeded,
+			Field:           "time_range",
+			Message:         "Allocation summary time range exceeds the retention window.",
+			SuggestedAction: "Choose a range within the 7-day profile retention window.",
+		}
 	}
 	if q.Service == "" && q.Pod == "" && q.End.Sub(q.Start) > MaxAllocationNamespaceOnlyRange {
-		return q, fmt.Errorf("%w: namespace-only range exceeds allocation summary window", ErrInvalidAllocationSummaryQuery)
+		return q, AllocationSummaryValidationError{
+			Code:            AllocationSummaryValidationNamespaceOnlyRangeExceeded,
+			Field:           "time_range",
+			Message:         "Namespace-only allocation summary is limited to short windows.",
+			SuggestedAction: "Select a service or Pod, or shorten the time range to 30 minutes or less.",
+		}
 	}
 	q.PathLimit = boundedQueryLimit(q.PathLimit, DefaultAllocationPathLimit, MaxAllocationPathLimit)
 	q.SelfFrameLimit = boundedQueryLimit(q.SelfFrameLimit, DefaultAllocationSelfFrameLimit, MaxAllocationSelfFrameLimit)

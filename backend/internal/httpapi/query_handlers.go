@@ -22,6 +22,13 @@ type QueryHandlers struct {
 	Metrics        *metrics.Exporter
 }
 
+type queryErrorResponse struct {
+	Code            string `json:"code"`
+	Message         string `json:"message"`
+	Field           string `json:"field,omitempty"`
+	SuggestedAction string `json:"suggested_action,omitempty"`
+}
+
 func (h QueryHandlers) JVMEventsEvidence(w http.ResponseWriter, r *http.Request) {
 	result, err := h.observe("java_profiler_http_query_jvm_events", func() (any, error) {
 		return app.QueryJVMEvents(r.Context(), h.JVMEvents, clickhouse.JVMEventQuery{
@@ -89,8 +96,13 @@ func (h QueryHandlers) AllocationSummary(w http.ResponseWriter, r *http.Request)
 		}, h.Metrics)
 	})
 	if err != nil {
+		var validationErr app.AllocationSummaryValidationError
+		if errors.As(err, &validationErr) {
+			writeQueryError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message, validationErr.Field, validationErr.SuggestedAction)
+			return
+		}
 		if errors.Is(err, app.ErrInvalidAllocationSummaryQuery) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeQueryError(w, http.StatusBadRequest, "invalid_allocation_summary_query", err.Error(), "", "")
 			return
 		}
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -239,6 +251,28 @@ func (h QueryHandlers) observe(metricPrefix string, fn func() (any, error)) (any
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeQueryError(w http.ResponseWriter, status int, code any, message, field, suggestedAction string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(queryErrorResponse{
+		Code:            codeString(code),
+		Message:         message,
+		Field:           field,
+		SuggestedAction: suggestedAction,
+	})
+}
+
+func codeString(code any) string {
+	switch v := code.(type) {
+	case app.AllocationSummaryValidationCode:
+		return string(v)
+	case string:
+		return v
+	default:
+		return "query_error"
+	}
 }
 
 func parseQueryTime(value string) time.Time {

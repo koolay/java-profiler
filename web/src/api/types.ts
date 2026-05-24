@@ -22,6 +22,31 @@ export type ProfileValueSemantics = {
   window_seconds?: number;
 };
 
+export type APIErrorBody = {
+  code?: string;
+  message?: string;
+  field?: string;
+  suggested_action?: string;
+};
+
+export class APIError extends Error {
+  status: number;
+  statusText: string;
+  code?: string;
+  field?: string;
+  suggestedAction?: string;
+
+  constructor(status: number, statusText: string, body?: APIErrorBody) {
+    super(body?.message || `${status} ${statusText}`);
+    this.name = "APIError";
+    this.status = status;
+    this.statusText = statusText;
+    this.code = body?.code;
+    this.field = body?.field;
+    this.suggestedAction = body?.suggested_action;
+  }
+}
+
 export type PartialMetadata = {
   partial: boolean;
   reasons?: string[];

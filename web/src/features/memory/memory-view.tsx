@@ -2,15 +2,24 @@ import { Flamegraph } from "../../visualization/flamegraph";
 import { getAllocationSummary, getFlamegraph } from "../../api/client";
 import { useAPI } from "../../api/use-api";
 import type { AllocationSummary, FlamegraphResponse } from "../../api/types";
+import { ProfileEvidenceBanner, useProfileEvidence } from "../profile-evidence/profile-evidence-banner";
 
 export function MemoryView({ params }: { params: URLSearchParams }) {
 	const service = params.get("service") ?? "service";
 	const fallback: FlamegraphResponse = { root: { name: service, value: 0, children: [] }, metadata: { partial: false } };
 	const { data, error, loading } = useAPI(() => getFlamegraph(params), [params.toString()], fallback);
+	const root = data?.root ?? fallback.root;
+	const evidence = useProfileEvidence(params, root);
 	const summaryParams = new URLSearchParams(params);
 	summaryParams.set("path_limit", "50");
 	summaryParams.set("self_frame_limit", "50");
-	const { data: summary, error: summaryError, loading: summaryLoading } = useAPI(() => getAllocationSummary(summaryParams), [summaryParams.toString()], emptyAllocationSummary(params));
+	const summaryPreflight = preflightAllocationSummary(summaryParams);
+	const emptySummary = emptyAllocationSummary(params);
+	const { data: summary, error: summaryError, loading: summaryLoading } = useAPI(
+		() => (summaryPreflight ? Promise.resolve(emptySummary) : getAllocationSummary(summaryParams)),
+		[summaryParams.toString(), summaryPreflight?.code],
+		emptySummary,
+	);
 	return (
 		<section className="profile-analysis profile-analysis-wide" aria-label="Allocation profile analysis">
 			<div className="profile-toolbar profile-toolbar-tight">
@@ -21,11 +30,13 @@ export function MemoryView({ params }: { params: URLSearchParams }) {
 			</div>
 			{loading && <p className="muted">Loading profile evidence.</p>}
 			{error && <p className="warning">Backend unavailable: {error}</p>}
-			{summaryLoading && <p className="muted">Loading allocation summary.</p>}
+			<ProfileEvidenceBanner evidence={evidence} />
+			{summaryLoading && !summaryPreflight && <p className="muted">Loading allocation summary.</p>}
+			{summaryPreflight && <p className="warning">{summaryPreflight.message}</p>}
 			{summaryError && <p className="warning">Allocation summary unavailable: {summaryError}. Showing flamegraph evidence only.</p>}
-			{summary && !summaryError ? <AllocationSummaryPanel summary={summary} /> : null}
+			{summary && !summaryError && !summaryPreflight ? <AllocationSummaryPanel summary={summary} /> : null}
 			<Flamegraph
-				root={data?.root ?? fallback.root}
+				root={root}
 				metadata={data?.metadata}
 				profileType="java_allocation_bytes"
 				emptyMessage="No allocation samples returned. Allocation profiling is disabled by default in this environment because CPU-only profiling is the validated safe mode."
@@ -41,8 +52,58 @@ export function MemoryView({ params }: { params: URLSearchParams }) {
 	);
 }
 
+type AllocationSummaryPreflight = {
+	code: string;
+	message: string;
+};
+
+const namespaceOnlySummaryLimitMs = 30 * 60 * 1000;
+const allocationRetentionLimitMs = 7 * 24 * 60 * 60 * 1000;
+
+function preflightAllocationSummary(params: URLSearchParams): AllocationSummaryPreflight | null {
+	const namespace = (params.get("namespace") ?? "").trim();
+	const service = normalizeSummaryScope(params.get("service"));
+	const pod = normalizeSummaryScope(params.get("pod"));
+	const start = Date.parse(params.get("start") ?? "");
+	const end = Date.parse(params.get("end") ?? "");
+	if (!namespace) {
+		return {
+			code: "namespace_required",
+			message: "Select a namespace to generate Allocation Top Table evidence. The flame graph can still show broader sampled context.",
+		};
+	}
+	if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+		return {
+			code: "invalid_time_range",
+			message: "Choose a valid time range to generate Allocation Top Table evidence.",
+		};
+	}
+	const duration = end - start;
+	if (duration > allocationRetentionLimitMs) {
+		return {
+			code: "range_exceeded",
+			message: "Allocation Top Table evidence is limited to the 7-day profile retention window.",
+		};
+	}
+	if (!service && !pod && duration > namespaceOnlySummaryLimitMs) {
+		return {
+			code: "namespace_only_range_exceeded",
+			message: "Namespace-only Allocation Top Table evidence is limited to 30 minutes. Select a service or Pod, or shorten the time range.",
+		};
+	}
+	return null;
+}
+
+function normalizeSummaryScope(value: string | null) {
+	const normalized = (value ?? "").trim();
+	return normalized === "all" ? "" : normalized;
+}
+
 function AllocationSummaryPanel({ summary }: { summary: AllocationSummary }) {
 	const coverage = summary.coverage;
+	const insights = summary.insights ?? [];
+	const topPaths = summary.top_paths ?? [];
+	const topSelfFrames = summary.top_self_frames ?? [];
 	const partialReasons = describePartialReasons(coverage.partial_reasons);
 	const omittedEvidence = coverage.omitted_paths_lower_bound + coverage.omitted_nodes_lower_bound;
 	return (
@@ -79,9 +140,9 @@ function AllocationSummaryPanel({ summary }: { summary: AllocationSummary }) {
 					{emptyStateCopy(coverage.empty_state)}
 				</p>
 			)}
-			{summary.insights.length > 0 && (
+			{insights.length > 0 && (
 				<div className="allocation-insights" aria-label="Allocation insights">
-					{summary.insights.map((insight) => (
+					{insights.map((insight) => (
 						<p className="profile-insight" key={`${insight.category}-${insight.evidence_frame}`}>
 							<strong>{categoryLabel(insight.category)}:</strong> {insightCopy(insight.message_code)} Evidence: {shortFrame(insight.evidence_frame)} allocated {formatAllocationValue(insight.evidence_value, coverage.value_unit)}.
 						</p>
@@ -91,7 +152,7 @@ function AllocationSummaryPanel({ summary }: { summary: AllocationSummary }) {
 			<div className="profile-grid allocation-grid">
 				<AllocationTable
 					ariaLabel="Top allocating paths"
-					rows={summary.top_paths.map((path) => ({
+					rows={topPaths.map((path) => ({
 						key: path.path.join(">"),
 						name: shortFrame(path.leaf_frame),
 						detail: path.path.join(" > "),
@@ -104,7 +165,7 @@ function AllocationSummaryPanel({ summary }: { summary: AllocationSummary }) {
 				/>
 				<AllocationTable
 					ariaLabel="Top self allocating frames"
-					rows={summary.top_self_frames.map((frame) => ({
+					rows={topSelfFrames.map((frame) => ({
 						key: frame.frame,
 						name: shortFrame(frame.frame),
 						detail: frame.frame,

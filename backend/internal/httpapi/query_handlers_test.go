@@ -205,6 +205,9 @@ func TestAllocationSummaryRouteReturnsContract(t *testing.T) {
 	if len(response.TopPaths) != 1 || response.TopPaths[0].Category != "string_construction" {
 		t.Fatalf("top paths = %+v", response.TopPaths)
 	}
+	if strings.Contains(rec.Body.String(), `"insights":null`) || strings.Contains(rec.Body.String(), `"limitations":null`) {
+		t.Fatalf("summary list fields must be arrays, body=%s", rec.Body.String())
+	}
 }
 
 func TestAllocationSummaryRouteRejectsInvalidProfileType(t *testing.T) {
@@ -219,6 +222,57 @@ func TestAllocationSummaryRouteRejectsInvalidProfileType(t *testing.T) {
 	server.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response queryErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode error response: %v body=%s", err, rec.Body.String())
+	}
+	if response.Code != "invalid_profile_type" || response.Field != "profile_type" || response.SuggestedAction == "" {
+		t.Fatalf("unexpected error response: %+v", response)
+	}
+}
+
+func TestAllocationSummaryRouteRejectsMissingNamespaceWithStructuredError(t *testing.T) {
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(120, 0).UTC()
+	req := httptest.NewRequest(http.MethodGet, "/api/ui/v1/allocation-summary?profile_type=java_allocation_bytes&start="+now.Format(time.RFC3339)+"&end="+now.Add(time.Minute).Format(time.RFC3339), nil)
+	req.Header.Set("Authorization", "Bearer ui")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response queryErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode error response: %v body=%s", err, rec.Body.String())
+	}
+	if response.Code != "namespace_required" || response.Field != "namespace" || response.SuggestedAction == "" {
+		t.Fatalf("unexpected error response: %+v", response)
+	}
+}
+
+func TestAllocationSummaryRouteRejectsLongNamespaceOnlyRangeWithStructuredError(t *testing.T) {
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(120, 0).UTC()
+	req := httptest.NewRequest(http.MethodGet, "/api/ui/v1/allocation-summary?namespace=prod&profile_type=java_allocation_bytes&start="+now.Format(time.RFC3339)+"&end="+now.Add(time.Hour).Format(time.RFC3339), nil)
+	req.Header.Set("Authorization", "Bearer ui")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response queryErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode error response: %v body=%s", err, rec.Body.String())
+	}
+	if response.Code != "namespace_only_range_exceeded" || response.Field != "time_range" || response.SuggestedAction == "" {
+		t.Fatalf("unexpected error response: %+v", response)
 	}
 }
 

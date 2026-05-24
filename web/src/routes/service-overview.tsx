@@ -201,11 +201,18 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
   };
   const selectorParams = useMemo(() => {
     return new URLSearchParams({
+      profile_type: profileTypeFor(activeView),
       start: parseDateTimeLocal(windowStart).toISOString(),
       end: parseDateTimeLocal(windowEnd).toISOString(),
       limit: "5000",
     });
-  }, [windowEnd, windowStart]);
+  }, [activeView, windowEnd, windowStart]);
+  const historicalSelectorParams = useMemo(() => {
+    return new URLSearchParams({
+      profile_type: profileTypeFor(activeView),
+      limit: "5000",
+    });
+  }, [activeView]);
   const params = useMemo(() => {
     const value = new URLSearchParams({
       namespace,
@@ -221,9 +228,14 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
   }, [activeView, namespace, pod, service, windowEnd, windowStart]);
   const emptySummary: ServiceSelectors = { targets: [] };
   const selectorSummary = useAPI(() => getServiceSelectors(selectorParams), [selectorParams.toString()], emptySummary);
+  const historicalSelectorSummary = useAPI(() => getServiceSelectors(historicalSelectorParams), [historicalSelectorParams.toString()], emptySummary);
+  const currentTargets = selectorSummary.data?.targets ?? [];
+  const historicalTargets = historicalSelectorSummary.data?.targets ?? [];
+  const usingHistoricalSuggestions = currentTargets.length === 0 && historicalTargets.length > 0;
+  const selectorTargets = usingHistoricalSuggestions ? historicalTargets : currentTargets;
   const selectorCatalog = useMemo(
-    () => buildSelectorCatalog(selectorSummary.data?.targets ?? [], { namespace, service, pod }),
-    [namespace, pod, selectorSummary.data, service],
+    () => buildSelectorCatalog(selectorTargets, { namespace, service, pod }),
+    [namespace, pod, selectorTargets, service],
   );
   const customRangeSummary = formatDurationLabel(windowStart, windowEnd);
   const customRangeDisplay = `${formatDisplayDateTime(windowStart)} → ${formatDisplayDateTime(windowEnd)}`;
@@ -345,6 +357,8 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
               </span>
             ) : selectorSummary.error ? (
               <span className="warning">Selector suggestions unavailable. You can still type any value.</span>
+            ) : usingHistoricalSuggestions ? (
+              <span className="warning">No selector suggestions have samples in this time range. Showing historical targets; adjust the range or type a value directly.</span>
             ) : (
               <span>Choose from live suggestions or type a value directly.</span>
             )}

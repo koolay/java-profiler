@@ -1,6 +1,7 @@
 import { getFlamegraph, getTopStacks } from "../../api/client";
 import { useAPI } from "../../api/use-api";
 import type { FlamegraphResponse } from "../../api/types";
+import { ProfileEvidenceBanner, useProfileEvidence } from "../profile-evidence/profile-evidence-banner";
 import { HotCodeView } from "./hot-code-view";
 
 export function CpuView({ params }: { params: URLSearchParams }) {
@@ -8,12 +9,14 @@ export function CpuView({ params }: { params: URLSearchParams }) {
 	const { data, error } = useAPI(() => getFlamegraph(params), [params.toString()], fallback);
 	const { data: topRows, error: topRowsError } = useAPI(() => getTopStacks(params), [params.toString()], []);
 	const root = data?.root ?? fallback.root;
+	const evidence = useProfileEvidence(params, root);
 	const usableTopRows = !topRowsError && topRows && topRows.length > 0 ? topRows : undefined;
 	const profileWindow = getProfileWindow(params);
 	return (
 		<section>
       {error && <p className="warning">Backend unavailable: {error}</p>}
       {topRowsError && <p className="warning">Top table unavailable: {topRowsError}</p>}
+      <ProfileEvidenceBanner evidence={evidence} />
       <HotCodeView
         root={root}
         metadata={data?.metadata}
