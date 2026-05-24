@@ -775,6 +775,7 @@ curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_wall_clock_nanoseconds" >"$artifact_dir/backend-flamegraph-wall.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_io_wait_nanoseconds" >"$artifact_dir/backend-flamegraph-io-wait.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_allocation_bytes" >"$artifact_dir/backend-flamegraph-alloc-bytes.json"
+curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/allocation-summary?${query}&profile_type=java_allocation_bytes" >"$artifact_dir/backend-allocation-summary.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/flamegraph?${query}&profile_type=java_lock_delay_nanoseconds" >"$artifact_dir/backend-flamegraph-lock-delay.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/jvm-events?${query}&event_type=gc_pause" >"$artifact_dir/backend-jvm-events-gc.json"
 curl -sS -H "Authorization: Bearer ${ui_token}" "http://127.0.0.1:${backend_port}/api/ui/v1/thread-diagnosis?${query}" >"$artifact_dir/backend-thread-diagnosis.json"
@@ -811,6 +812,11 @@ target_status="$(awk '$1=="target_status"{print $2}' "$artifact_dir/clickhouse-c
 ingestion_batches="$(awk '$1=="ingestion_batches"{print $2}' "$artifact_dir/clickhouse-counts.tsv")"
 flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-cpu.json")"
 alloc_flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-alloc-bytes.json")"
+alloc_summary_has_data="$(jq -r '.coverage.has_data // false' "$artifact_dir/backend-allocation-summary.json" 2>/dev/null || echo false)"
+alloc_summary_total="$(jq -r '.coverage.total_value // 0' "$artifact_dir/backend-allocation-summary.json" 2>/dev/null || echo 0)"
+alloc_summary_paths="$(jq -r '.top_paths | length' "$artifact_dir/backend-allocation-summary.json" 2>/dev/null || echo 0)"
+alloc_summary_self_frames="$(jq -r '.top_self_frames | length' "$artifact_dir/backend-allocation-summary.json" 2>/dev/null || echo 0)"
+alloc_summary_insights="$(jq -r '.insights | length' "$artifact_dir/backend-allocation-summary.json" 2>/dev/null || echo 0)"
 lock_flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-lock-delay.json")"
 wall_flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-wall.json")"
 io_flamegraph_value="$(json_root_value "$artifact_dir/backend-flamegraph-io-wait.json")"
@@ -850,6 +856,12 @@ if [[ "${alloc_flamegraph_value:-0}" -gt 0 ]]; then
   pass "non-empty allocation stack path is working"
 else
   gap "non-empty allocation stack path is not proven: allocation flamegraph.root.value=${alloc_flamegraph_value:-0}"
+fi
+
+if [[ "$alloc_summary_has_data" == "true" && "${alloc_summary_total:-0}" -gt 0 && "${alloc_summary_paths:-0}" -gt 0 && "${alloc_summary_self_frames:-0}" -gt 0 && "${alloc_summary_insights:-0}" -gt 0 ]]; then
+  pass "non-empty allocation summary API is working"
+else
+  gap "non-empty allocation summary API is not proven: has_data=${alloc_summary_has_data}, total=${alloc_summary_total:-0}, paths=${alloc_summary_paths:-0}, self_frames=${alloc_summary_self_frames:-0}, insights=${alloc_summary_insights:-0}"
 fi
 
 if [[ "${lock_flamegraph_value:-0}" -gt 0 ]]; then

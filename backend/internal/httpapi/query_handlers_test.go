@@ -136,6 +136,92 @@ func TestTopStacksRouteReturnsSelfAndTotalRows(t *testing.T) {
 	}
 }
 
+func TestAllocationSummaryRouteReturnsContract(t *testing.T) {
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(120, 0).UTC()
+	payload := app.ProfileBatchRequest{
+		BatchID:     "batch-allocation-summary",
+		CollectorID: "collector-a",
+		ReceivedAt:  now,
+		Samples: []profiling.ProfileSample{{
+			Target:      domain.TargetIdentity{Namespace: "prod", Service: "checkout", Pod: "checkout-1", ProcessID: 1, JVMStartTime: now},
+			ProfileType: domain.ProfileTypeAllocBytes,
+			StartedAt:   now,
+			EndedAt:     now.Add(time.Second),
+			StackID:     "alloc-a",
+			Frames:      []string{"root", "java/util/Arrays.copyOf:3332", "java/lang/StringBuilder.append:136"},
+			Value:       4096,
+		}},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/collector/v1/profile-batches", bytes.NewReader(body))
+	ingestReq.Header.Set("Content-Type", "application/json")
+	ingestReq.Header.Set("Authorization", "Bearer collector")
+	ingestRec := httptest.NewRecorder()
+	server.ServeHTTP(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusAccepted {
+		t.Fatalf("ingest status = %d body=%s", ingestRec.Code, ingestRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ui/v1/allocation-summary?namespace=prod&service=all&profile_type=java_allocation_bytes&start="+now.Add(-time.Second).Format(time.RFC3339)+"&end="+now.Add(10*time.Second).Format(time.RFC3339), nil)
+	req.Header.Set("Authorization", "Bearer ui")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("summary status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		SchemaVersion  int `json:"schema_version"`
+		RequestedScope struct {
+			Service string `json:"service"`
+		} `json:"requested_scope"`
+		EffectiveScope struct {
+			Service string `json:"service"`
+		} `json:"effective_scope"`
+		Coverage struct {
+			HasData    bool   `json:"has_data"`
+			TotalValue uint64 `json:"total_value"`
+			ValueUnit  string `json:"value_unit"`
+		} `json:"coverage"`
+		TopPaths []struct {
+			Category string `json:"category"`
+		} `json:"top_paths"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.SchemaVersion != 1 || response.RequestedScope.Service != "all" || response.EffectiveScope.Service != "" {
+		t.Fatalf("scope contract = %+v", response)
+	}
+	if !response.Coverage.HasData || response.Coverage.TotalValue != 4096 || response.Coverage.ValueUnit != "bytes" {
+		t.Fatalf("coverage = %+v", response.Coverage)
+	}
+	if len(response.TopPaths) != 1 || response.TopPaths[0].Category != "string_construction" {
+		t.Fatalf("top paths = %+v", response.TopPaths)
+	}
+}
+
+func TestAllocationSummaryRouteRejectsInvalidProfileType(t *testing.T) {
+	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(120, 0).UTC()
+	req := httptest.NewRequest(http.MethodGet, "/api/ui/v1/allocation-summary?namespace=prod&profile_type=java_cpu_nanoseconds&start="+now.Format(time.RFC3339)+"&end="+now.Add(time.Minute).Format(time.RFC3339), nil)
+	req.Header.Set("Authorization", "Bearer ui")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestServiceSummaryRouteReturnsPodJVMContributions(t *testing.T) {
 	server, err := NewServer(ServerConfig{AllowInMemory: true, Auth: AuthConfig{CollectorToken: "collector", UIToken: "ui"}}, metrics.NewExporter())
 	if err != nil {

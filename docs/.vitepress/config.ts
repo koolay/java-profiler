@@ -47,7 +47,8 @@ const enSidebar = [
       { text: 'Development Setup', link: '/contributing/development' },
       { text: 'Localization', link: '/contributing/localization' },
       { text: 'System Architecture', link: '/architecture/java-profiler-architecture' },
-      { text: 'Ingestion Architecture', link: '/architecture/performance-ingestion-architecture-review' }
+      { text: 'Ingestion Architecture', link: '/architecture/performance-ingestion-architecture-review' },
+      { text: 'Allocation Analysis Optimization', link: '/architecture/allocation-analysis-optimization-design' }
     ]
   },
   {
@@ -87,7 +88,8 @@ const zhSidebar = [
       { text: '开发设置', link: '/zh/contributing/development' },
       { text: '本地化策略', link: '/zh/contributing/localization' },
       { text: '系统架构', link: '/architecture/java-profiler-architecture' },
-      { text: 'Ingestion 架构', link: '/architecture/performance-ingestion-architecture-review' }
+      { text: 'Ingestion 架构', link: '/architecture/performance-ingestion-architecture-review' },
+      { text: 'Allocation 分析优化', link: '/architecture/allocation-analysis-optimization-design' }
     ]
   },
   {

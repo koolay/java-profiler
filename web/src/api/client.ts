@@ -1,4 +1,4 @@
-import type { DeadlockEvent, FlamegraphResponse, IngestionHealth, JVMEventEvidence, ServiceProfileSummary, ServiceSelectors, TargetStatus, ThreadDiagnosis, TopStackRow } from "./types";
+import type { AllocationSummary, DeadlockEvent, FlamegraphResponse, IngestionHealth, JVMEventEvidence, ServiceProfileSummary, ServiceSelectors, TargetStatus, ThreadDiagnosis, TopStackRow } from "./types";
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 
@@ -16,6 +16,10 @@ export function getFlamegraph(params: URLSearchParams) {
 
 export function getTopStacks(params: URLSearchParams) {
   return getJSON<TopStackRow[]>(`/api/ui/v1/top-stacks?${params}`);
+}
+
+export function getAllocationSummary(params: URLSearchParams) {
+  return getJSON<AllocationSummary>(`/api/ui/v1/allocation-summary?${params}`);
 }
 
 export function getServiceSummary(params: URLSearchParams) {

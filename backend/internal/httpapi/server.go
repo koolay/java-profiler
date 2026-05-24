@@ -75,6 +75,7 @@ func NewServer(cfg ServerConfig, exporter *metrics.Exporter) (http.Handler, erro
 	mux.Handle("/api/collector/v1/target-status-batches", RequireCollectorAuth(cfg.Auth, http.HandlerFunc(handlers.TargetStatusBatch)))
 	mux.Handle("/api/ui/v1/flamegraph", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.Flamegraph)))
 	mux.Handle("/api/ui/v1/top-stacks", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.TopStacks)))
+	mux.Handle("/api/ui/v1/allocation-summary", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.AllocationSummary)))
 	mux.Handle("/api/ui/v1/service-summary", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.ServiceSummary)))
 	mux.Handle("/api/ui/v1/service-selectors", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.ServiceSelectors)))
 	mux.Handle("/api/ui/v1/thread-diagnosis", RequireUIAuth(cfg.Auth, http.HandlerFunc(queryHandlers.ThreadDiagnosis)))

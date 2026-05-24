@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -65,6 +66,33 @@ func (h QueryHandlers) TopStacks(w http.ResponseWriter, r *http.Request) {
 		return app.QueryTopStacks(r.Context(), h.Profiles, profileQueryFromRequest(r, 1000), h.Metrics)
 	})
 	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, result)
+}
+
+func (h QueryHandlers) AllocationSummary(w http.ResponseWriter, r *http.Request) {
+	result, err := h.observe("java_profiler_http_query_allocation_summary", func() (any, error) {
+		return app.QueryAllocationSummary(r.Context(), h.Profiles, h.Statuses, h.IngestionStore, app.AllocationSummaryQuery{
+			Namespace:      r.URL.Query().Get("namespace"),
+			Service:        r.URL.Query().Get("service"),
+			Pod:            r.URL.Query().Get("pod"),
+			Container:      r.URL.Query().Get("container"),
+			JVM:            r.URL.Query().Get("jvm"),
+			ProfileType:    domain.ProfileType(r.URL.Query().Get("profile_type")),
+			Start:          parseQueryTime(r.URL.Query().Get("start")),
+			End:            parseQueryTime(r.URL.Query().Get("end")),
+			PathLimit:      parseSpecificQueryLimit(r, "path_limit", app.DefaultAllocationPathLimit, app.MaxAllocationPathLimit),
+			SelfFrameLimit: parseSpecificQueryLimit(r, "self_frame_limit", app.DefaultAllocationSelfFrameLimit, app.MaxAllocationSelfFrameLimit),
+			NodeLimit:      parseSpecificQueryLimit(r, "node_limit", app.DefaultAllocationNodeLimit, app.MaxAllocationNodeLimit),
+		}, h.Metrics)
+	})
+	if err != nil {
+		if errors.Is(err, app.ErrInvalidAllocationSummaryQuery) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -193,6 +221,12 @@ func (h QueryHandlers) observe(metricPrefix string, fn func() (any, error)) (any
 		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v.Batches)))
 	case []app.TopStackRow:
 		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v)))
+	case app.AllocationSummary:
+		recordMetric(h.Metrics, metricPrefix+"_paths_total", float64(len(v.TopPaths)))
+		recordMetric(h.Metrics, metricPrefix+"_self_frames_total", float64(len(v.TopSelfFrames)))
+		if v.Coverage.Partial {
+			recordMetric(h.Metrics, metricPrefix+"_partial_total", 1)
+		}
 	case app.ServiceProfileSummary:
 		recordMetric(h.Metrics, metricPrefix+"_rows_total", float64(len(v.Targets)))
 		if v.Partial {
@@ -222,7 +256,14 @@ func parseQueryTime(value string) time.Time {
 }
 
 func parseQueryLimit(r *http.Request, fallback, maximum int) int {
+	return parseSpecificQueryLimit(r, "limit", fallback, maximum)
+}
+
+func parseSpecificQueryLimit(r *http.Request, name string, fallback, maximum int) int {
 	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+	if name != "limit" {
+		limit, err = strconv.Atoi(r.URL.Query().Get(name))
+	}
 	if err != nil {
 		return fallback
 	}
