@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,8 @@ type ProfileQuery struct {
 	Namespace   string
 	Service     string
 	Pod         string
+	Container   string
+	ProcessID   int
 	ProfileType domain.ProfileType
 	Start       time.Time
 	End         time.Time
@@ -36,21 +39,24 @@ type TopStackSample struct {
 	ProfileType domain.ProfileType
 	Frames      []string
 	Value       uint64
+	SampleCount int
+	EndedAt     time.Time
 }
 
 type ProfileTargetSummary struct {
-	Namespace       string                       `json:"namespace"`
-	Service         string                       `json:"service"`
-	Pod             string                       `json:"pod"`
-	Container       string                       `json:"container"`
-	ProcessID       int                          `json:"process_id"`
-	JVMStartTime    time.Time                    `json:"jvm_start_time"`
-	ProfileType     domain.ProfileType           `json:"profile_type"`
-	TotalValue      uint64                       `json:"total_value"`
-	DisplayValue    string                       `json:"display_value"`
-	SampleCount     int                          `json:"sample_count"`
-	PercentOfTotal  string                       `json:"percent_of_total"`
-	WindowSemantics domain.ProfileValueSemantics `json:"semantics"`
+	Namespace        string                       `json:"namespace"`
+	Service          string                       `json:"service"`
+	Pod              string                       `json:"pod"`
+	Container        string                       `json:"container"`
+	ProcessID        int                          `json:"process_id"`
+	JVMStartTime     time.Time                    `json:"jvm_start_time"`
+	ProfileType      domain.ProfileType           `json:"profile_type"`
+	TotalValue       uint64                       `json:"total_value"`
+	DisplayValue     string                       `json:"display_value"`
+	SampleCount      int                          `json:"sample_count"`
+	NewestProfileEnd time.Time                    `json:"newest_profile_end"`
+	PercentOfTotal   string                       `json:"percent_of_total"`
+	WindowSemantics  domain.ProfileValueSemantics `json:"semantics"`
 }
 
 type ProfileSelector struct {
@@ -167,30 +173,48 @@ func (r *ProfileRepository) QueryTopStackSamples(_ context.Context, q ProfileQue
 	if limit <= 0 {
 		limit = 1000
 	}
-	out := make([]TopStackSample, 0)
+	type aggregate struct {
+		profileType domain.ProfileType
+		frames      []string
+		value       uint64
+		count       int
+		endedAt     time.Time
+	}
+	byStack := map[string]*aggregate{}
 	for _, sample := range r.samples {
-		if q.Namespace != "" && sample.Target.Namespace != q.Namespace {
+		if !profileSampleMatches(sample, q) {
 			continue
 		}
-		if q.Service != "" && sample.Target.Service != q.Service {
-			continue
+		key := sample.ProfileType.String() + "\x00" + strings.Join(sample.Frames, "\x00")
+		current := byStack[key]
+		if current == nil {
+			current = &aggregate{profileType: sample.ProfileType, frames: sample.Frames}
+			byStack[key] = current
 		}
-		if q.Pod != "" && sample.Target.Pod != q.Pod {
-			continue
+		current.value += sample.Value
+		current.count++
+		if sample.EndedAt.After(current.endedAt) {
+			current.endedAt = sample.EndedAt
 		}
-		if q.ProfileType != "" && sample.ProfileType != q.ProfileType {
-			continue
+	}
+	out := make([]TopStackSample, 0, len(byStack))
+	for _, item := range byStack {
+		out = append(out, TopStackSample{
+			ProfileType: item.profileType,
+			Frames:      item.frames,
+			Value:       item.value,
+			SampleCount: item.count,
+			EndedAt:     item.endedAt,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Value != out[j].Value {
+			return out[i].Value > out[j].Value
 		}
-		if !q.Start.IsZero() && sample.EndedAt.Before(q.Start) {
-			continue
-		}
-		if !q.End.IsZero() && sample.StartedAt.After(q.End) {
-			continue
-		}
-		out = append(out, TopStackSample{ProfileType: sample.ProfileType, Frames: sample.Frames, Value: sample.Value})
-		if len(out) >= limit {
-			break
-		}
+		return strings.Join(out[i].Frames, "\x00") < strings.Join(out[j].Frames, "\x00")
+	})
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	return out, nil
 }
@@ -202,6 +226,7 @@ func (r *ProfileRepository) QueryProfileTargetSummary(_ context.Context, q Profi
 		sample ProfileSample
 		total  uint64
 		count  int
+		newest time.Time
 	}
 	byTarget := map[string]aggregate{}
 	var grandTotal uint64
@@ -214,6 +239,9 @@ func (r *ProfileRepository) QueryProfileTargetSummary(_ context.Context, q Profi
 		current.sample = sample
 		current.total += sample.Value
 		current.count++
+		if sample.EndedAt.After(current.newest) {
+			current.newest = sample.EndedAt
+		}
 		byTarget[key] = current
 		grandTotal += sample.Value
 	}
@@ -221,18 +249,19 @@ func (r *ProfileRepository) QueryProfileTargetSummary(_ context.Context, q Profi
 	window := domain.TimeWindow{StartedAt: q.Start, EndsAt: q.End}
 	for _, item := range byTarget {
 		out = append(out, ProfileTargetSummary{
-			Namespace:       item.sample.Target.Namespace,
-			Service:         item.sample.Target.Service,
-			Pod:             item.sample.Target.Pod,
-			Container:       item.sample.Target.Container,
-			ProcessID:       item.sample.Target.ProcessID,
-			JVMStartTime:    item.sample.Target.JVMStartTime,
-			ProfileType:     item.sample.ProfileType,
-			TotalValue:      item.total,
-			DisplayValue:    domain.FormatProfileValue(item.sample.ProfileType, item.total, window),
-			SampleCount:     item.count,
-			PercentOfTotal:  percentOfTotal(item.total, grandTotal),
-			WindowSemantics: item.sample.ProfileType.Semantics(window),
+			Namespace:        item.sample.Target.Namespace,
+			Service:          item.sample.Target.Service,
+			Pod:              item.sample.Target.Pod,
+			Container:        item.sample.Target.Container,
+			ProcessID:        item.sample.Target.ProcessID,
+			JVMStartTime:     item.sample.Target.JVMStartTime,
+			ProfileType:      item.sample.ProfileType,
+			TotalValue:       item.total,
+			DisplayValue:     domain.FormatProfileValue(item.sample.ProfileType, item.total, window),
+			SampleCount:      item.count,
+			NewestProfileEnd: item.newest,
+			PercentOfTotal:   percentOfTotal(item.total, grandTotal),
+			WindowSemantics:  item.sample.ProfileType.Semantics(window),
 		})
 	}
 	return out, nil
@@ -273,6 +302,12 @@ func profileSampleMatches(sample ProfileSample, q ProfileQuery) bool {
 		return false
 	}
 	if q.Pod != "" && sample.Target.Pod != q.Pod {
+		return false
+	}
+	if q.Container != "" && sample.Target.Container != q.Container {
+		return false
+	}
+	if q.ProcessID > 0 && sample.Target.ProcessID != q.ProcessID {
 		return false
 	}
 	if q.ProfileType != "" && sample.ProfileType != q.ProfileType {

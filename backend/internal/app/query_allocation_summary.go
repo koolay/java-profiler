@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ const (
 	DefaultAllocationNodeLimit      = 500
 	MaxAllocationNodeLimit          = 2000
 	MaxAllocationSummaryRange       = 7 * 24 * time.Hour
+	MaxAllocationNamespaceOnlyRange = 30 * time.Minute
 )
 
 var ErrInvalidAllocationSummaryQuery = errors.New("invalid allocation summary query")
@@ -129,6 +131,8 @@ func QueryAllocationSummary(ctx context.Context, repo ProfileQueryStore, statuse
 		Namespace:   normalized.Namespace,
 		Service:     normalized.Service,
 		Pod:         normalized.Pod,
+		Container:   normalized.Container,
+		ProcessID:   allocationProcessID(normalized),
 		ProfileType: normalized.ProfileType,
 		Start:       normalized.Start,
 		End:         normalized.End,
@@ -141,24 +145,33 @@ func QueryAllocationSummary(ctx context.Context, repo ProfileQueryStore, statuse
 		Namespace:   normalized.Namespace,
 		Service:     normalized.Service,
 		Pod:         normalized.Pod,
+		Container:   normalized.Container,
+		ProcessID:   allocationProcessID(normalized),
 		ProfileType: normalized.ProfileType,
 		Start:       normalized.Start,
 		End:         normalized.End,
-		Limit:       maxInt(normalized.PathLimit, normalized.SelfFrameLimit) + 1,
+		Limit:       maxInt(normalized.PathLimit, normalized.SelfFrameLimit, normalized.NodeLimit) + 1,
 	})
 	if err != nil {
 		return AllocationSummary{}, err
 	}
 	recordMetric(exporter, "java_profiler_query_allocation_summary_fetch_seconds_total", time.Since(fetchStarted).Seconds())
 
-	coverageTotal, coverageSamples := allocationCoverage(coverageRows)
+	coverageTotal, coverageSamples, newestProfileEnd := allocationCoverage(coverageRows)
 	if coverageTotal == 0 || len(samples) == 0 {
 		result.Coverage.EmptyState = classifyAllocationEmptyState(ctx, statuses, ingestion, normalized)
 		return result, nil
 	}
 
 	buildStarted := time.Now()
-	result = buildAllocationSummary(result, samples, normalized, coverageTotal, coverageSamples)
+	result = buildAllocationSummary(result, samples, normalized, coverageTotal, coverageSamples, newestProfileEnd)
+	if coverageTotal > 0 && (len(result.TopPaths) == 0 || len(result.TopSelfFrames) == 0) {
+		result.Coverage.HasData = false
+		result.Coverage.EmptyState = "no_stack_frames"
+		result.Coverage.Partial = true
+		result.Coverage.PartialReasons = appendReason(result.Coverage.PartialReasons, "no_stack_frames")
+		result.Limitations = append(result.Limitations, AllocationLimitation{Code: "no_stack_frames", MessageCode: "allocation.empty.no_stack_frames"})
+	}
 	recordMetric(exporter, "java_profiler_query_allocation_summary_build_seconds_total", time.Since(buildStarted).Seconds())
 	recordMetric(exporter, "java_profiler_query_allocation_summary_samples_total", float64(result.Coverage.ScannedSamples))
 	recordMetric(exporter, "java_profiler_query_allocation_summary_paths_total", float64(len(result.TopPaths)))
@@ -180,11 +193,20 @@ func normalizeAllocationSummaryQuery(q AllocationSummaryQuery) (AllocationSummar
 	if q.ProfileType != domain.ProfileTypeAllocBytes && q.ProfileType != domain.ProfileTypeAllocObjects {
 		return q, fmt.Errorf("%w: profile_type must be java_allocation_bytes or java_allocation_objects", ErrInvalidAllocationSummaryQuery)
 	}
+	if q.JVM != "" {
+		processID, err := strconv.Atoi(q.JVM)
+		if err != nil || processID <= 0 {
+			return q, fmt.Errorf("%w: jvm must be a positive process id", ErrInvalidAllocationSummaryQuery)
+		}
+	}
 	if q.Start.IsZero() || q.End.IsZero() || !q.Start.Before(q.End) {
 		return q, fmt.Errorf("%w: start and end must define a valid range", ErrInvalidAllocationSummaryQuery)
 	}
 	if q.End.Sub(q.Start) > MaxAllocationSummaryRange {
 		return q, fmt.Errorf("%w: time range exceeds retention window", ErrInvalidAllocationSummaryQuery)
+	}
+	if q.Service == "" && q.Pod == "" && q.End.Sub(q.Start) > MaxAllocationNamespaceOnlyRange {
+		return q, fmt.Errorf("%w: namespace-only range exceeds allocation summary window", ErrInvalidAllocationSummaryQuery)
 	}
 	q.PathLimit = boundedQueryLimit(q.PathLimit, DefaultAllocationPathLimit, MaxAllocationPathLimit)
 	q.SelfFrameLimit = boundedQueryLimit(q.SelfFrameLimit, DefaultAllocationSelfFrameLimit, MaxAllocationSelfFrameLimit)
@@ -192,7 +214,7 @@ func normalizeAllocationSummaryQuery(q AllocationSummaryQuery) (AllocationSummar
 	return q, nil
 }
 
-func buildAllocationSummary(result AllocationSummary, samples []clickhouse.TopStackSample, q AllocationSummaryQuery, coverageTotal uint64, coverageSamples int) AllocationSummary {
+func buildAllocationSummary(result AllocationSummary, samples []clickhouse.TopStackSample, q AllocationSummaryQuery, coverageTotal uint64, coverageSamples int, newestProfileEnd time.Time) AllocationSummary {
 	type pathAgg struct {
 		frames []string
 		total  uint64
@@ -200,10 +222,12 @@ func buildAllocationSummary(result AllocationSummary, samples []clickhouse.TopSt
 	}
 	byPath := map[string]*pathAgg{}
 	bySelf := map[string]uint64{}
-	var newest time.Time
 	for _, sample := range samples {
 		if sample.Value == 0 || len(sample.Frames) == 0 {
 			continue
+		}
+		if sample.EndedAt.After(newestProfileEnd) {
+			newestProfileEnd = sample.EndedAt
 		}
 		frames := capFrames(sample.Frames, 128)
 		key := strings.Join(frames, "\x00")
@@ -213,7 +237,7 @@ func buildAllocationSummary(result AllocationSummary, samples []clickhouse.TopSt
 			byPath[key] = current
 		}
 		current.total += sample.Value
-		current.count++
+		current.count += maxInt(sample.SampleCount, 1)
 		leaf := frames[len(frames)-1]
 		bySelf[leaf] += sample.Value
 	}
@@ -235,12 +259,15 @@ func buildAllocationSummary(result AllocationSummary, samples []clickhouse.TopSt
 	}
 	nodeCount := 1
 	for i, item := range paths {
-		nodeCount += len(item.frames)
-		if nodeCount > q.NodeLimit {
+		nextNodeCount := nodeCount + len(item.frames)
+		if nextNodeCount > q.NodeLimit {
 			result.Coverage.Partial = true
 			result.Coverage.PartialReasons = appendReason(result.Coverage.PartialReasons, "node_limit")
-			result.Coverage.OmittedNodesLowerBound = nodeCount - q.NodeLimit
+			result.Coverage.OmittedNodesLowerBound += nextNodeCount - q.NodeLimit
+			result.Coverage.OmittedPathsLowerBound += len(paths) - i
+			break
 		}
+		nodeCount = nextNodeCount
 		leaf := item.frames[len(item.frames)-1]
 		result.TopPaths = append(result.TopPaths, AllocationTopPath{
 			Rank:        i + 1,
@@ -288,7 +315,7 @@ func buildAllocationSummary(result AllocationSummary, samples []clickhouse.TopSt
 	result.Coverage.ScannedSamples = coverageSamples
 	result.Coverage.ReturnedPaths = len(result.TopPaths)
 	result.Coverage.ReturnedSelfFrames = len(result.TopSelfFrames)
-	result.Coverage.NewestProfileEnd = newest
+	result.Coverage.NewestProfileEnd = newestProfileEnd
 	result.Insights = allocationInsights(result.TopPaths)
 	for _, reason := range result.Coverage.PartialReasons {
 		result.Limitations = append(result.Limitations, AllocationLimitation{Code: "partial_result", MessageCode: "allocation.partial." + reason})
@@ -296,14 +323,26 @@ func buildAllocationSummary(result AllocationSummary, samples []clickhouse.TopSt
 	return result
 }
 
-func allocationCoverage(rows []clickhouse.ProfileTargetSummary) (uint64, int) {
+func allocationCoverage(rows []clickhouse.ProfileTargetSummary) (uint64, int, time.Time) {
 	var total uint64
 	var samples int
+	var newest time.Time
 	for _, row := range rows {
 		total += row.TotalValue
 		samples += row.SampleCount
+		if row.NewestProfileEnd.After(newest) {
+			newest = row.NewestProfileEnd
+		}
 	}
-	return total, samples
+	return total, samples, newest
+}
+
+func allocationProcessID(q AllocationSummaryQuery) int {
+	if q.JVM == "" {
+		return 0
+	}
+	processID, _ := strconv.Atoi(q.JVM)
+	return processID
 }
 
 func CategorizeAllocationFrames(frames []string) string {
@@ -447,9 +486,12 @@ func appendReason(reasons []string, reason string) []string {
 	return append(reasons, reason)
 }
 
-func maxInt(a, b int) int {
-	if a > b {
-		return a
+func maxInt(values ...int) int {
+	max := 0
+	for _, value := range values {
+		if value > max {
+			max = value
+		}
 	}
-	return b
+	return max
 }

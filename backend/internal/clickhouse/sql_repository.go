@@ -290,7 +290,7 @@ func (r *SQLRepository) QueryTopStackSamples(ctx context.Context, q ProfileQuery
 		limit = 1000
 	}
 	query := `
-		SELECT s.profile_type, s.sample_value, st.frames
+		SELECT s.profile_type, sum(s.sample_value) AS total_value, count() AS sample_count, max(s.ended_at) AS newest_profile_end, st.frames
 		FROM java_profiler_profile_samples s
 		ANY LEFT JOIN java_profiler_profile_stacks st
 		  ON s.cluster = st.cluster
@@ -302,13 +302,17 @@ func (r *SQLRepository) QueryTopStackSamples(ctx context.Context, q ProfileQuery
 		 AND s.process_id = st.process_id
 		 AND s.jvm_start_time = st.jvm_start_time
 		 AND s.stack_id = st.stack_id
-		PREWHERE (? = '' OR s.namespace = ?) AND (? = '' OR s.service = ?) AND (? = '' OR s.pod = ?) AND (? = '' OR s.profile_type = ?)
+		PREWHERE (? = '' OR s.namespace = ?) AND (? = '' OR s.service = ?) AND (? = '' OR s.pod = ?) AND (? = '' OR s.container = ?) AND (? = 0 OR s.process_id = ?) AND (? = '' OR s.profile_type = ?)
 		  AND (? = 1 OR s.ended_at >= ?) AND (? = 1 OR s.started_at <= ?)
+		GROUP BY s.profile_type, st.frames
+		ORDER BY total_value DESC
 		LIMIT ?`
 	rows, err := r.db.QueryContext(ctx, query,
 		q.Namespace, q.Namespace,
 		q.Service, q.Service,
 		q.Pod, q.Pod,
+		q.Container, q.Container,
+		q.ProcessID, q.ProcessID,
 		q.ProfileType.String(), q.ProfileType.String(),
 		zeroTimeFlag(q.Start), q.Start,
 		zeroTimeFlag(q.End), q.End,
@@ -322,7 +326,7 @@ func (r *SQLRepository) QueryTopStackSamples(ctx context.Context, q ProfileQuery
 	for rows.Next() {
 		var sample TopStackSample
 		var profileType string
-		if err := rows.Scan(&profileType, &sample.Value, &sample.Frames); err != nil {
+		if err := rows.Scan(&profileType, &sample.Value, &sample.SampleCount, &sample.EndedAt, &sample.Frames); err != nil {
 			return nil, err
 		}
 		sample.ProfileType = profileTypeFromString(profileType)
@@ -337,9 +341,9 @@ func (r *SQLRepository) QueryProfileTargetSummary(ctx context.Context, q Profile
 		limit = 5000
 	}
 	query := `
-		SELECT namespace, service, pod, container, process_id, jvm_start_time, profile_type, sum(sample_value) AS total_value, count() AS sample_count
+		SELECT namespace, service, pod, container, process_id, jvm_start_time, profile_type, sum(sample_value) AS total_value, count() AS sample_count, max(ended_at) AS newest_profile_end
 		FROM java_profiler_profile_samples
-		PREWHERE (? = '' OR namespace = ?) AND (? = '' OR service = ?) AND (? = '' OR pod = ?) AND (? = '' OR profile_type = ?)
+		PREWHERE (? = '' OR namespace = ?) AND (? = '' OR service = ?) AND (? = '' OR pod = ?) AND (? = '' OR container = ?) AND (? = 0 OR process_id = ?) AND (? = '' OR profile_type = ?)
 		  AND (? = 1 OR ended_at >= ?) AND (? = 1 OR started_at <= ?)
 		GROUP BY namespace, service, pod, container, process_id, jvm_start_time, profile_type
 		ORDER BY total_value DESC
@@ -348,6 +352,8 @@ func (r *SQLRepository) QueryProfileTargetSummary(ctx context.Context, q Profile
 		q.Namespace, q.Namespace,
 		q.Service, q.Service,
 		q.Pod, q.Pod,
+		q.Container, q.Container,
+		q.ProcessID, q.ProcessID,
 		q.ProfileType.String(), q.ProfileType.String(),
 		zeroTimeFlag(q.Start), q.Start,
 		zeroTimeFlag(q.End), q.End,
@@ -363,7 +369,7 @@ func (r *SQLRepository) QueryProfileTargetSummary(ctx context.Context, q Profile
 	for rows.Next() {
 		var summary ProfileTargetSummary
 		var profileType string
-		if err := rows.Scan(&summary.Namespace, &summary.Service, &summary.Pod, &summary.Container, &summary.ProcessID, &summary.JVMStartTime, &profileType, &summary.TotalValue, &summary.SampleCount); err != nil {
+		if err := rows.Scan(&summary.Namespace, &summary.Service, &summary.Pod, &summary.Container, &summary.ProcessID, &summary.JVMStartTime, &profileType, &summary.TotalValue, &summary.SampleCount, &summary.NewestProfileEnd); err != nil {
 			return nil, err
 		}
 		summary.ProfileType = profileTypeFromString(profileType)

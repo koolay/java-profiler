@@ -43,7 +43,8 @@ export function MemoryView({ params }: { params: URLSearchParams }) {
 
 function AllocationSummaryPanel({ summary }: { summary: AllocationSummary }) {
 	const coverage = summary.coverage;
-	const partialReasons = coverage.partial_reasons?.join(", ") || "partial";
+	const partialReasons = describePartialReasons(coverage.partial_reasons);
+	const omittedEvidence = coverage.omitted_paths_lower_bound + coverage.omitted_nodes_lower_bound;
 	return (
 		<div className="allocation-summary" aria-label="Allocation summary">
 			<div className="gc-summary-strip allocation-summary-strip">
@@ -70,7 +71,7 @@ function AllocationSummaryPanel({ summary }: { summary: AllocationSummary }) {
 			</div>
 			{coverage.partial && (
 				<p className="warning">
-					Partial allocation summary: {partialReasons}. At least {coverage.omitted_paths_lower_bound + coverage.omitted_nodes_lower_bound} smaller branches were omitted.
+					Partial allocation summary: {partialReasons}. At least {omittedEvidence} paths, nodes, or self-frame rows may be missing from the returned evidence.
 				</p>
 			)}
 			{!coverage.has_data && (
@@ -241,5 +242,17 @@ function emptyStateCopy(state?: string) {
 	if (state === "ingestion_gap") return "Collector or backend ingestion reported dropped or retryable profile data in this window.";
 	if (state === "unsupported_runtime") return "The selected runtime cannot provide this allocation profile.";
 	if (state === "query_error") return "The backend could not query allocation evidence for this scope.";
+	if (state === "no_stack_frames") return "Allocation samples exist, but their stack frames were missing or unusable for this scope.";
 	return "No allocation samples matched this scope and time range. Try a wider range or a more specific Java target.";
+}
+
+function describePartialReasons(reasons?: string[]) {
+	if (!reasons || reasons.length === 0) return "result limits were reached";
+	const labels: Record<string, string> = {
+		path_limit: "top path limit reached",
+		node_limit: "flamegraph node budget reached",
+		self_frame_limit: "top self-frame limit reached; smaller self frames may be missing",
+		no_stack_frames: "some sampled allocations had no usable stack frames",
+	};
+	return reasons.map((reason) => labels[reason] || reason.replaceAll("_", " ")).join(", ");
 }

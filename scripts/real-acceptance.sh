@@ -858,10 +858,10 @@ else
   gap "non-empty allocation stack path is not proven: allocation flamegraph.root.value=${alloc_flamegraph_value:-0}"
 fi
 
-if [[ "$alloc_summary_has_data" == "true" && "${alloc_summary_total:-0}" -gt 0 && "${alloc_summary_paths:-0}" -gt 0 && "${alloc_summary_self_frames:-0}" -gt 0 && "${alloc_summary_insights:-0}" -gt 0 ]]; then
+if [[ "$alloc_summary_has_data" == "true" && "${alloc_summary_total:-0}" -gt 0 && "${alloc_summary_paths:-0}" -gt 0 && "${alloc_summary_self_frames:-0}" -gt 0 ]]; then
   pass "non-empty allocation summary API is working"
 else
-  gap "non-empty allocation summary API is not proven: has_data=${alloc_summary_has_data}, total=${alloc_summary_total:-0}, paths=${alloc_summary_paths:-0}, self_frames=${alloc_summary_self_frames:-0}, insights=${alloc_summary_insights:-0}"
+  fail "non-empty allocation summary API is not proven: has_data=${alloc_summary_has_data}, total=${alloc_summary_total:-0}, paths=${alloc_summary_paths:-0}, self_frames=${alloc_summary_self_frames:-0}, insights=${alloc_summary_insights:-0}"
 fi
 
 if [[ "${lock_flamegraph_value:-0}" -gt 0 ]]; then
