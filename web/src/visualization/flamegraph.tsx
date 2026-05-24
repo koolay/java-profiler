@@ -5,6 +5,7 @@ type Props = {
   root: FlamegraphNode;
   metadata?: PartialMetadata;
   emptyMessage?: string;
+  profileType?: string;
   highlightQuery?: string;
   insight?: string;
   searchQuery?: string;
@@ -29,6 +30,8 @@ type Frame = FlamegraphNode & {
   self: number;
   totalPercent: number;
   selfPercent: number;
+  queryMatched: boolean;
+  highlightMatched: boolean;
   matched: boolean;
   dimmed: boolean;
   category: FrameCategory;
@@ -52,7 +55,7 @@ type ZoomTrailEntry = {
 
 const rootFocus: FocusState = { path: "root", history: [] };
 
-export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", highlightQuery = "", insight, searchQuery, onSearchQueryChange, onReset, formatValue = defaultFormatValue, valueLabel = "Samples", showInspector = true, showSelectedDetail = true, inspectorTotalLabel = "Total CPU", inspectorSelfLabel = "Self CPU", detailTotalPercentLabel = "Total CPU", detailSelfPercentLabel = "Self CPU", onFrameSelect }: Props) {
+export function Flamegraph({ root, metadata, emptyMessage = "No profile samples returned for this service and time range.", profileType, highlightQuery = "", insight, searchQuery, onSearchQueryChange, onReset, formatValue = defaultFormatValue, valueLabel = "Samples", showInspector = true, showSelectedDetail = true, inspectorTotalLabel = "Total CPU", inspectorSelfLabel = "Self CPU", detailTotalPercentLabel = "Total CPU", detailSelfPercentLabel = "Self CPU", onFrameSelect }: Props) {
   const [internalQuery, setInternalQuery] = useState("");
   const [focus, setFocus] = useState<FocusState>(rootFocus);
   const [selectedPath, setSelectedPath] = useState("root");
@@ -76,7 +79,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
   const queryActive = query.trim().length > 0;
   const highlightActive = highlightQuery.trim().length > 0;
   const zoomed = zoomPath !== "root";
-  const selectedFrame = (highlightActive && selectedPath === "root" ? visibleFrames.find((frame) => frame.matched) : visibleFrames.find((frame) => frame.path === selectedPath)) ?? visibleFrames[0];
+  const selectedFrame = (highlightActive && selectedPath === "root" ? visibleFrames.find((frame) => frame.highlightMatched) : visibleFrames.find((frame) => frame.path === selectedPath)) ?? visibleFrames[0];
   const inspectedFrame = visibleFrames.find((frame) => frame.path === hoveredPath) ?? selectedFrame;
   const focusedFrame = zoomed ? visibleFrames.find((frame) => frame.path === zoomPath) : undefined;
   const focusedPercent = focusedFrame ? (Math.max(0, focusedFrame.value) / profileTotalValue(root)) * 100 : 0;
@@ -141,7 +144,7 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
   };
   const hasSamples = (root.value > 0 || (root.children?.length ?? 0) > 0) && visibleFrames.length > 0;
   return (
-    <section className="flamegraph" aria-label="Flamegraph">
+      <section className={`flamegraph ${profileThemeClass(profileType)}`} aria-label="Flamegraph">
       <div className="flamegraph-tools">
         <input aria-label="Search flamegraph frames" placeholder="Search frame" value={query} onChange={(event) => setQuery(event.target.value)} />
         <button onClick={resetZoom}>Reset view</button>
@@ -204,60 +207,72 @@ export function Flamegraph({ root, metadata, emptyMessage = "No profile samples 
       )}
       {hasSamples ? (
         <div className="flamegraph-stack" style={{ height: Math.max(1, depth + 1) * rowHeight }}>
-          {visibleFrames.map((frame) => (
-            <button
-              key={frame.path}
-              className={`flame-row flame-row-${frame.category}${frame.matched ? " flame-row-match" : ""}${frame.dimmed ? " flame-row-dimmed" : ""}${frame.path === selectedFrame?.path ? " flame-row-selected" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
-              style={{
-                left: `${frame.left}%`,
-                top: frame.depth * rowHeight,
-                width: `${frame.width}%`,
-              }}
-              onClick={() => {
-                setSelectedPath(frame.path);
-                zoomToPath(frame.path);
-                inspectPath(frame.path);
-                onFrameSelect?.(frame.name);
-              }}
-              onFocus={() => inspectPath(frame.path)}
-              onBlur={clearInspectedPathSoon}
-              onMouseEnter={() => inspectPath(frame.path)}
-              onMouseLeave={clearInspectedPathSoon}
-              aria-describedby={showInspector ? "flamegraph-frame-inspector" : undefined}
-              aria-label={`${formatFrameLabel(frame.name)} ${displayFrameValue(frame, formatValue)}`}
-            >
-              <span className="flame-frame">{formatFrameLabel(frame.name)}</span>
-              {frame.width >= 7 && <b className="flame-value">{displayFrameValue(frame, formatValue)}</b>}
-            </button>
-          ))}
+          {visibleFrames.map((frame) => {
+            const frameDetail = formatFrameDetail(frame, formatValue, inspectorTotalLabel, inspectorSelfLabel);
+            return (
+              <button
+                key={frame.path}
+                className={`flame-row flame-row-${frame.category}${frame.matched ? " flame-row-match" : ""}${frame.dimmed ? " flame-row-dimmed" : ""}${frame.path === selectedFrame?.path ? " flame-row-selected" : ""}${frame.width < 7 ? " flame-row-tiny" : ""}`}
+                style={{
+                  left: `${frame.left}%`,
+                  top: frame.depth * rowHeight,
+                  width: `${frame.width}%`,
+                }}
+                onClick={() => {
+                  setSelectedPath(frame.path);
+                  zoomToPath(frame.path);
+                  inspectPath(frame.path);
+                  onFrameSelect?.(frame.name);
+                }}
+                onFocus={() => inspectPath(frame.path)}
+                onBlur={clearInspectedPathSoon}
+                onMouseEnter={() => inspectPath(frame.path)}
+                onMouseLeave={clearInspectedPathSoon}
+                title={frameDetail.title}
+                aria-describedby={showInspector ? "flamegraph-frame-inspector" : undefined}
+                aria-label={frameDetail.ariaLabel}
+              >
+                <span className="flame-frame">{formatFrameLabel(frame.name)}</span>
+                {frame.width >= 7 && <b className="flame-value">{frameDetail.totalValue}</b>}
+              </button>
+            );
+          })}
         </div>
       ) : (
         <p className="flamegraph-empty">{query.trim() ? `No frames match "${query.trim()}".` : emptyMessage}</p>
       )}
       {showSelectedDetail && hasSamples && selectedFrame && (
         <div className="flamegraph-detail" role="region" aria-label="Selected flamegraph frame">
+          {(() => {
+            const frameDetail = formatFrameDetail(selectedFrame, formatValue, valueLabel, detailSelfPercentLabel);
+            return (
+              <>
           <div>
             <span>Selected frame</span>
             <code>{selectedFrame.name}</code>
           </div>
+          <p className="frame-diagnosis">{frameDetail.diagnosis}</p>
           <dl>
             <div>
               <dt>{valueLabel}</dt>
-              <dd>{displayFrameValue(selectedFrame, formatValue)}</dd>
+              <dd>{frameDetail.totalValue}</dd>
             </div>
             <div>
               <dt>{detailTotalPercentLabel}</dt>
-              <dd>{selectedFrame.totalPercent.toFixed(1)}%</dd>
+              <dd>{frameDetail.totalPercent}</dd>
             </div>
             <div>
               <dt>{detailSelfPercentLabel}</dt>
-              <dd>{selectedFrame.selfPercent.toFixed(1)}%</dd>
+              <dd>{frameDetail.selfPercent}</dd>
             </div>
             <div>
               <dt>Depth</dt>
               <dd>{selectedFrame.depth}</dd>
             </div>
           </dl>
+              </>
+            );
+          })()}
         </div>
       )}
     </section>
@@ -269,13 +284,16 @@ function layout(root: FlamegraphNode, zoomPath: string, query: string, highlight
   const currentRootValue = profileTotalValue(zoomRoot);
   const normalizedQuery = normalizeFrameSearch(query);
   const normalizedHighlight = normalizeFrameSearch(highlightQuery);
-  const activeMatch = normalizedQuery || normalizedHighlight;
-  const matches = (node: FlamegraphNode) => activeMatch.length > 0 && normalizeFrameSearch(node.name).includes(activeMatch);
+  const queryMatches = (node: FlamegraphNode) => normalizedQuery.length > 0 && normalizeFrameSearch(node.name).includes(normalizedQuery);
+  const highlightMatches = (node: FlamegraphNode) => normalizedHighlight.length > 0 && normalizeFrameSearch(node.name).includes(normalizedHighlight);
   const frames: Frame[] = [];
   const visit = (node: FlamegraphNode, depth: number, path: string, left: number, width: number) => {
-    const matched = matches(node);
+    const queryMatched = queryMatches(node);
+    const highlightMatched = highlightMatches(node);
+    const matched = queryMatched || highlightMatched;
     const childTotal = (node.children ?? []).reduce((sum, child) => sum + Math.max(0, child.value), 0);
     const self = Math.max(0, Math.max(0, node.value) - childTotal);
+    const childLayoutTotal = depth === 0 ? Math.max(childTotal, 1) : Math.max(Math.max(0, node.value), childTotal, 1);
     frames.push({
       ...node,
       depth,
@@ -285,15 +303,16 @@ function layout(root: FlamegraphNode, zoomPath: string, query: string, highlight
       self,
       totalPercent: (Math.max(0, node.value) / currentRootValue) * 100,
       selfPercent: (self / currentRootValue) * 100,
+      queryMatched,
+      highlightMatched,
       matched,
-      dimmed: normalizedQuery.length > 0 && !matched,
+      dimmed: normalizedQuery.length > 0 && !queryMatched && !highlightMatched,
       category: classifyFrame(node.name),
     });
     const children = (node.children ?? []).map((child, index) => ({ child, index }));
-    const total = Math.max(Math.max(0, node.value), childTotal, 1);
     let offset = left;
     for (const { child, index } of children) {
-      const childWidth = width * (Math.max(0, child.value) / total);
+      const childWidth = width * (Math.max(0, child.value) / childLayoutTotal);
       visit(child, depth + 1, `${path}/${index}`, offset, childWidth);
       offset += childWidth;
     }
@@ -318,6 +337,45 @@ function displayFrameValue(frame: Frame, formatValue: (value: number) => string)
   return frame.display_value ?? formatValue(frame.value);
 }
 
+function formatFrameDetail(frame: Frame, formatValue: (value: number) => string, totalLabel: string, selfLabel: string) {
+  const category = labelForCategory(frame.category);
+  const totalValue = displayFrameValue(frame, formatValue);
+  const selfValue = formatValue(frame.self);
+  const totalPercent = `${frame.totalPercent.toFixed(1)}%`;
+  const selfPercent = `${frame.selfPercent.toFixed(1)}%`;
+  const diagnosis = frameDiagnosis(frame);
+  const title = [
+    frame.name,
+    `Category: ${category}`,
+    `${totalLabel}: ${totalValue} (${totalPercent})`,
+    `${selfLabel}: ${selfValue} (${selfPercent})`,
+    `Depth: ${frame.depth}`,
+  ].join("\n");
+  return {
+    ariaLabel: `${frame.name}. ${category}. ${totalLabel} ${totalValue}, ${totalPercent}. ${selfLabel} ${selfValue}, ${selfPercent}. Depth ${frame.depth}.`,
+    title,
+    category,
+    totalValue,
+    selfValue,
+    totalPercent,
+    selfPercent,
+    diagnosis,
+  };
+}
+
+function frameDiagnosis(frame: Frame) {
+  if (frame.category !== "application") {
+    return "Find the owning Java caller before treating this frame as the optimization target.";
+  }
+  if (frame.totalPercent > 0 && frame.selfPercent >= frame.totalPercent * 0.5) {
+    return "High self means this frame's own work is the first optimization target.";
+  }
+  if (frame.totalPercent >= 1 && frame.selfPercent < frame.totalPercent * 0.25) {
+    return "High total with low self means inspect callees under this frame.";
+  }
+  return "Inspect callers and callees before choosing the optimization target.";
+}
+
 function partialResultMessage(reasons?: string[]) {
   const reasonList = reasons ?? ["query budget"];
   if (reasonList.includes("node_limit")) {
@@ -331,6 +389,7 @@ function partialResultMessage(reasons?: string[]) {
 
 function FrameInspector({ frame, onMouseEnter, onMouseLeave, formatValue, totalLabel, selfLabel }: { frame: Frame; onMouseEnter: () => void; onMouseLeave: () => void; formatValue: (value: number) => string; totalLabel: string; selfLabel: string }) {
   const copyText = frame.name;
+  const frameDetail = formatFrameDetail(frame, formatValue, totalLabel, selfLabel);
   const copyFrame = () => {
     if (navigator.clipboard) {
       void navigator.clipboard.writeText(copyText);
@@ -346,17 +405,18 @@ function FrameInspector({ frame, onMouseEnter, onMouseLeave, formatValue, totalL
   return (
     <div className={`flamegraph-tooltip flamegraph-tooltip-${frame.category}`} id="flamegraph-frame-inspector" role="status" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div>
-        <span>{labelForCategory(frame.category)}</span>
+        <span>{frameDetail.category}</span>
         <strong>{frame.name}</strong>
+        <p className="frame-diagnosis">{frameDetail.diagnosis}</p>
       </div>
       <dl>
         <div>
           <dt>{totalLabel}</dt>
-          <dd>{displayFrameValue(frame, formatValue)} <span>{frame.totalPercent.toFixed(1)}%</span></dd>
+          <dd>{frameDetail.totalValue} <span>{frameDetail.totalPercent}</span></dd>
         </div>
         <div>
           <dt>{selfLabel}</dt>
-          <dd>{formatValue(frame.self)} <span>{frame.selfPercent.toFixed(1)}%</span></dd>
+          <dd>{frameDetail.selfValue} <span>{frameDetail.selfPercent}</span></dd>
         </div>
         <div>
           <dt>Depth</dt>
@@ -375,6 +435,14 @@ function labelForCategory(category: FrameCategory) {
   if (category === "native") return "Native/system";
   if (category === "runtime") return "JVM/runtime";
   return "Application Java";
+}
+
+function profileThemeClass(profileType?: string) {
+  if (profileType === "java_allocation_bytes") return "flamegraph-profile-allocation";
+  if (profileType === "java_wall_clock_nanoseconds") return "flamegraph-profile-wall";
+  if (profileType === "java_io_wait_nanoseconds") return "flamegraph-profile-io";
+  if (profileType === "java_lock_delay_nanoseconds") return "flamegraph-profile-lock";
+  return "flamegraph-profile-cpu";
 }
 
 function classifyFrame(name: string): FrameCategory {

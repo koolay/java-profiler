@@ -31,7 +31,8 @@ var topStackExcludedMethods = map[string]struct{}{
 
 var topStackExcludedPrefixes = []string{"java.", "javax.", "jdk.", "sun.", "com.sun.", "org.graalvm.", "lib"}
 
-var topStackExcludedFragments = []string{".so", "[vdso]", "pthread", "clock_gettime", "adapter", "stubroutine", "vtablestub", "itable stub"}
+var topStackExcludedFragments = []string{".so", "[vdso]", "pthread", "clock_gettime", "stubroutine", "vtablestub", "itable stub"}
+var topStackExcludedAdapterPatterns = []string{"i2c adapter", "c2i adapter", "adapter for"}
 
 func QueryTopStacks(ctx context.Context, repo ProfileQueryStore, q clickhouse.ProfileQuery, exporter *metrics.Exporter) ([]TopStackRow, error) {
 	fetchStarted := time.Now()
@@ -215,12 +216,18 @@ func (c *topStackFrameClassifier) classify(frame string) (string, bool) {
 			return "", false
 		}
 	}
-	for _, fragment := range topStackExcludedFragments {
-		if strings.Contains(normalized, fragment) {
-			c.javaCache[frame] = false
-			return "", false
+		for _, fragment := range topStackExcludedFragments {
+			if strings.Contains(normalized, fragment) {
+				c.javaCache[frame] = false
+				return "", false
+			}
 		}
-	}
+		for _, fragment := range topStackExcludedAdapterPatterns {
+			if strings.Contains(normalized, fragment) {
+				c.javaCache[frame] = false
+				return "", false
+			}
+		}
 	_, excluded := topStackExcludedMethods[normalizedMethod]
 	c.javaCache[frame] = !excluded
 	if excluded {

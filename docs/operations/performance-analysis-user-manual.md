@@ -20,6 +20,10 @@ Use the CPU view when a service has high CPU or latency that may be caused by ex
 - Flame Graph shows sampled stack context.
 - Search highlights matching frames without hiding the rest of the stack.
 - Focus narrows the graph to the selected stack path.
+- Start in Both mode. Pick the top Java row first, then use the highlighted Flame Graph frames to see where that Java method sits in the sampled stack.
+- High Self CPU means the method's own work is the first optimization target. High Total CPU with low Self CPU means inspect callees before changing the method itself.
+- Runtime and native frames can stay visible in the Flame Graph because they explain where samples landed, but the Top Table should keep the default optimization target on application Java.
+- Very narrow Flame Graph blocks may not show text. Hover, click, or keyboard-focus the block to inspect the full frame name, category, CPU values, and percentages.
 
 ![Real CPU profile analysis](../assets/screenshots/real-cpu-analysis.png)
 

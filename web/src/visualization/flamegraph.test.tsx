@@ -19,6 +19,18 @@ test("renders flamegraph frames and partial warning", () => {
   expect(within(legend).getByText("Native/system")).toBeInTheDocument();
 });
 
+test("applies a profile-specific flamegraph theme class", () => {
+  render(<Flamegraph root={{ name: "root", value: 4, children: [{ name: "Checkout.handle", value: 4 }] }} profileType="java_allocation_bytes" />);
+
+  expect(screen.getByRole("region", { name: "Flamegraph" })).toHaveClass("flamegraph-profile-allocation");
+});
+
+test("applies a lock-specific flamegraph theme class", () => {
+  render(<Flamegraph root={{ name: "root", value: 4, children: [{ name: "Checkout.handle", value: 4 }] }} profileType="java_lock_delay_nanoseconds" />);
+
+  expect(screen.getByRole("region", { name: "Flamegraph" })).toHaveClass("flamegraph-profile-lock");
+});
+
 test("inspects, searches, and zooms nested frames while keeping long labels readable", () => {
   const { container } = render(
     <Flamegraph
@@ -136,10 +148,10 @@ test("returns to the previous zoom level with Back", () => {
 
   fireEvent.click(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ }));
   expect(screen.getByRole("button", { name: "Back" })).toBeEnabled();
-  expect(screen.queryByRole("button", { name: "root 8" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^root\. Application Java\. Total CPU 8/ })).not.toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Back" }));
-  expect(screen.getByRole("button", { name: "root 8" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^root\. Application Java\. Total CPU 8/ })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
 });
 
@@ -171,7 +183,7 @@ test("walks back through consecutive focused frames and reset returns to root", 
 
   fireEvent.click(screen.getByRole("button", { name: "Reset" }));
   expect(screen.queryByRole("region", { name: "Focused flamegraph state" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^root 100/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^root\. Application Java\. Total CPU 100/ })).toBeInTheDocument();
 });
 
 test("clears focus state when a refreshed profile no longer contains the focused path", () => {
@@ -191,7 +203,7 @@ test("clears focus state when a refreshed profile no longer contains the focused
   rerender(<Flamegraph root={{ name: "root", value: 6, children: [{ name: "Checkout.other", value: 6 }] }} />);
 
   expect(screen.queryByRole("region", { name: "Focused flamegraph state" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^root 6/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^root\. Application Java\. Total CPU 6/ })).toBeInTheDocument();
 });
 
 test("clears focus when a refreshed profile reuses the same path and leaf name under another ancestor", () => {
@@ -219,7 +231,7 @@ test("clears focus when a refreshed profile reuses the same path and leaf name u
   );
 
   expect(screen.queryByRole("region", { name: "Focused flamegraph state" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^root 10/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^root\. Application Java\. Total CPU 10/ })).toBeInTheDocument();
 });
 
 test("uses child samples as profile basis when the root has no own value", () => {
@@ -306,6 +318,34 @@ test("shows self and total metrics for leaf frames in the inspector", () => {
   expect(within(inspector).getAllByText("100.0%")).toHaveLength(2);
 });
 
+test("keeps tiny frames inspectable through title, focus, and the inspector", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 100,
+        children: [
+          { name: "WideFrame.method:10", value: 98 },
+          { name: "TinyFrame.method:20", value: 2 },
+        ],
+      }}
+    />,
+  );
+
+  const tinyFrame = screen.getByRole("button", { name: /TinyFrame\.method:20/ });
+  expect(tinyFrame).toHaveClass("flame-row-tiny");
+  expect(tinyFrame).toHaveAccessibleName(/Native\/system|Application Java|Self CPU|Depth/);
+  expect(tinyFrame).toHaveAttribute("title", expect.stringContaining("TinyFrame.method:20"));
+  expect(tinyFrame).toHaveAttribute("title", expect.stringContaining("Total CPU"));
+  expect(tinyFrame).toHaveAttribute("title", expect.stringContaining("Self CPU"));
+
+  fireEvent.focus(tinyFrame);
+
+  const inspector = screen.getByRole("status");
+  expect(inspector).toHaveTextContent("TinyFrame.method:20");
+  expect(inspector).toHaveTextContent("High self");
+});
+
 test("keeps child width proportional to parent total when the parent has self CPU", () => {
   render(
     <Flamegraph
@@ -319,6 +359,26 @@ test("keeps child width proportional to parent total when the parent has self CP
 
   const child = screen.getByRole("button", { name: /Checkout\.parse/ });
   expect(child).toHaveStyle({ width: "10%" });
+});
+
+test("lets the synthetic root children fill the available width when root has self CPU", () => {
+  render(
+    <Flamegraph
+      root={{
+        name: "root",
+        value: 100,
+        children: [
+          { name: "Checkout.handle", value: 40 },
+          { name: "Checkout.parse", value: 10 },
+        ],
+      }}
+    />,
+  );
+
+  const handle = screen.getByRole("button", { name: /Checkout\.handle/ });
+  const parse = screen.getByRole("button", { name: /Checkout\.parse/ });
+  expect(handle).toHaveStyle({ width: "80%" });
+  expect(parse).toHaveStyle({ width: "20%" });
 });
 
 test("keeps flamegraph context when no frames match the search", () => {

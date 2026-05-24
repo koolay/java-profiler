@@ -36,10 +36,10 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
   await page.getByRole("button", { name: "CPU profiles", exact: true }).click();
   const analysis = page.getByRole("region", { name: "CPU profile analysis" });
   await expect(analysis.getByRole("heading", { name: "Single Pod CPU profile" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Symbol", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Self CPU" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Total CPU" })).toBeVisible();
   const topTable = page.getByRole("region", { name: "Top table" });
+  await expect(topTable.getByRole("button", { name: "Symbol", exact: true })).toBeVisible();
+  await expect(topTable.getByRole("button", { name: "Self CPU", exact: true })).toBeVisible();
+  await expect(topTable.getByRole("button", { name: "Total CPU", exact: true })).toBeVisible();
   const topFrameButton = topTable.getByRole("button").first();
   await expect(topFrameButton).toBeVisible();
   await expect(topTable.getByRole("row").nth(1)).toBeVisible();
@@ -48,7 +48,7 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
   await topFrameButton.click();
   await expect(page.getByPlaceholder("Search frame")).toBeVisible();
   await expect(page.getByPlaceholder("Search frame")).toHaveValue("");
-  await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^root\. .+ Total .* \d/ })).toBeVisible();
   await expect(page.getByText(/Full sampled stack context/)).toBeVisible();
   const legend = page.getByLabel("Frame categories");
   await expect(legend.getByText("Application Java")).toBeVisible();
@@ -71,7 +71,7 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
   await expect(inspector.getByRole("button", { name: "Permalink" })).toBeVisible();
   await page.getByPlaceholder("Search frame").fill("burnCpu");
   await expect(page.getByText(/Search highlights matching frames/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^root\. .+ Total .* \d/ })).toBeVisible();
   if (hasNativeFrame) {
     await expect(nativeFrame).toHaveClass(/flame-row-dimmed/);
   }
@@ -110,7 +110,7 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
   await expect(page.getByRole("heading", { name: "Allocation sources" })).toBeVisible();
   await expect(page.getByText("Allocation profile", { exact: true })).toBeVisible();
   await expect(page.getByText("Loading profile evidence.")).toBeHidden();
-  await expect(page.getByRole("button", { name: /^root\s+\d/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^root\. .+ Total .* \d/ })).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-03-memory.png`, fullPage: true });
 
   await page.getByRole("button", { name: "Wall Clock profiles", exact: true }).click();

@@ -91,6 +91,40 @@ func TestTopStacksDoesNotPromoteRuntimeOnlyFrames(t *testing.T) {
 	}
 }
 
+func TestTopStacksClassifiesRepresentativeProfileFrames(t *testing.T) {
+	samples := []clickhouse.TopStackSample{
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "libasyncProfiler.so.StackWalker::walkVM"}, Value: 10},
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "libc-2.17.so.__clock_gettime"}, Value: 10},
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "pthread_cond_timedwait"}, Value: 10},
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "java.lang.Thread.run:1583"}, Value: 10},
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "jdk.internal.reflect.NativeMethodAccessorImpl.invoke0"}, Value: 10},
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "com.acme.orders.CheckoutService.priceCart:42"}, Value: 20},
+	}
+
+	rows := rankTopStacks(samples)
+	if len(rows) != 1 {
+		t.Fatalf("row count = %d, want only the application Java row: %#v", len(rows), rows)
+	}
+	if rows[0].Location != "com.acme.orders.CheckoutService.priceCart:42" {
+		t.Fatalf("unexpected application row: %#v", rows[0])
+	}
+}
+
+func TestTopStacksKeepsApplicationAdapterClasses(t *testing.T) {
+	samples := []clickhouse.TopStackSample{
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "com.acme.payments.PaymentAdapter.apply:42"}, Value: 11},
+		{ProfileType: domain.ProfileTypeCPU, Frames: []string{"root", "I2C adapter"}, Value: 5},
+	}
+
+	rows := rankTopStacks(samples)
+	if len(rows) != 1 {
+		t.Fatalf("row count = %d, want only the application adapter row: %#v", len(rows), rows)
+	}
+	if rows[0].Location != "com.acme.payments.PaymentAdapter.apply:42" {
+		t.Fatalf("unexpected adapter row: %#v", rows[0])
+	}
+}
+
 func findTopStackRow(rows []TopStackRow, symbol string) TopStackRow {
 	for _, row := range rows {
 		if row.Symbol == symbol {
