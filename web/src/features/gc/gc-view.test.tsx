@@ -40,17 +40,24 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("shows GC summary cards before the event list", async () => {
-  render(<GCView params={new URLSearchParams("namespace=java-profiler-qa&service=jdk17-http-demo")} />);
+test("shows GC summary and ranks the largest pause first", async () => {
+  render(<GCView params={new URLSearchParams("namespace=java-profiler-qa&service=jdk17-http-demo&start=2026-05-18T00:00:00.000Z&end=2026-05-18T00:01:00.000Z")} />);
 
   const summary = await screen.findByLabelText("GC summary");
   expect(within(summary).getByText("GC events")).toBeInTheDocument();
   expect(within(summary).getByText("2")).toBeInTheDocument();
   expect(within(summary).getByText("35.0 ms")).toBeInTheDocument();
-  expect(within(summary).getByText("25.0 ms")).toBeInTheDocument();
-  expect(within(summary).getByText("17.5 ms")).toBeInTheDocument();
+  expect(within(summary).getByText("2.0 events/min")).toBeInTheDocument();
+  expect(within(summary).getByText("0.06% of window")).toBeInTheDocument();
+  expect(within(summary).getByText("Longest pause")).toBeInTheDocument();
+  expect(within(summary).getAllByText("25.0 ms")).toHaveLength(2);
+  expect(within(summary).getByText("P95 pause")).toBeInTheDocument();
+  expect(within(summary).getByText("Top cause: allocation failure")).toBeInTheDocument();
+  expect(screen.getByLabelText("GC interpretation")).toHaveTextContent("Low pause impact");
   expect(screen.getByRole("heading", { name: "Allocation correlation" })).toBeInTheDocument();
-  expect(screen.getAllByRole("article")).toHaveLength(2);
+  const rows = screen.getAllByRole("article");
+  expect(rows).toHaveLength(2);
+  expect(rows[0]).toHaveTextContent("25.0 ms");
   expect(screen.getByRole("button", { name: /DemoHttpService\.handleWork:93/ })).toBeInTheDocument();
   expect(screen.queryByText("Focus frame")).not.toBeInTheDocument();
   expect(screen.getByText("Copy frame")).toBeInTheDocument();

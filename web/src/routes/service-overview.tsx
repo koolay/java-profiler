@@ -22,25 +22,25 @@ type Tab = (typeof tabs)[number];
 
 const navigationGroups: Array<{
   label: string;
-  items: Array<{ view: DiagnosisView; label: string; shortLabel: string; detail: string; icon: ReactNode }>;
+  items: Array<{ view: DiagnosisView; label: string; shortLabel: string; detail: string; tip: string; icon: ReactNode }>;
 }> = [
   {
     label: "Profiles",
     items: [
-      { view: "cpu", label: "CPU profiles", shortLabel: "CPU", detail: "core", icon: <Cpu size={16} /> },
-      { view: "wall", label: "Wall Clock profiles", shortLabel: "Latency", detail: "latency", icon: <Activity size={16} /> },
-      { view: "io", label: "I/O wait profiles", shortLabel: "I/O", detail: "blocking", icon: <Database size={16} /> },
-      { view: "gc", label: "GC pauses", shortLabel: "GC", detail: "events", icon: <Activity size={16} /> },
-      { view: "memory", label: "Allocation profiles", shortLabel: "Alloc", detail: "alloc", icon: <Flame size={16} /> },
-      { view: "locks", label: "Lock diagnosis", shortLabel: "Locks", detail: "locks", icon: <LockKeyhole size={16} /> },
+      { view: "cpu", label: "CPU profiles", shortLabel: "CPU", detail: "core", tip: "Core CPU time in Java methods and runtime code.", icon: <Cpu size={16} /> },
+      { view: "wall", label: "Wall Clock profiles", shortLabel: "Latency", detail: "latency", tip: "Runnable, blocked, waiting, or sleeping wall time.", icon: <Activity size={16} /> },
+      { view: "io", label: "I/O wait profiles", shortLabel: "I/O", detail: "blocking", tip: "Time spent waiting on I/O or blocking work.", icon: <Database size={16} /> },
+      { view: "gc", label: "GC pauses", shortLabel: "GC", detail: "events", tip: "Garbage-collection pause events and allocation correlation.", icon: <Activity size={16} /> },
+      { view: "memory", label: "Allocation profiles", shortLabel: "Alloc", detail: "alloc", tip: "Allocation pressure and object creation hot paths.", icon: <Flame size={16} /> },
+      { view: "locks", label: "Lock diagnosis", shortLabel: "Locks", detail: "locks", tip: "Contended monitor and lock-delay hotspots.", icon: <LockKeyhole size={16} /> },
     ],
   },
   {
     label: "Health",
     items: [
-      { view: "status", label: "Service status", shortLabel: "Targets", detail: "targets", icon: <Activity size={16} /> },
-      { view: "ingestion", label: "Ingestion health", shortLabel: "Batches", detail: "batches", icon: <Database size={16} /> },
-      { view: "deadlocks", label: "Deadlock diagnosis", shortLabel: "Deadlocks", detail: "events", icon: <AlertTriangle size={16} /> },
+      { view: "status", label: "Service status", shortLabel: "Targets", detail: "targets", tip: "Target discovery and profile eligibility status.", icon: <Activity size={16} /> },
+      { view: "ingestion", label: "Ingestion health", shortLabel: "Batches", detail: "batches", tip: "Accepted, dropped, and truncated profile batches.", icon: <Database size={16} /> },
+      { view: "deadlocks", label: "Deadlock diagnosis", shortLabel: "Deadlocks", detail: "events", tip: "Detected deadlock cycles and thread ownership.", icon: <AlertTriangle size={16} /> },
     ],
   },
 ];
@@ -367,11 +367,12 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
                 aria-label={item.label}
                 aria-pressed={item.view === activeView}
                 className={`workbench-nav-item${item.view === activeView ? " active" : ""}`}
+                title={item.tip}
                 onClick={() => onViewChange(item.view)}
                 type="button"
               >
                 <span className="nav-label">{item.icon}{item.shortLabel}</span>
-                <span className="nav-count">{item.detail}</span>
+                <span className="nav-count" title={item.tip}>{item.detail}</span>
               </button>
             ))}
           </div>

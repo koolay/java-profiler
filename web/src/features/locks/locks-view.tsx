@@ -15,7 +15,7 @@ export function LocksView({ params }: { params: URLSearchParams }) {
 				</div>
 			</div>
 			{error && <p className="warning">Backend unavailable: {error}</p>}
-			<Flamegraph root={data?.root ?? fallback.root} metadata={data?.metadata} />
+			<Flamegraph root={data?.root ?? fallback.root} metadata={data?.metadata} profileType="java_lock_delay_nanoseconds" />
 		</section>
 	);
 }
