@@ -298,16 +298,18 @@ npx playwright test --config=playwright.config.ts tests/real-acceptance.spec.ts
 5. 打开 `cpu`，切换 Top Table、Flame Graph、Both，并截图。
 6. 搜索应用符号，确认 flamegraph 高亮/弱化命中项。
 7. 选中 Top Table 行和 flamegraph frame，确认详情、Focus、Back、Reset。
-8. 打开 `deadlocks` 并截图。
-9. 打开 `ingestion`，确认有 accepted 上传证据并截图。
-10. 附加浏览器 console 信息。
+8. 打开 `memory`，确认 Allocation Summary、Top allocating paths、Top self allocating frames 和 allocation flamegraph 可见，或空状态能解释 profile evidence。
+9. 打开 `wall`、`io` 和 `gc`，确认 profile evidence banner 不会把空状态伪装成非空 profile evidence。
+10. 打开 `deadlocks` 并截图。
+11. 打开 `ingestion`，确认有 accepted 上传证据并截图。
+12. 附加浏览器 console 信息。
 
 ## 验收证据
 
 每次真实 E2E 应保留 artifact 目录。至少包含：
 
 - `summary.md`：脚本执行摘要、PASS/GAP/FAIL。
-- UI 截图：status、cpu、deadlocks、ingestion。
+- UI 截图：status、cpu、allocation、wall、io、gc、deadlocks、ingestion。
 - Playwright video 和 trace，失败时用于复盘。
 - 浏览器 console 输出。
 - collector 日志。
@@ -331,6 +333,7 @@ npx playwright test --config=playwright.config.ts tests/real-acceptance.spec.ts
 - `status` 至少有一个当前目标显示 `accepted` 或等价可采状态。
 - `ingestion` 显示当前运行窗口内有 accepted 数据。
 - CPU profile 有非 root 栈，或严格记录为什么测试负载没有产生样本。
+- allocation 视图显示 Allocation Summary 和非空 allocation flamegraph；如果是非 strict smoke，空状态必须能解释 target status 或 ingestion evidence。
 - 如本次目标包含 allocation、lock 或 deadlock 负载，对应视图有非空证据。
 - 目标 Pod 测试前后 restart count 没有增加。
 - 没有未解释的 browser console error、backend panic、collector crash 或 ClickHouse 写入拒绝。

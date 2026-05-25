@@ -105,7 +105,7 @@ Responsibilities:
 - Validate upload payloads.
 - Convert incoming data into storage records.
 - Write normalized records to ClickHouse.
-- Serve query APIs for service summary, flamegraphs, thread snapshots, deadlocks, target status, and ingestion health.
+- Serve query APIs for service summary, flamegraphs, top stacks, allocation summaries, thread snapshots, deadlocks, target status, and ingestion health.
 - Expose storage cleanup state through exporter metrics and bounded status APIs.
 
 Non-responsibilities:
@@ -360,7 +360,7 @@ Outputs:
 
 ### Profile Query
 
-Owns query-time stack aggregation for flamegraphs and top stack tables.
+Owns query-time stack aggregation for flamegraphs, top stack tables, allocation summaries, and profile availability guidance.
 
 Inputs:
 
@@ -371,6 +371,7 @@ Outputs:
 
 - flamegraph tree JSON
 - top stack tables
+- allocation summary results with effective scope, sampled-allocation totals, top allocating paths, top self allocating frames, insights, limitations, and partial-result metadata
 - profile availability summaries
 
 ---
@@ -778,6 +779,7 @@ Initial API capabilities:
 - Get service summary for a time range.
 - Get flamegraph for profile type and target filter.
 - Get top stacks for profile type and target filter.
+- Get allocation summary for `java_allocation_bytes` with explicit namespace, service or Pod scope, time range, limits, effective scope, insight categories, limitations, and empty-state reason.
 - Get thread diagnosis summary.
 - Get deadlock details.
 - Get target status history.
@@ -786,7 +788,20 @@ Initial API capabilities:
 
 API responses should return product-shaped data, not raw ClickHouse rows. For example, flamegraph responses should return a tree with values and frame labels, while thread diagnosis should return classified deadlock, slow-thread, and busy-thread sections.
 
-Every list or tree query must accept explicit limits. Every response that is truncated, sampled, partially failed, or missing a data source must say so in machine-readable metadata and user-facing copy.
+Every list, tree, or summary query must accept explicit limits. Every response that is truncated, sampled, partially failed, or missing a data source must say so in machine-readable metadata and user-facing copy.
+
+Current UI query routes include:
+
+- `GET /api/ui/v1/flamegraph`
+- `GET /api/ui/v1/top-stacks`
+- `GET /api/ui/v1/allocation-summary`
+- `GET /api/ui/v1/service-summary`
+- `GET /api/ui/v1/service-selectors`
+- `GET /api/ui/v1/thread-diagnosis`
+- `GET /api/ui/v1/deadlocks`
+- `GET /api/ui/v1/target-status`
+- `GET /api/ui/v1/ingestion`
+- `GET /api/ui/v1/jvm-events`
 
 ---
 
@@ -795,7 +810,7 @@ Every list or tree query must accept explicit limits. Every response that is tru
 ### Pages
 
 - Service Overview: status, enabled targets, recent profile availability, and links to existing Prometheus dashboards when configured.
-- Memory: allocation flamegraphs and top allocators.
+- Memory: allocation summary, top allocating paths, top self allocating frames, allocation flamegraphs, and empty-state explanations.
 - CPU / Busy Threads: CPU flamegraph, busy thread table, current stack samples.
 - Locks / Slow Threads: lock delay flamegraph, blocked/waiting thread table, blocking stacks.
 - Deadlocks: deadlock events, cycle details, involved locks and stack frames.
@@ -824,6 +839,7 @@ The UI must support:
 - Thread diagnosis tables for deadlocks, slow threads, busy threads, and stack trace panels.
 - URL-shareable filters: namespace, service, Pod, container, JVM, profile type, and time range.
 - Clear loading, empty, error, partial-result, truncated-result, and unauthorized states.
+- Profile evidence guidance that combines target status and aggregate ingestion evidence when a selected profile has no samples.
 - Commercial-friendly distribution with no AGPL or source-available runtime dependency.
 - Static asset packaging inside Kubernetes.
 

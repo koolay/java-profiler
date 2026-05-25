@@ -78,6 +78,7 @@ The profile UI must be validated with real backend data, not mocked data, and mu
 - Wall Clock view returns profile evidence without replacing CPU evidence
 - I/O view returns Java-owned blocking evidence or a clear no-evidence state
 - GC view returns JVM event evidence and allocation correlation for the same target/time filters
+- Allocation view returns Allocation Summary, Top allocating paths, Top self allocating frames, and allocation flamegraph evidence for the same target/time filters
 - empty profile states explain target status and ingestion evidence when samples are missing, but they do not substitute for the required non-empty CPU, Wall Clock, allocation, I/O, and lock evidence in strict acceptance
 - Top Table ranks application Java symbols with Self and Total CPU semantics
 - Flame Graph shows full sampled stack context, not Java source call order

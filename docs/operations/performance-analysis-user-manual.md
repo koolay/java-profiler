@@ -10,6 +10,18 @@ Target status tells you whether the selected JVM was accepted, rejected, disable
 
 ![Real target status evidence](../assets/screenshots/real-target-status.png)
 
+## Read profile evidence guidance
+
+CPU, Wall Clock, I/O wait, allocation, GC-correlation, and lock views show a Profile evidence status banner when the selected profile has no samples. The banner is not a substitute for real profile data. It explains the next check:
+
+- `profiling_disabled`: the target is visible, but profiling metadata disables collection.
+- `temporary_expired`: the selected temporary profiling window has ended.
+- `no_matching_target`: the namespace, service, Pod, or time range does not match a known Java profiling target.
+- `ingestion_gap`: aggregate ingestion health has rejected, retryable, dropped, or truncated profile batches.
+- `no_samples_in_range`: target and ingestion evidence exist, but no samples match the selected scope and time range.
+
+Use it to decide whether to fix metadata, choose a different target, widen the range, or inspect ingestion. Do not treat an explanatory empty state as strict acceptance evidence.
+
 ## Analyze CPU profiles
 
 Use the CPU view when a service has high CPU or latency that may be caused by expensive Java code.
@@ -18,6 +30,7 @@ Use the CPU view when a service has high CPU or latency that may be caused by ex
 - Self CPU is time spent directly in that frame.
 - Total CPU includes callees under that frame.
 - Flame Graph shows sampled stack context.
+- Both mode keeps the Top Table and Flame Graph visible together.
 - Search highlights matching frames without hiding the rest of the stack.
 - Focus narrows the graph to the selected stack path.
 - Start in Both mode. Pick the top Java row first, then use the highlighted Flame Graph frames to see where that Java method sits in the sampled stack.
@@ -59,11 +72,16 @@ Use GC pauses when request latency or throughput changes line up with JVM pause 
 
 ## Analyze allocation pressure
 
-Use allocation profiles when heap usage, allocation rate, or GC pressure rises. Start with the largest allocation symbols, then inspect the stack paths that lead to those allocations.
+Use allocation profiles when heap usage, allocation rate, or GC pressure rises. Start with Allocation Summary, then inspect the stack paths that lead to those allocations.
 
+- Allocation Summary shows total sampled allocation, effective scope, returned path/self-frame counts, insight categories, and partial-result limits.
+- Top allocating paths rank leaf allocation paths by total allocated bytes.
+- Top self allocating frames rank frames where allocation is attributed directly to that frame.
 - Allocation profiles show where object creation happens under the selected service and time range.
 - Use the flame graph to inspect full sampled stack context before deciding which call path is responsible.
-- The latest allocation acceptance screenshot shows the current wide layout and selected-frame panel.
+- The latest allocation acceptance screenshot shows the current wide layout with Allocation Summary, Top allocating paths, Top self allocating frames, and flamegraph context.
+- Empty allocation states distinguish disabled profiling, unmatched targets, ingestion gaps, unsupported runtime, missing stack frames, and ranges with no samples.
+- Namespace-only Allocation Summary queries are limited to 30 minutes; select a service or Pod, or shorten the range. All allocation summary queries stay within the 7-day retention limit.
 
 ![Real allocation profile analysis](../assets/screenshots/real-allocation-analysis.png)
 
@@ -88,7 +106,8 @@ Ingestion health closes the loop. It shows whether profile batches were accepted
 Check these in order:
 
 1. Target status: is the JVM accepted?
-2. Service and namespace: do they match the workload metadata?
-3. Time range: does it include the profiling window?
-4. Ingestion health: were profile batches accepted?
-5. Runbook: follow [Enable Profiling](./java-profiling-runbook.md) to verify metadata and collector behavior.
+2. Profile evidence status: does it report disabled metadata, expired temporary profiling, no matching target, ingestion gaps, or no samples in range?
+3. Service and namespace: do they match the workload metadata?
+4. Time range: does it include the profiling window?
+5. Ingestion health: were profile batches accepted?
+6. Runbook: follow [Enable Profiling](./java-profiling-runbook.md) to verify metadata and collector behavior.

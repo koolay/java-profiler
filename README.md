@@ -12,7 +12,7 @@ Most observability stacks tell you that a Java service is slow. `java-profiler` 
 
 - **Kubernetes-native opt-in**: enable profiling with annotations or labels. No application code changes.
 - **Real JVM profile data**: CPU, Wall Clock, allocation, lock-delay, Java I/O wait, and GC evidence come from async-profiler/JFR-derived collection.
-- **Expert Java workbench**: Top Table, Flame Graph, selected-frame details, native-frame filtering, target status, deadlocks, and ingestion health in one workflow.
+- **Expert Java workbench**: Top Table, Flame Graph, Both mode, selected-frame details, allocation summary, target status, deadlocks, profile evidence guidance, and ingestion health in one workflow.
 - **Ownable storage**: profile data lands in ClickHouse with retention bounded to 7 days or less.
 - **Focused scope**: no required Pyroscope, Parca, or Grafana backend.
 - **Built for proof**: real acceptance requires non-empty CPU, Wall Clock, Java I/O wait, GC, allocation, lock, ClickHouse, ingestion, and browser UI evidence.
@@ -35,7 +35,7 @@ Open the Web UI, select the namespace, service, and time range, then start with:
 - `wall` when latency is not explained by CPU alone.
 - `io` to isolate Java-owned socket or file blocking paths.
 - `gc` to correlate JVM pause evidence with allocation pressure.
-- `memory` to inspect allocation pressure.
+- `memory` to inspect allocation pressure with Allocation Summary, Top allocating paths, Top self allocating frames, and flamegraph context.
 - `locks` and `deadlocks` to investigate contention.
 - `ingestion` to confirm profile batches were accepted.
 
@@ -48,10 +48,11 @@ See the [Quickstart](docs/getting-started/quickstart.md) and [Performance Analys
 - Java I/O wait: socket or file blocking paths when JVM/JFR evidence preserves Java ownership.
 - GC pauses: JVM GC event evidence correlated with allocation profiles and the incident window.
 - Allocation hotspots: methods and call paths creating allocation pressure.
+- Allocation summary: scoped sampled-allocation totals, top allocating paths, top self allocating frames, insight categories, partial-result limits, and clear empty-state reasons.
 - Lock delay: synchronized or monitor paths that block under contention.
 - Thread evidence: snapshots for CPU, lock, sleep, blocked, and waiting states.
 - Deadlock evidence: deadlock cycles reported by the target JVM.
-- Profiling health: accepted, disabled, unsupported, attach failure, profiler conflict, rejected upload, or dropped ingestion data.
+- Profiling health: accepted, disabled, unsupported, attach failure, profiler conflict, expired temporary windows, missing matching targets, rejected upload, or dropped ingestion data.
 
 ## How it works
 
@@ -75,7 +76,7 @@ The first version targets Java services running on Kubernetes, HotSpot-compatibl
 
 ## Screenshots
 
-These screenshots come from a real Kubernetes acceptance environment, not mocked UI state.
+These screenshots come from a real Kubernetes acceptance environment, not mocked UI state. The allocation screenshot reflects the current wide analysis layout with summary cards, Top allocating paths, Top self allocating frames, and flamegraph context.
 
 ![Real allocation profile analysis from the acceptance environment](docs/assets/screenshots/real-allocation-analysis.png)
 

@@ -21,6 +21,18 @@ node scripts/capture-doc-screenshots.mjs
 
 ![真实 target status 证据](../../assets/screenshots/real-target-status.png)
 
+### Profile evidence guidance
+
+CPU、Wall Clock、I/O wait、allocation、GC correlation 和 lock 视图在当前 profile 没有 samples 时会显示 Profile evidence status 提示。这个提示不是严格验收里的真实 profile 数据，它只说明下一步该查哪里：
+
+- `profiling_disabled`：目标存在，但 profiling metadata 禁用了采集。
+- `temporary_expired`：临时 profiling 窗口已经过期。
+- `no_matching_target`：namespace、service、Pod 或时间范围没有匹配到 Java profiling target。
+- `ingestion_gap`：aggregate ingestion health 中有 rejected、retryable、dropped 或 truncated profile batches。
+- `no_samples_in_range`：target 和 ingestion evidence 存在，但当前 scope 和时间范围没有 samples。
+
+用它决定是修 metadata、换目标、扩大时间范围，还是检查 ingestion。不要把可解释空状态当成 strict acceptance 的非空 profile evidence。
+
 ### CPU profile analysis
 
 CPU 视图把 Top Table、Flame Graph、选中 frame 详情、Self/Total CPU 语义和 Java frame 分类放在同一个真实服务诊断流里。
@@ -47,11 +59,16 @@ GC 视图把 JVM GC event evidence 与同一时间窗口内的 allocation profil
 
 ### Allocation pressure
 
-分配压力视图用于分析 heap usage、allocation rate 或 GC pressure 上升时的对象创建路径。先从最大的 allocation symbol 看起，再沿调用栈往下找真正触发分配的代码路径。
+分配压力视图用于分析 heap usage、allocation rate 或 GC pressure 上升时的对象创建路径。先读 Allocation Summary，再沿调用栈往下找真正触发分配的代码路径。
 
+- Allocation Summary 展示 total sampled allocation、effective scope、returned path/self-frame counts、insight categories 和 partial-result limits。
+- Top allocating paths 按 total allocated bytes 排名 leaf allocation paths。
+- Top self allocating frames 排名直接归因到该 frame 的 allocation。
 - allocation profile 会展示在所选 service 和时间范围内的对象创建位置。
 - 先用 flame graph 查看完整 sampled stack context，再判断哪条调用路径最可疑。
-- 最新的 allocation 验收截图展示的是当前的宽布局和 selected-frame 面板。
+- 最新的 allocation 验收截图展示的是当前的宽布局、Allocation Summary、Top allocating paths、Top self allocating frames 和 flamegraph context。
+- allocation 空状态会区分 disabled profiling、target 不匹配、ingestion gap、unsupported runtime、缺失 stack frames，以及当前范围没有 samples。
+- namespace-only Allocation Summary 查询限制为 30 分钟；选择 service 或 Pod，或缩短时间范围。所有 allocation summary 查询仍受 7 天 retention 限制。
 
 ![真实 allocation profile 分析](../../assets/screenshots/real-allocation-analysis.png)
 

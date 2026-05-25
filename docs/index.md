@@ -20,11 +20,11 @@ features:
   - title: Opt-in by default
     details: Profiling is opt-in through Kubernetes metadata, collected node-locally, and retained for 7 days or less.
   - title: Real Java evidence
-    details: CPU, Wall Clock, Java I/O wait, GC, allocation, lock delay, thread, deadlock, status, and ingestion evidence stay tied to one service and time range.
+    details: CPU, Wall Clock, Java I/O wait, GC, allocation summaries, lock delay, thread, deadlock, status, and ingestion evidence stay tied to one service and time range.
   - title: Own the profiling stack
     details: No required Pyroscope, Parca, or Grafana backend. async-profiler data lands in ClickHouse and a self-owned UI.
   - title: Fast time to first signal
-    details: The first usable path is status, then CPU, then Wall Clock or I/O when the incident needs deeper evidence.
+    details: The first usable path is status, then CPU or allocation summary, then Wall Clock, I/O, GC, locks, or ingestion when the incident needs deeper evidence.
 ---
 
 [![Docs](https://img.shields.io/badge/docs-online-blue?style=flat-square)](https://koolay.github.io/java-profiler/) [![中文文档](https://img.shields.io/badge/docs-中文文档-2b90d9?style=flat-square)](https://koolay.github.io/java-profiler/zh/) [![GitHub stars](https://img.shields.io/github/stars/koolay/java-profiler?style=flat-square)](https://github.com/koolay/java-profiler)
@@ -35,12 +35,12 @@ features:
 
 1. Open [Quickstart](./getting-started/quickstart.md) and enable profiling with Kubernetes metadata.
 2. Open the target service, then check `status` first to confirm the JVM was accepted.
-3. Move from `cpu` to `wall`, `io`, `gc`, `locks`, and `ingestion` to get from symptom to evidence.
+3. Move from `cpu` or `memory` to `wall`, `io`, `gc`, `locks`, and `ingestion` to get from symptom to evidence.
 
 ## For service owners
 
 - [Quickstart](./getting-started/quickstart.md): enable profiling and read your first service profile.
-- [Performance Analysis Manual](./operations/performance-analysis-user-manual.md): read CPU, Wall Clock, Java I/O wait, GC, allocation, lock, deadlock, target status, and ingestion evidence.
+- [Performance Analysis Manual](./operations/performance-analysis-user-manual.md): read CPU, Wall Clock, Java I/O wait, GC, allocation summary, lock, deadlock, target status, profile evidence guidance, and ingestion evidence.
 - [Java Profiling Runbook](./operations/java-profiling-runbook.md): enable temporary or continuous profiling for a Kubernetes workload.
 
 ## For platform operators
@@ -59,7 +59,7 @@ features:
 ## Trust and localization
 
 - Use the English / 简体中文 switch in the top bar when you want the localized path.
-- The real screenshots on this page come from the acceptance environment, not mocked UI state.
+- The real screenshots on this page come from the acceptance environment, not mocked UI state. The allocation screenshot shows the current Allocation Summary and flamegraph workflow.
 
 ## Local preview
 
