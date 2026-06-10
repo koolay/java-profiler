@@ -173,6 +173,10 @@ h1, h2, h3, p { margin-top: 0; }
 .profile-stack { display: grid; gap: 12px; }
 .profile-flamegraph { min-width: 0; width: 100%; }
 .gc-summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.memory-pressure-insights { display: grid; gap: 6px; }
+.insight-row { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); padding: 8px 10px; text-align: left; font: inherit; line-height: 1.35; cursor: pointer; }
+.insight-row:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.insight-row-warning { border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
 .gc-summary-card { border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); padding: 8px 10px; display: grid; gap: 3px; align-content: center; min-height: 62px; }
 .gc-summary-card-primary { border-color: rgba(124,45,18,.22); background: rgba(124,45,18,.08); }
 .gc-summary-card span { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }

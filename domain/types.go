@@ -139,25 +139,28 @@ const (
 type StatusReason string
 
 const (
-	StatusReasonNone                    StatusReason = ""
-	StatusReasonDisabledByMetadata      StatusReason = "disabled_by_metadata"
-	StatusReasonTemporaryExpired        StatusReason = "temporary_expired"
-	StatusReasonInvalidDuration         StatusReason = "invalid_duration"
-	StatusReasonUnsupportedJVM          StatusReason = "unsupported_jvm"
-	StatusReasonProfilerConflict        StatusReason = "profiler_conflict"
-	StatusReasonOrphanedProfilerSession StatusReason = "orphaned_profiler_session"
-	StatusReasonAttachFailed            StatusReason = "attach_failed"
-	StatusReasonUploadRetryable         StatusReason = "upload_retryable"
-	StatusReasonUploadDropped           StatusReason = "upload_dropped"
-	StatusReasonStorageRejected         StatusReason = "storage_rejected"
-	StatusReasonAccepted                StatusReason = "accepted"
+	StatusReasonNone                        StatusReason = ""
+	StatusReasonDisabledByMetadata          StatusReason = "disabled_by_metadata"
+	StatusReasonTemporaryExpired            StatusReason = "temporary_expired"
+	StatusReasonInvalidDuration             StatusReason = "invalid_duration"
+	StatusReasonUnsupportedJVM              StatusReason = "unsupported_jvm"
+	StatusReasonProfilerConflict            StatusReason = "profiler_conflict"
+	StatusReasonOrphanedProfilerSession     StatusReason = "orphaned_profiler_session"
+	StatusReasonAttachFailed                StatusReason = "attach_failed"
+	StatusReasonUploadRetryable             StatusReason = "upload_retryable"
+	StatusReasonUploadDropped               StatusReason = "upload_dropped"
+	StatusReasonStorageRejected             StatusReason = "storage_rejected"
+	StatusReasonAccepted                    StatusReason = "accepted"
+	StatusReasonContainerRestarted          StatusReason = "container_restarted"
+	StatusReasonOOMKilledSeen               StatusReason = "oom_killed_seen"
+	StatusReasonProfilingWindowAfterRestart StatusReason = "profiling_window_after_restart"
 )
 
 func (r StatusReason) IsValid() bool {
 	switch r {
 	case StatusReasonNone, StatusReasonDisabledByMetadata, StatusReasonTemporaryExpired, StatusReasonInvalidDuration,
 		StatusReasonUnsupportedJVM, StatusReasonProfilerConflict, StatusReasonOrphanedProfilerSession, StatusReasonAttachFailed, StatusReasonUploadRetryable,
-		StatusReasonUploadDropped, StatusReasonStorageRejected, StatusReasonAccepted:
+		StatusReasonUploadDropped, StatusReasonStorageRejected, StatusReasonAccepted, StatusReasonContainerRestarted, StatusReasonOOMKilledSeen, StatusReasonProfilingWindowAfterRestart:
 		return true
 	default:
 		return false

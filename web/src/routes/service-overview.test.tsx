@@ -18,6 +18,10 @@ vi.mock("../features/status/target-status-view", () => ({
   TargetStatusView: () => <div data-testid="target-status-view" />,
 }));
 
+vi.mock("../features/memory-pressure/memory-pressure-view", () => ({
+  MemoryPressureView: () => <section aria-label="Memory pressure investigation" />,
+}));
+
 afterEach(() => {
   vi.restoreAllMocks();
   useAPICall = 0;
@@ -51,4 +55,16 @@ test("shows historical selector guidance when current range has no suggestions",
   render(<ServiceOverview activeView="status" onViewChange={vi.fn()} />);
 
   expect(screen.getByText("No selector suggestions have samples in this time range. Showing historical targets; adjust the range or type a value directly.")).toBeInTheDocument();
+});
+
+test("routes memory pressure investigation from the workbench navigation", () => {
+  const onViewChange = vi.fn();
+
+  render(<ServiceOverview activeView={"memory-pressure" as never} onViewChange={onViewChange} />);
+
+  expect(screen.getByRole("region", { name: "Memory pressure investigation" })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: /OOM investigation/i }));
+
+  expect(onViewChange).toHaveBeenCalledWith("memory-pressure");
 });

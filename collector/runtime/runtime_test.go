@@ -298,6 +298,51 @@ func TestRuntimeScanOnceKeepsMissingOrDifferentMarkerProfilerConflict(t *testing
 	}
 }
 
+func TestRuntimeScanOnceReportsOOMKilledPodStatusWithoutBlockingProfiling(t *testing.T) {
+	root := t.TempDir()
+	writeRuntimeProcess(t, root, 123, false)
+	uid := "11111111-2222-3333-4444-555555555555"
+	if err := os.WriteFile(filepath.Join(root, "123", "cgroup"), []byte("0::/kubepods/pod"+uid+"/container"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pod := readyProfiledPod(uid)
+	pod.Status.ContainerStatuses = []podContainerStatus{
+		{
+			Name:         "app",
+			RestartCount: 2,
+			LastState: podContainerState{
+				Terminated: &podContainerStateTerminated{Reason: "OOMKilled", ExitCode: 137},
+			},
+		},
+	}
+	rt := NewCollector(Config{ProcRoot: root, CollectorID: "collector-1"})
+	rt.podSource = func(context.Context) map[string]podItem {
+		return map[string]podItem{normalizeUID(uid): pod}
+	}
+
+	if err := rt.ScanOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	statuses := rt.Statuses()
+	if len(statuses) != 1 {
+		t.Fatalf("expected one status, got %d", len(statuses))
+	}
+	status := statuses[0]
+	if status.State != domain.TargetDesiredStateEnabled {
+		t.Fatalf("expected enabled target state, got %#v", status)
+	}
+	if status.Reason != domain.StatusReasonOOMKilledSeen {
+		t.Fatalf("expected OOMKilled status reason, got %#v", status)
+	}
+	if !strings.Contains(status.Message, "restartCount=2") || !strings.Contains(status.Message, "exitCode=137") {
+		t.Fatalf("expected restart details in status message, got %q", status.Message)
+	}
+	if !strings.Contains(rt.Exporter().Snapshot(), "java_profiler_collector_target_status_oom_killed_seen 1") {
+		t.Fatalf("expected oom status metric, got %q", rt.Exporter().Snapshot())
+	}
+}
+
 func TestCollectProfilesUsesLimitedConcurrency(t *testing.T) {
 	release := make(chan struct{})
 	started := make(chan int, 16)

@@ -95,6 +95,9 @@ Stable status reasons used by collector and backend:
 - `upload_dropped`
 - `storage_rejected`
 - `accepted`
+- `container_restarted`
+- `oom_killed_seen`
+- `profiling_window_after_restart`
 
 ## Retention policy
 

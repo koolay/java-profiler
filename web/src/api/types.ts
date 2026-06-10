@@ -171,6 +171,9 @@ export type TargetStatusReason =
   | "upload_dropped"
   | "storage_rejected"
   | "accepted"
+  | "container_restarted"
+  | "oom_killed_seen"
+  | "profiling_window_after_restart"
   | string;
 
 export type TargetStatus = {

@@ -37,3 +37,22 @@ test("keeps long pod names and user actions inspectable", () => {
   expect(screen.getByText("async-profiler-lab-845cc49cc-plpf6")).toHaveAttribute("title", "async-profiler-lab-845cc49cc-plpf6");
   expect(screen.getByText("Open CPU, memory, locks, or thread evidence for the same target and time range.")).toBeInTheDocument();
 });
+
+test("keeps OOM restart evidence visible as an enabled Java target", () => {
+  render(
+    <TargetStatusView
+      params={new URLSearchParams()}
+      statuses={[
+        {
+          desired_state: "enabled",
+          reason: "oom_killed_seen",
+          message: "container app was OOMKilled; restartCount=2 exitCode=137",
+          target: { pod: "checkout-java-1", process_id: 42 },
+        },
+      ]}
+    />,
+  );
+
+  expect(screen.getByText("checkout-java-1")).toBeInTheDocument();
+  expect(screen.getByText("oom_killed_seen")).toBeInTheDocument();
+});

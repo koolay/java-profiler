@@ -8,11 +8,11 @@ Java performance profiling for Kubernetes services. Find where a HotSpot JVM is 
 
 ## Why java-profiler
 
-Most observability stacks tell you that a Java service is slow. `java-profiler` is for the next question: which Java stack is responsible?
+Most observability stacks tell you that a Java service is slow, restarting, or climbing toward an OOM kill. `java-profiler` is for the next question: which Java stack is responsible?
 
 - **Kubernetes-native opt-in**: enable profiling with annotations or labels. No application code changes.
 - **Real JVM profile data**: CPU, Wall Clock, allocation, lock-delay, Java I/O wait, and GC evidence come from async-profiler/JFR-derived collection.
-- **Expert Java workbench**: Top Table, Flame Graph, Both mode, selected-frame details, allocation summary, target status, deadlocks, profile evidence guidance, and ingestion health in one workflow.
+- **Expert Java workbench**: OOM/memory-pressure investigation, Top Table, Flame Graph, Both mode, selected-frame details, allocation summary, target status, deadlocks, profile evidence guidance, and ingestion health in one workflow.
 - **Ownable storage**: profile data lands in ClickHouse with retention bounded to 7 days or less.
 - **Focused scope**: no required Pyroscope, Parca, or Grafana backend.
 - **Built for proof**: real acceptance requires non-empty CPU, Wall Clock, Java I/O wait, GC, allocation, lock, ClickHouse, ingestion, and browser UI evidence.
@@ -30,6 +30,7 @@ metadata:
 
 Open the Web UI, select the namespace, service, and time range, then start with:
 
+- `oom` when a Java Pod is restarting, was recently `OOMKilled`, or shows memory/GC pressure.
 - `status` to confirm the JVM was accepted.
 - `cpu` to find expensive Java methods.
 - `wall` when latency is not explained by CPU alone.
@@ -47,7 +48,8 @@ See the [Quickstart](docs/getting-started/quickstart.md) and [Performance Analys
 - Wall Clock latency: Java stack time spent runnable, blocked, waiting, sleeping, or doing I/O.
 - Java I/O wait: socket or file blocking paths when JVM/JFR evidence preserves Java ownership.
 - GC pauses: JVM GC event evidence correlated with allocation profiles and the incident window.
-- Allocation hotspots: methods and call paths creating allocation pressure.
+- OOM and memory pressure: target status, ingestion freshness, GC pause evidence, sampled allocation totals, top allocating paths, and allocation flamegraph context in one workflow.
+- Allocation hotspots: methods and call paths creating allocation pressure without requiring production heap dumps.
 - Allocation summary: scoped sampled-allocation totals, top allocating paths, top self allocating frames, insight categories, partial-result limits, and clear empty-state reasons.
 - Lock delay: synchronized or monitor paths that block under contention.
 - Thread evidence: snapshots for CPU, lock, sleep, blocked, and waiting states.

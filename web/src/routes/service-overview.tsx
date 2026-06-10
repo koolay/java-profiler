@@ -8,6 +8,7 @@ import { WallClockView } from "../features/wall-clock/wall-clock-view";
 import { IOView } from "../features/io/io-view";
 import { GCView } from "../features/gc/gc-view";
 import { MemoryView } from "../features/memory/memory-view";
+import { MemoryPressureView } from "../features/memory-pressure/memory-pressure-view";
 import { LocksView } from "../features/locks/locks-view";
 import { DeadlocksView } from "../features/deadlocks/deadlocks-view";
 import { TargetStatusView } from "../features/status/target-status-view";
@@ -17,7 +18,7 @@ import { useAPI } from "../api/use-api";
 import { buildSelectorCatalog } from "./service-overview-selectors";
 import { SelectorField } from "./service-overview-selector-field";
 
-const tabs = ["memory", "cpu", "wall", "io", "gc", "locks", "deadlocks", "status", "ingestion"] as const;
+const tabs = ["memory-pressure", "memory", "cpu", "wall", "io", "gc", "locks", "deadlocks", "status", "ingestion"] as const;
 type Tab = (typeof tabs)[number];
 
 const navigationGroups: Array<{
@@ -27,6 +28,7 @@ const navigationGroups: Array<{
   {
     label: "Profiles",
     items: [
+      { view: "memory-pressure", label: "OOM investigation", shortLabel: "OOM", detail: "memory", tip: "Correlate target status, ingestion, GC pauses, and allocation pressure.", icon: <AlertTriangle size={16} /> },
       { view: "cpu", label: "CPU profiles", shortLabel: "CPU", detail: "core", tip: "Core CPU time in Java methods and runtime code.", icon: <Cpu size={16} /> },
       { view: "wall", label: "Wall Clock profiles", shortLabel: "Latency", detail: "latency", tip: "Runnable, blocked, waiting, or sleeping wall time.", icon: <Activity size={16} /> },
       { view: "io", label: "I/O wait profiles", shortLabel: "I/O", detail: "blocking", tip: "Time spent waiting on I/O or blocking work.", icon: <Database size={16} /> },
@@ -418,6 +420,7 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
           </div>
         </div>
         <div className="diagnosis-content">
+          {activeView === "memory-pressure" && <MemoryPressureView params={params} />}
           {activeView === "memory" && <MemoryView params={params} />}
           {activeView === "cpu" && <CpuView params={params} />}
           {activeView === "wall" && <WallClockView params={params} />}
@@ -434,6 +437,7 @@ export function ServiceOverview({ activeView, onViewChange }: ServiceOverviewPro
 }
 
 function profileTypeFor(tab: Tab): ProfileType {
+  if (tab === "memory-pressure") return "java_allocation_bytes";
   if (tab === "cpu") return "java_cpu_nanoseconds";
   if (tab === "wall") return "java_wall_clock_nanoseconds";
   if (tab === "io") return "java_io_wait_nanoseconds";
@@ -447,6 +451,7 @@ function collectionLabelForView(view: DiagnosisView) {
   if (view === "io") return "I/O wait profile";
   if (view === "gc") return "GC evidence";
   if (view === "locks") return "Lock profile";
+  if (view === "memory-pressure") return "Memory pressure";
   if (view === "memory") return "Allocation profile";
   if (view === "deadlocks") return "Deadlock evidence";
   if (view === "status") return "Target status";

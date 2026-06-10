@@ -237,6 +237,12 @@ func (r *Runtime) ScanOnce(ctx context.Context) error {
 			status.Message = "HotSpot-compatible JVM discovered"
 			acceptedTargets = append(acceptedTargets, target)
 		}
+		if hasPod && status.State != domain.TargetDesiredStateDisabled && status.State != domain.TargetDesiredStateUnsupported {
+			if reason, message, ok := memoryPressureStatus(pod, target.Container); ok {
+				status.Reason = reason
+				status.Message = message
+			}
+		}
 		r.statuses.Set(status)
 		r.exporter.Inc("java_profiler_collector_target_status_" + string(status.Reason))
 	}
@@ -521,7 +527,8 @@ type podSpec struct {
 }
 
 type podStatus struct {
-	Conditions []podCondition `json:"conditions"`
+	Conditions        []podCondition       `json:"conditions"`
+	ContainerStatuses []podContainerStatus `json:"containerStatuses"`
 }
 
 type podCondition struct {
@@ -540,6 +547,46 @@ func podReady(pod podItem) bool {
 
 type podContainer struct {
 	Name string `json:"name"`
+}
+
+type podContainerStatus struct {
+	Name         string            `json:"name"`
+	RestartCount int               `json:"restartCount"`
+	LastState    podContainerState `json:"lastState"`
+}
+
+type podContainerState struct {
+	Terminated *podContainerStateTerminated `json:"terminated"`
+}
+
+type podContainerStateTerminated struct {
+	Reason   string `json:"reason"`
+	ExitCode int    `json:"exitCode"`
+}
+
+func memoryPressureStatus(pod podItem, container string) (domain.StatusReason, string, bool) {
+	for _, status := range pod.Status.ContainerStatuses {
+		if container != "" && status.Name != "" && status.Name != container {
+			continue
+		}
+		if status.RestartCount <= 0 {
+			continue
+		}
+		terminated := status.LastState.Terminated
+		if terminated != nil && terminated.Reason == "OOMKilled" {
+			return domain.StatusReasonOOMKilledSeen, fmt.Sprintf("container %s was OOMKilled; restartCount=%d exitCode=%d", statusContainerName(status.Name, container), status.RestartCount, terminated.ExitCode), true
+		}
+		return domain.StatusReasonContainerRestarted, fmt.Sprintf("container %s restarted; restartCount=%d", statusContainerName(status.Name, container), status.RestartCount), true
+	}
+	return "", "", false
+}
+
+func statusContainerName(value, fallback string) string {
+	name := firstNonEmpty(value, fallback)
+	if name == "" {
+		return "unknown"
+	}
+	return name
 }
 
 func (r *Runtime) discoverPods(ctx context.Context) map[string]podItem {

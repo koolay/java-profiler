@@ -22,6 +22,18 @@ CPU, Wall Clock, I/O wait, allocation, GC-correlation, and lock views show a Pro
 
 Use it to decide whether to fix metadata, choose a different target, widen the range, or inspect ingestion. Do not treat an explanatory empty state as strict acceptance evidence.
 
+## Investigate Pod OOM or memory climb
+
+Use the OOM / memory-pressure workflow when a Java Pod is restarting, was recently `OOMKilled`, heap usage climbs, allocation rate rises, or GC pauses line up with user-visible latency.
+
+- Select the namespace, service, Pod, and incident time range first. Pod scope gives the cleanest status and allocation evidence.
+- Confirm target status. `accepted` means profiling can proceed; `oom_killed_seen`, `container_restarted`, and `profiling_window_after_restart` are Kubernetes crash-context evidence, not retained-heap proof.
+- Check ingestion freshness before interpreting missing samples. A stale or rejected profile batch explains why allocation evidence may be absent.
+- Read GC pause evidence next. GC events show JVM pause activity in the same selected window.
+- Use sampled allocation totals, Top allocating paths, Top self allocating frames, and the allocation flame graph to find object-creation pressure.
+- Treat allocation profiles as sampled allocation sources, not retained heap ownership. Do not require production heap dumps for the default investigation path.
+- Use CPU profiles only after allocation and GC evidence do not explain the incident.
+
 ## Analyze CPU profiles
 
 Use the CPU view when a service has high CPU or latency that may be caused by expensive Java code.

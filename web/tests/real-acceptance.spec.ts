@@ -113,6 +113,15 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
   await expect(page.getByRole("button", { name: /^root\. .+ Total .* \d/ })).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-03-memory.png`, fullPage: true });
 
+  await page.getByRole("button", { name: "OOM investigation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Memory pressure investigation" })).toBeVisible();
+  await expect(page.getByLabel("Memory pressure evidence")).toContainText("Target status");
+  await expect(page.getByLabel("Memory pressure evidence")).toContainText("Ingestion");
+  await expect(page.getByLabel("Memory pressure evidence")).toContainText("GC pauses");
+  await expect(page.getByLabel("Memory pressure evidence")).toContainText("Sampled allocation");
+  await expect(page.getByRole("region", { name: "Flamegraph", exact: true })).toBeVisible();
+  await page.screenshot({ path: `${artifactDir}/ui-03b-memory-pressure.png`, fullPage: true });
+
   await page.getByRole("button", { name: "Wall Clock profiles", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Single Pod Wall Clock profile" })).toBeVisible();
   await expect(page.getByText("Latency", { exact: true })).toBeVisible();

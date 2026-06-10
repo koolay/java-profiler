@@ -46,7 +46,7 @@ export function TargetStatusView({ params, statuses }: { params: URLSearchParams
 }
 
 function isAcceptedJavaTarget(status: TargetStatus) {
-  return status.reason === "accepted" || status.message.toLowerCase().includes("hotspot-compatible jvm");
+  return status.reason === "accepted" || status.desired_state === "enabled" || status.desired_state === "temporary" || status.message.toLowerCase().includes("hotspot-compatible jvm");
 }
 
 function getEmptyMessage(allStatuses: TargetStatus[], visibleStatuses: TargetStatus[], javaTargetsOnly: boolean) {
@@ -125,6 +125,12 @@ function actionFor(reason: string) {
       return "Check collector buffer pressure and ingestion health.";
     case "storage_rejected":
       return "Check backend validation and ClickHouse writes.";
+    case "container_restarted":
+      return "Open OOM investigation, then correlate restart timing with allocation, GC, and ingestion evidence.";
+    case "oom_killed_seen":
+      return "Open OOM investigation and inspect sampled allocation paths for object-creation pressure.";
+    case "profiling_window_after_restart":
+      return "Confirm the profile window starts after the restart before interpreting missing samples.";
     default:
       return "Check collector and backend logs for this target.";
   }
