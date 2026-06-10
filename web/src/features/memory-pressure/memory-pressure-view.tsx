@@ -181,4 +181,3 @@ function formatDuration(ns: number) {
   if (ns >= 1_000) return `${(ns / 1_000).toFixed(1)}us`;
   return `${ns}ns`;
 }
-
