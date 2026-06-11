@@ -170,6 +170,7 @@ h1, h2, h3, p { margin-top: 0; }
 .profile-view-toggle button.active { background: var(--accent); color: #fff; }
 .profile-grid { display: grid; grid-template-columns: minmax(220px, .46fr) minmax(0, 1.54fr); gap: 10px; align-items: start; }
 .profile-grid-wide { align-items: start; }
+.allocation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .profile-stack { display: grid; gap: 12px; }
 .profile-flamegraph { min-width: 0; width: 100%; }
 .gc-summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
@@ -195,6 +196,12 @@ h1, h2, h3, p { margin-top: 0; }
 .top-table td button { width: 100%; border: 0; background: transparent; color: var(--ink); padding: 0; text-align: left; }
 .top-table td button span { display: block; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top-table td button small, .top-table td small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.25; }
+.allocation-table th:nth-child(1), .allocation-table td:nth-child(1) { width: auto; }
+.allocation-table th:nth-child(2), .allocation-table td:nth-child(2) { width: 112px; white-space: nowrap; }
+.allocation-table th:nth-child(3), .allocation-table td:nth-child(3) { width: 72px; white-space: nowrap; }
+.allocation-table td:first-child { min-width: 0; overflow: hidden; }
+.allocation-table td:first-child > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.allocation-table td:first-child > small { overflow-wrap: anywhere; white-space: normal; }
 .flamegraph {
   --flame-application-fill: rgba(194,65,12,.22);
   --flame-application-border: rgba(194,65,12,.42);

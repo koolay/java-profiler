@@ -276,6 +276,19 @@ load_images_into_node() {
     images+=("$java_workload_image")
   fi
 
+  local context
+  context="$(kubectl config current-context)"
+  if [[ "$context" == kind-* ]]; then
+    require_cmd kind
+    local kind_cluster="${context#kind-}"
+    for image in "${images[@]}"; do
+      log "- loading $image into kind cluster $kind_cluster"
+      kind load docker-image --name "$kind_cluster" "$image" >"$artifact_dir/image-import-$(printf '%s' "$image" | tr '/:' '__').log"
+    done
+    pass "local images imported into kind cluster $kind_cluster"
+    return 0
+  fi
+
   cat <<YAML | kubectl -n "$profiler_namespace" apply -f -
 apiVersion: v1
 kind: Pod

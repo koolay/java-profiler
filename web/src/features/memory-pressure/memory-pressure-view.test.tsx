@@ -16,6 +16,13 @@ const params = new URLSearchParams("namespace=prod&service=checkout&pod=checkout
 beforeEach(() => {
   vi.mocked(getTargetStatus).mockResolvedValue([
     {
+      target: { namespace: "prod", service: "checkout", pod: "checkout-1", container: "app", process_id: 41 },
+      status_at: "2026-06-11T00:14:30Z",
+      desired_state: "unsupported",
+      reason: "unsupported_jvm",
+      message: "unsupported_jvm",
+    },
+    {
       target: { namespace: "prod", service: "checkout", pod: "checkout-1", container: "app", process_id: 42 },
       status_at: "2026-06-11T00:14:30Z",
       desired_state: "enabled",
@@ -67,6 +74,7 @@ test("renders composed memory pressure evidence from existing query APIs", async
   expect(screen.getByText("5 accepted")).toBeInTheDocument();
   expect(screen.getByText("1 GC pause")).toBeInTheDocument();
   expect(screen.getAllByText("4.0 MiB").length).toBeGreaterThan(0);
+  expect(screen.queryByText("Loading memory pressure evidence.")).not.toBeInTheDocument();
   expect(screen.getByText(/CartBuilder.build accounts for 70% of sampled allocation pressure/)).toBeInTheDocument();
   expect(screen.getByRole("region", { name: "Flamegraph" })).toBeInTheDocument();
 

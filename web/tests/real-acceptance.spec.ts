@@ -119,7 +119,12 @@ test("real cluster Java profiling workbench exposes status, CPU, Wall Clock, I/O
   await expect(page.getByLabel("Memory pressure evidence")).toContainText("Ingestion");
   await expect(page.getByLabel("Memory pressure evidence")).toContainText("GC pauses");
   await expect(page.getByLabel("Memory pressure evidence")).toContainText("Sampled allocation");
+  await expect(page.getByText("Loading memory pressure evidence.")).toBeHidden();
+  await expect(page.getByLabel("Memory pressure evidence")).toContainText(/accepted/i);
+  await expect(page.getByLabel("Memory pressure evidence")).toContainText(/[1-9][0-9.]*\s*(KiB|MiB|GiB)/);
+  await expect(page.getByLabel("Memory pressure insights")).toContainText(/sampled allocation pressure/i);
   await expect(page.getByRole("region", { name: "Flamegraph", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^root\. .+ Total .* [1-9]/ })).toBeVisible();
   await page.screenshot({ path: `${artifactDir}/ui-03b-memory-pressure.png`, fullPage: true });
 
   await page.getByRole("button", { name: "Wall Clock profiles", exact: true }).click();

@@ -20,11 +20,11 @@ export function MemoryPressureView({ params }: { params: URLSearchParams }) {
   };
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: statuses, error: statusError } = useAPI(() => getTargetStatus(params), [params.toString()], fallbackStatus);
-  const { data: ingestion, error: ingestionError } = useAPI(() => getIngestionHealth(), [], fallbackIngestion);
-  const { data: gcEvidence, error: gcError } = useAPI(() => getJVMEvents(gcParams), [gcParams.toString()], fallbackGC);
-  const { data: allocation, error: allocationError } = useAPI(() => getAllocationSummary(allocationParams), [allocationParams.toString()], fallbackAllocation);
-  const { data: flamegraph, error: flamegraphError, loading } = useAPI(() => getFlamegraph(allocationParams), [allocationParams.toString()], fallbackFlamegraph);
+  const { data: statuses, error: statusError, loading: statusLoading } = useAPI(() => getTargetStatus(params), [params.toString()], fallbackStatus);
+  const { data: ingestion, error: ingestionError, loading: ingestionLoading } = useAPI(() => getIngestionHealth(), [], fallbackIngestion);
+  const { data: gcEvidence, error: gcError, loading: gcLoading } = useAPI(() => getJVMEvents(gcParams), [gcParams.toString()], fallbackGC);
+  const { data: allocation, error: allocationError, loading: allocationLoading } = useAPI(() => getAllocationSummary(allocationParams), [allocationParams.toString()], fallbackAllocation);
+  const { data: flamegraph, error: flamegraphError, loading: flamegraphLoading } = useAPI(() => getFlamegraph(allocationParams), [allocationParams.toString()], fallbackFlamegraph);
 
   const latestStatus = latestTargetStatus(statuses ?? []);
   const latestBatch = latestAcceptedProfileBatch(ingestion ?? fallbackIngestion);
@@ -69,7 +69,7 @@ export function MemoryPressureView({ params }: { params: URLSearchParams }) {
         )}
       </div>
 
-      {loading && <p className="muted">Loading allocation flamegraph.</p>}
+      {(statusLoading || ingestionLoading || gcLoading || allocationLoading || flamegraphLoading) && <p className="muted">Loading memory pressure evidence.</p>}
       <Flamegraph
         root={flamegraph?.root ?? fallbackFlamegraph.root}
         metadata={flamegraph?.metadata}
@@ -105,7 +105,19 @@ function withParam(params: URLSearchParams, key: string, value: string) {
 }
 
 function latestTargetStatus(statuses: TargetStatus[]) {
-  return [...statuses].sort((a, b) => Date.parse(b.status_at ?? "") - Date.parse(a.status_at ?? ""))[0];
+  return [...statuses].sort((a, b) => {
+    const timeOrder = Date.parse(b.status_at ?? "") - Date.parse(a.status_at ?? "");
+    if (Number.isFinite(timeOrder) && timeOrder !== 0) return timeOrder;
+    return statusPriority(b) - statusPriority(a);
+  })[0];
+}
+
+function statusPriority(status: TargetStatus) {
+  if (status.reason === "oom_killed_seen") return 50;
+  if (status.reason === "container_restarted" || status.reason === "profiling_window_after_restart") return 40;
+  if (status.reason === "accepted") return 30;
+  if (status.desired_state === "enabled" || status.desired_state === "temporary") return 20;
+  return 0;
 }
 
 function latestAcceptedProfileBatch(ingestion: IngestionHealth) {
