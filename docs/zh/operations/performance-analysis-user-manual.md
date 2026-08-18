@@ -1,6 +1,6 @@
 # Java 服务性能分析用户手册
 
-本文面向 Java 服务负责人、值班响应人员和应用开发人员，说明如何使用 `java-profiler` 分析 Kubernetes 中 Java 服务的 CPU、Wall Clock 延迟、Java I/O wait、GC pauses、内存分配、锁等待、死锁和线程问题。部署、权限、升级、ClickHouse、Web 代理和平台故障处理见 [部署运维管理员手册](../../operations/deployment-operations-admin-manual.md)。如果问题涉及部署、权限、ClickHouse、Web 代理、token 或 collector DaemonSet，请转交平台管理员并引用管理员手册。
+本文面向 Java 服务负责人、值班响应人员和应用开发人员，说明如何使用 `java-profiler` 分析 Kubernetes 中 Java 服务的 CPU、Wall Clock 延迟、Java I/O wait、GC pauses、内存分配、锁等待、死锁和线程问题。部署、权限、升级、ClickHouse、Web 代理和平台故障处理见 [部署运维管理员手册](./deployment-operations-admin-manual.md)。如果问题涉及部署、权限、ClickHouse、Web 代理、token 或 collector DaemonSet，请转交平台管理员并引用管理员手册。
 
 ## 真实工作流截图
 

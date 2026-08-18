@@ -45,7 +45,7 @@ features:
 
 ## 面向平台运维
 
-- [部署运维手册](../operations/deployment-operations-admin-manual.md)：安装、安全、存储、升级和故障处理。
+- [部署运维手册](./operations/deployment-operations-admin-manual.md)：安装、安全、存储、升级和故障处理。
 - [真实 Profiling 验收](../operations/real-profiling-acceptance-standard.md)：在发布前证明 CPU、Wall Clock、Java I/O wait、GC、allocation、lock、ClickHouse、UI 和 ingestion 行为。
 
 ## 面向贡献者

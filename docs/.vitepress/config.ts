@@ -12,7 +12,7 @@ const enNav = [
 const zhNav = [
   { text: '快速开始', link: '/zh/getting-started/quickstart' },
   { text: '使用场景', link: '/zh/operations/performance-analysis-user-manual' },
-  { text: '运维', link: '/operations/deployment-operations-admin-manual' },
+  { text: '运维', link: '/zh/operations/deployment-operations-admin-manual' },
   { text: '贡献者', link: '/zh/contributing/development' },
   { text: '架构', link: '/architecture/java-profiler-architecture' },
   { text: '参考', link: '/zh/reference/profiling-contracts' }
@@ -46,9 +46,7 @@ const enSidebar = [
     items: [
       { text: 'Development Setup', link: '/contributing/development' },
       { text: 'Localization', link: '/contributing/localization' },
-      { text: 'System Architecture', link: '/architecture/java-profiler-architecture' },
-      { text: 'Ingestion Architecture', link: '/architecture/performance-ingestion-architecture-review' },
-      { text: 'Allocation Analysis Optimization', link: '/architecture/allocation-analysis-optimization-design' }
+      { text: 'System Architecture', link: '/architecture/java-profiler-architecture' }
     ]
   },
   {
@@ -77,9 +75,9 @@ const zhSidebar = [
   {
     text: '运维',
     items: [
-      { text: '部署运维手册', link: '/operations/deployment-operations-admin-manual' },
+      { text: '部署运维手册', link: '/zh/operations/deployment-operations-admin-manual' },
       { text: '真实 Profiling 验收', link: '/operations/real-profiling-acceptance-standard' },
-      { text: 'E2E 自动化指南', link: '/operations/e2e-automation-test-guide' }
+      { text: 'E2E 自动化指南', link: '/zh/operations/e2e-automation-test-guide' }
     ]
   },
   {
@@ -87,9 +85,7 @@ const zhSidebar = [
     items: [
       { text: '开发设置', link: '/zh/contributing/development' },
       { text: '本地化策略', link: '/zh/contributing/localization' },
-      { text: '系统架构', link: '/architecture/java-profiler-architecture' },
-      { text: 'Ingestion 架构', link: '/architecture/performance-ingestion-architecture-review' },
-      { text: 'Allocation 分析优化', link: '/architecture/allocation-analysis-optimization-design' }
+      { text: '系统架构', link: '/architecture/java-profiler-architecture' }
     ]
   },
   {

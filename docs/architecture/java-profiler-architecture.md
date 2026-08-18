@@ -921,14 +921,13 @@ Existing flamegraph packages can be studied or used in a prototype, but v1 shoul
 
 ### Kubernetes Controls
 
-The exact annotation names are deferred, but the architecture expects these controls:
+The concrete annotation and label vocabulary is defined in [`contracts/profiling/payloads.md`](https://github.com/koolay/java-profiler/blob/main/contracts/profiling/payloads.md). The architecture uses these controls:
 
-- continuous profiling enabled
-- temporary profiling enabled
-- temporary duration
-- startup delay override
-- explicit disable
-- thread snapshot mode or frequency override
+- `java-profiler.io/profile-mode`: `disabled`, `continuous`, or `temporary`
+- `java-profiler.io/profile-disabled`: a truthy value that forces disabled mode
+- `java-profiler.io/profile-duration`: a Go-style duration for temporary profiling
+- `java-profiler.io/startup-delay`: delay before profiling newly discovered JVMs
+- `java-profiler.io/snapshot-interval`: thread snapshot interval
 
 Precedence:
 
@@ -1180,16 +1179,11 @@ Mitigations:
 
 ---
 
-## Planning Follow-Ups
+## Open Architecture Decisions
 
-- Define exact Kubernetes annotation names and precedence rules.
-- Define concrete ClickHouse DDL and indexes/order keys.
-- Define upload payload schemas and API endpoints.
-- Define flamegraph JSON format.
-- Define UI wireframes for memory, CPU, lock, deadlock, and status views.
-- Define collector Kubernetes permissions and security posture.
-- Define exact ThreadMXBean helper packaging and attach lifecycle.
-- Define container image build matrix, Helm chart or raw manifest ownership, and CI publish target.
+- Confirm concrete ClickHouse DDL and indexes/order keys against the implementation.
+- Confirm collector Kubernetes permissions and security posture in deployment artifacts.
+- Confirm the container image build matrix, Helm chart or raw manifest ownership, and CI publish target.
 
 ---
 
@@ -1221,16 +1215,3 @@ Disallowed as default evidence:
 Chinese-community context may be collected only when explicitly requested, and it must be separated from primary evidence.
 
 ---
-
-## GSTACK REVIEW REPORT
-
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | - | - |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | - | - |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | addressed_in_doc | 9 findings incorporated, implementation verification still required |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | - | UI exists in scope, design review not run |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | - | - |
-
-- **RESOLVED IN DOC:** v1 delivery slice, ThreadMXBean helper path, busy-thread confidence model, ClickHouse aggregation controls, auth baseline, and distribution pipeline requirement.
-- **VERDICT:** Architecture is ready for implementation planning. Implementation is not complete until tests prove the failure modes and query budgets described above.

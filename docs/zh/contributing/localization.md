@@ -14,13 +14,20 @@
 | `/contributing/development` | `/zh/contributing/development` |
 | `/reference/profiling-contracts` | `/zh/reference/profiling-contracts` |
 
+有英文入口、中文完整手册的运维页面：
+
+| English 入口 | 中文完整手册 |
+| --- | --- |
+| `/operations/deployment-operations-admin-manual` | `/zh/operations/deployment-operations-admin-manual` |
+| `/operations/e2e-automation-test-guide` | `/zh/operations/e2e-automation-test-guide` |
+
 ## 只保留英文的页面
 
 实现细节重、访问频率低、或偏开发过程的材料默认只保留英文：
 
 - 架构细节。
 - Ingestion 架构 review。
-- E2E 自动化细节。
+- E2E 自动化的详细执行步骤位于 `/zh/operations`，英文路径保留概览和验收边界。
 - 真实 profiling 验收标准。
 - Research notes。
 - Brainstorms 和项目历史材料。

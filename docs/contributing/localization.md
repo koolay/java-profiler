@@ -14,13 +14,20 @@ Keep these pages available in both English and Chinese:
 | `/contributing/development` | `/zh/contributing/development` |
 | `/reference/profiling-contracts` | `/zh/reference/profiling-contracts` |
 
+Operational pages with a localized full manual:
+
+| English entry point | Chinese full manual |
+| --- | --- |
+| `/operations/deployment-operations-admin-manual` | `/zh/operations/deployment-operations-admin-manual` |
+| `/operations/e2e-automation-test-guide` | `/zh/operations/e2e-automation-test-guide` |
+
 ## English-only pages
 
 Keep implementation-heavy or low-traffic material English-only unless there is a clear user need:
 
 - Architecture details.
 - Ingestion architecture review.
-- E2E automation details.
+- The detailed E2E automation procedure is localized under `/zh/operations`; the English route remains an overview and acceptance boundary.
 - Real profiling acceptance standard.
 - Research notes.
 - Brainstorms and project-history material.
