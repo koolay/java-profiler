@@ -1,6 +1,6 @@
 # Java Profiler 部署运维管理员手册
 
-本文面向平台管理员、SRE、集群运维人员和安全管理员，说明如何部署、配置、升级、验证和排障 `java-profiler`。Java 服务 owner 的日常性能分析流程见 [Java 服务性能分析用户手册](./performance-analysis-user-manual.md)。如果问题是业务栈热点如何解释，应转交服务 owner 并引用用户手册。
+本文面向平台管理员、SRE、集群运维人员和安全管理员，说明如何部署、配置、升级、验证和排障 `java-profiler`。Java 服务 owner 的日常性能分析流程见 [Java 服务性能分析用户手册](./performance-analysis-user-manual.md)。业务栈热点的解释不属于本手册范围。
 
 ## 管理员职责
 
@@ -16,7 +16,7 @@
 
 管理员不负责解释业务代码热点。CPU、allocation、lock、deadlock 和线程证据的业务解释由 Java 服务 owner 完成。
 
-## 快速导航
+## 常用任务
 
 | 任务 | 阅读章节 |
 | --- | --- |
@@ -28,7 +28,7 @@
 | ClickHouse 或 backend 异常 | ClickHouse 管理、故障排查案例 1 |
 | 给服务团队交接 | 管理员交接清单、服务团队交接消息模板 |
 
-## 系统边界
+## 系统范围
 
 `java-profiler` 第一版本只覆盖 Kubernetes 中的 HotSpot 兼容 Java 服务：
 
@@ -39,7 +39,7 @@
 - 数据 retention 不超过 7 天；可选 raw artifact 不超过 24 小时。
 - Prometheus 只负责抓取 collector/backend exporter 指标；本系统不存储 Prometheus 时序数据。
 
-不要把它扩展成通用日志、 tracing、service map、非 Java profiling 或长期指标平台。
+这个版本不负责通用日志、tracing、service map、非 Java profiling 或长期指标存储。
 
 稳定 payload 和配置词汇以 [profiling contracts](../reference/profiling-contracts.md) 为准；本手册解释管理员如何部署、验证和恢复这些合同。
 
@@ -66,9 +66,9 @@
 - ClickHouse retention、磁盘容量和备份策略符合平台要求。
 - 服务 owner 知道 profiling 默认关闭，必须通过 metadata 显式开启。
 
-## 上线前验收清单
+## 上线后检查
 
-每次新装、升级或回滚后，至少完成这组 smoke test：
+每次新装、升级或回滚后，至少完成以下 smoke test：
 
 - `helm lint` 或等价 chart 检查通过。
 - backend Pod Ready，日志显示 ClickHouse ping 和 schema apply 成功。
@@ -96,7 +96,7 @@
 
 如果 tag 对应的验证失败，workflow 不会发布 release。发布后的 release 页面应作为这个版本的入口，而不是手工拼出来的版本说明。
 
-## 验收通过标准
+## 通过标准
 
 | 检查项 | 通过标准 | 失败后先查 |
 | --- | --- | --- |

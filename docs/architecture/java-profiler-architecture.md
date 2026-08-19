@@ -6,25 +6,25 @@ source_requirements: docs/brainstorms/java-profiler-requirements.md
 
 # Java Profiler Architecture
 
-## Architecture Summary
+## The shape of the system
 
-Build a Java-only Kubernetes performance profiling system with four deployable parts:
+The system has four deployable parts:
 
 - Node collector: DaemonSet running on every Kubernetes node.
 - Backend API: receives agent uploads and serves query APIs.
 - ClickHouse storage: stores normalized profiles, thread snapshots, deadlock events, target status, and ingestion health.
 - Web UI: service-centric Java diagnosis interface.
 
-The system is intentionally narrower than Coroot and Pyroscope. It does not own logs, tracing, service maps, or non-Java profiling. It answers these first-version questions:
+The scope is intentionally narrower than Coroot and Pyroscope. This system does not own logs, tracing, service maps, or non-Java profiling. It is designed to answer four first-version questions:
 
 - What code is allocating memory?
 - Where is a Java deadlock?
 - Which threads are slow or blocked?
 - Which threads or Java stacks are busy?
 
-### V1 Delivery Slice
+### Delivery order
 
-The first implementation should ship as a vertical slice, not as all conceptual components at once.
+The implementation should grow as a vertical slice rather than attempting every conceptual component at once.
 
 ```text
 Slice 1: target status + ingestion health + profile ingestion + ClickHouse TTL
@@ -33,11 +33,11 @@ Slice 3: ThreadMXBean snapshots + deadlock events + slow/busy thread summaries
 Slice 4: minimal service-centric UI + packaging
 ```
 
-This keeps the first usable system small while preserving the final architecture. The conceptual boundaries below are still valid, but they are not a mandate to create one class or service per bullet on day one.
+This keeps the first usable system small while preserving the final architecture. The boundaries below describe responsibilities; they do not require one class or service for every bullet.
 
 ---
 
-## Architectural Principles
+## Design principles
 
 - Keep profiling domain logic independent of Kubernetes, ClickHouse, HTTP, and UI frameworks.
 - Treat async-profiler profiles, thread snapshots, deadlock events, target status, and ingestion health as separate domain concepts.
@@ -48,7 +48,7 @@ This keeps the first usable system small while preserving the final architecture
 
 ---
 
-## C4 Context
+## Context
 
 ```mermaid
 flowchart LR
@@ -74,7 +74,7 @@ flowchart LR
 
 ---
 
-## Containers
+## Deployable components
 
 ### Node Collector
 
@@ -145,9 +145,9 @@ Non-responsibilities:
 
 ---
 
-## Metrics Boundary
+## Where metrics belong
 
-Metrics are exporter-only in this project.
+Operational metrics are exporter-only in this project.
 
 - Collector and backend expose Prometheus-compatible scrape endpoints.
 - Prometheus-series services own metric storage, dashboards, alerting, and retention.
@@ -159,9 +159,9 @@ ClickHouse stores profile and diagnosis data only: profiles, stacks, thread snap
 
 ---
 
-## Domain Model
+## Domain model
 
-Use these domain terms consistently across collector, backend, storage, and UI.
+Use these terms consistently in the collector, backend, storage model, and UI.
 
 ### Target Identity
 
@@ -294,7 +294,7 @@ The UI must distinguish thread-level CPU evidence from profile-level stack hotsp
 
 ---
 
-## Backend Bounded Contexts
+## Backend responsibilities
 
 ### Collection Control
 

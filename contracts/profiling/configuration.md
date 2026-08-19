@@ -1,6 +1,6 @@
 # Profiling Configuration
 
-This document records the first implementation's configuration vocabulary.
+This file lists the configuration names used by the first implementation.
 
 ## Collector configuration
 
@@ -24,7 +24,7 @@ This document records the first implementation's configuration vocabulary.
 - `JAVA_PROFILER_MAX_STACK_DEPTH`
 - `JAVA_PROFILER_MAX_RESULT_ROWS`
 
-## Operating defaults
+## Defaults
 
 - profiling is disabled unless Kubernetes metadata enables it
 - temporary profiling is bounded

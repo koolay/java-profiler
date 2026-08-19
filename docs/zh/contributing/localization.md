@@ -1,6 +1,6 @@
 # 本地化策略
 
-`java-profiler` 文档以英文为 source language。中文文档覆盖最重要的用户路径和贡献者路径，不追求把所有内部材料都翻译一遍。
+`java-profiler` 文档以英文为源语言。中文文档优先覆盖最重要的用户和贡献者路径，不把所有内部材料都翻译一遍。
 
 ## 必须双语的页面
 
@@ -51,7 +51,7 @@ npm run docs:build
 
 ## 风格
 
-- 使用清楚的技术中文，不做逐句硬翻。
+- 使用自然、清楚的技术中文，不做逐句硬翻。
 - 产品名、API key、annotation、profile type、文件路径保持原样。
 - UI 里显示的术语保留英文，例如 `Top Table`、`Flame Graph`、`Self CPU`、`Total CPU`。
 - 不要只在中文页添加新的产品承诺。如果这个说法重要，先加到英文页。

@@ -3,23 +3,23 @@ date: 2026-05-08
 topic: java-profiler
 ---
 
-# Java Profiler
+# Java Profiler: Product Requirements
 
-## Summary
+## In brief
 
-Build a focused performance analysis system for Java services running on Kubernetes. The first version uses a node-level agent, Kubernetes annotation controls, async-profiler-based Java profiling, ClickHouse storage, and a minimal self-owned UI for profile and thread-diagnosis investigation.
+`java-profiler` is a focused performance analysis system for Java services on Kubernetes. The first version combines a node-level collector, Kubernetes metadata controls, async-profiler-based profiling, ClickHouse storage, and a small self-owned UI for profile and thread diagnosis.
 
 ---
 
-## Problem Frame
+## The problem
 
-The current reference system, Coroot node-agent, is powerful but broader than needed. The target need is narrower: help operators diagnose production Java service issues such as CPU hotspots, allocation pressure, GC pressure, and lock contention without restarting applications or adding application code changes.
+Coroot's node agent is a useful reference, but it covers much more than this project needs. The narrower problem is helping operators diagnose CPU hotspots, allocation pressure, GC pressure, and lock contention in production Java services without restarting applications or changing application code.
 
 The deployment environment is Kubernetes, and Java services run as Pods. Production safety matters more than complete fleet-wide coverage, so the system must default to controlled enablement rather than profiling everything automatically.
 
 ---
 
-## Actors
+## Who uses the system
 
 - A1. Platform operator: installs the agent and configures cluster-level policies.
 - A2. Java service owner: enables or disables profiling for a service using Kubernetes metadata.
@@ -29,53 +29,53 @@ The deployment environment is Kubernetes, and Java services run as Pods. Product
 
 ---
 
-## Key Flows
+## Common workflows
 
 - F1. Whitelist continuous profiling
   - **Trigger:** A service owner adds the agreed Kubernetes annotation or label to a Java workload.
-  - **Actors:** A2, A4, A5
+  - **Participants:** A2, A4, A5
   - **Steps:** The node agent notices matching Pods on its node, discovers HotSpot JVMs, starts profiling after a safety delay, periodically uploads profiles, and reports profiler status.
   - **Outcome:** The service has continuous Java CPU, allocation, and lock profiling data available for review.
-  - **Covered by:** R1, R2, R3, R4, R8
+  - **Related requirements:** R1, R2, R3, R4, R8
 
 - F2. Temporary incident profiling
   - **Trigger:** An incident responder enables a temporary profiling annotation or label for a service or Pod.
-  - **Actors:** A3, A4, A5
+  - **Participants:** A3, A4, A5
   - **Steps:** The node agent starts profiling only for the requested target, captures data for the configured time window, uploads results, and stops automatically when the window expires.
   - **Outcome:** The responder can inspect a bounded profile result without leaving profiling on indefinitely.
-  - **Covered by:** R2, R3, R5, R6, R8
+  - **Related requirements:** R2, R3, R5, R6, R8
 
 - F3. Profile investigation
   - **Trigger:** A user sees a spike in CPU, allocation rate, GC pressure, or lock wait.
-  - **Actors:** A2, A3, A5
+  - **Participants:** A2, A3, A5
   - **Steps:** The user selects a service, time range, and profile type, then opens a flamegraph for the matching profile data. Existing Prometheus dashboards remain the source for metric trend charts.
   - **Outcome:** The user can connect a production symptom to the Java method stack responsible for it.
-  - **Covered by:** R7, R8, R9, R10
+  - **Related requirements:** R7, R8, R9, R10
 
 - F4. Profiling shutdown
   - **Trigger:** A service owner removes the profiling annotation, sets an explicit disabled state, or the temporary window expires.
-  - **Actors:** A2, A3, A4
+  - **Participants:** A2, A3, A4
   - **Steps:** The node agent stops async-profiler for matching JVMs and records the stopped status.
   - **Outcome:** Profiling no longer adds runtime overhead to the target JVMs.
-  - **Covered by:** R5, R6, R11
+  - **Related requirements:** R5, R6, R11
 
 - F5. Thread diagnosis snapshot
   - **Trigger:** A user investigates deadlock, slow requests, thread pool saturation, or high CPU in a Java service.
-  - **Actors:** A2, A3, A4, A5
+  - **Participants:** A2, A3, A4, A5
   - **Steps:** The user opens the service thread view or enables temporary profiling; the agent captures bounded JVM thread snapshots with thread state, stack trace, lock ownership, lock wait information, and deadlock detection output.
   - **Outcome:** The user can identify deadlocked threads, blocked threads, busy RUNNABLE threads, and their current Java stacks.
-  - **Covered by:** R30, R31, R32, R33, R34
+  - **Related requirements:** R30, R31, R32, R33, R34
 
 - F6. Memory pressure investigation
   - **Trigger:** A user sees allocation rate, heap usage, or GC time increase for a Java service.
-  - **Actors:** A2, A3, A5
+  - **Participants:** A2, A3, A5
   - **Steps:** The user uses existing Prometheus dashboards to identify the affected service and time range, then opens allocation bytes or allocation objects flamegraphs for that range.
   - **Outcome:** The user can distinguish high allocation pressure from retained-heap analysis needs and identify the code path allocating memory.
-  - **Covered by:** R9, R10, R24, R30
+  - **Related requirements:** R9, R10, R24, R30
 
 ---
 
-## Requirements
+## Product requirements
 
 **Kubernetes control**
 - R1. The system must support opt-in profiling using Kubernetes annotations or labels, rather than profiling every Java Pod by default.
@@ -136,9 +136,9 @@ The deployment environment is Kubernetes, and Java services run as Pods. Product
 
 ---
 
-## Default Retention Policy
+## Retention
 
-All defaults are bounded at or below 7 days. The system may allow shorter retention per environment, but must not allow longer retention without changing the product requirement.
+All defaults are seven days or shorter. An environment may choose a shorter period, but a longer period would be a product change.
 
 - Profile samples and stacks: 7 days.
 - Thread snapshots and thread stacks: 7 days.
@@ -150,9 +150,9 @@ Expired ClickHouse data must be removed by table TTL or an equivalent automatic 
 
 ---
 
-## Viewing Technology Direction
+## Direction for the viewing layer
 
-The first version should use a self-owned lightweight Web UI rather than Pyroscope, Grafana, or a bundled third-party profiling console.
+The first version uses a lightweight Web UI owned by this project rather than Pyroscope, Grafana, or a bundled third-party profiling console.
 
 - Backend query API returns service summaries, flamegraph trees, thread snapshots, deadlock events, target status, and ingestion health from ClickHouse.
 - JVM metric charts are not part of this UI because they already exist in Prometheus dashboards. The UI may link to those dashboards with matching service and time-range context.
@@ -164,7 +164,7 @@ This keeps the viewing layer narrow: it answers Java performance questions, but 
 
 ---
 
-## Acceptance Examples
+## Examples of successful behavior
 
 - AE1. **Covers R1, R3, R7, R9.** Given a Java Deployment without profiling annotations, when the DaemonSet agent observes its Pod, no async-profiler session is started and the target is shown as not enabled.
 - AE2. **Covers R1, R4, R8, R9.** Given a HotSpot Java Pod with the continuous profiling annotation, when the startup delay has elapsed, the node agent starts collecting CPU, allocation, and lock profiles.
@@ -186,7 +186,7 @@ This keeps the viewing layer narrow: it answers Java performance questions, but 
 
 ---
 
-## Success Criteria
+## Release outcome
 
 - Operators can enable Java profiling for a selected production workload without restarting application Pods.
 - Incident responders can temporarily profile a single Java service or Pod and stop it automatically or manually.
@@ -200,7 +200,7 @@ This keeps the viewing layer narrow: it answers Java performance questions, but 
 
 ---
 
-## Scope Boundaries
+## Deliberate limits
 
 - No Pyroscope, Parca, Grafana profile backend, or other incompatible profile server dependency.
 - No general-purpose Coroot replacement.
@@ -219,7 +219,7 @@ This keeps the viewing layer narrow: it answers Java performance questions, but 
 
 ---
 
-## Key Decisions
+## Decisions already made
 
 - Use a DaemonSet collector as the primary collection shape: node-local discovery and JVM attach are a better production fit than ad hoc cross-Pod jobs.
 - Use Kubernetes annotations or labels for control: this keeps rollout GitOps-friendly and avoids requiring a custom control UI before the profiling loop works.
@@ -234,7 +234,7 @@ This keeps the viewing layer narrow: it answers Java performance questions, but 
 
 ---
 
-## Dependencies / Assumptions
+## Dependencies and assumptions
 
 - The target Kubernetes environment allows a DaemonSet with the permissions needed to inspect local processes and attach to target JVMs.
 - The existing ClickHouse instance has enough retention, disk, and operational headroom for profile and thread-diagnosis data in addition to logs.
@@ -245,9 +245,9 @@ This keeps the viewing layer narrow: it answers Java performance questions, but 
 
 ---
 
-## Outstanding Questions
+## Open decisions
 
-### Deferred to Planning
+### To settle during implementation
 
 - [Affects R1-R6][Technical] Define the exact Kubernetes annotation and label vocabulary for continuous enablement, temporary enablement, duration, and explicit disable.
 - [Affects R13-R17][Technical] Decide whether ClickHouse stores only normalized profile samples or also raw profile/JFR artifacts for replay and debugging.

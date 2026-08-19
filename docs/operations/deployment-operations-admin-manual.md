@@ -1,6 +1,6 @@
 # Java Profiler Deployment and Operations
 
-This page is the English entry point for platform administrators, SREs, and security administrators. The complete operational manual is currently maintained in Chinese at [部署运维管理员手册](/zh/operations/deployment-operations-admin-manual).
+This page is the English entry point for platform administrators, SREs, and security administrators. The [Chinese operational manual](/zh/operations/deployment-operations-admin-manual) contains the longer installation and troubleshooting procedures.
 
 ## Product boundary
 
@@ -19,11 +19,11 @@ The platform does not expand into general logging, tracing, service maps, non-Ja
 
 Administrators own installation, configuration, permissions, upgrades, rollback, ClickHouse retention, Web-to-backend routing, collector discovery, and operational health. Service owners own the interpretation of CPU, allocation, lock, deadlock, and thread evidence.
 
-Use the [Profiling Contracts](../reference/profiling-contracts) as the vocabulary authority and the [Real Profiling Acceptance Standard](./real-profiling-acceptance-standard) as the release gate.
+Use the [Profiling Contracts](../reference/profiling-contracts) for field names and status values. Use the [Real Profiling Acceptance Standard](./real-profiling-acceptance-standard) when a release changes the profiling path.
 
 ## Required operational checks
 
-Before declaring a deployment ready, verify:
+Before handing a deployment to users, verify:
 
 1. Collector, backend, Web, and ClickHouse are healthy.
 2. Kubernetes RBAC allows node-local JVM discovery and attach operations.
@@ -34,4 +34,4 @@ Before declaring a deployment ready, verify:
 
 ## Release and troubleshooting
 
-The repository release scripts build and publish versioned artifacts. A release is not complete until deployment, backend, ClickHouse, collector, and UI checks pass. For detailed Helm, Secret, RBAC, proxy, retention, upgrade, rollback, and failure-case procedures, use the [full Chinese operational manual](/zh/operations/deployment-operations-admin-manual).
+The release scripts build and publish versioned artifacts. Treat a release as ready only after the deployment, backend, ClickHouse, collector, and UI checks pass. For detailed Helm, Secret, RBAC, proxy, retention, upgrade, rollback, and failure-case procedures, use the [full Chinese operational manual](/zh/operations/deployment-operations-admin-manual).

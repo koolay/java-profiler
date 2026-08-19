@@ -1,6 +1,6 @@
 # Contributing
 
-This project needs contributors to preserve one rule: profiling changes must prove real profile data, not just a healthy UI.
+The fastest way to break confidence in this project is to make the UI look healthy while the collector produces no real data. Changes to the profiling path therefore need real-data acceptance, not only unit tests or a page-load check.
 
 ## Development setup
 
@@ -21,14 +21,14 @@ npm install
 npm run docs:dev
 ```
 
-Build before publishing docs changes:
+Build before publishing documentation changes:
 
 ```bash
 cd docs
 npm run docs:build
 ```
 
-The docs site is bilingual. English is the source language, and Chinese covers the core user and contributor paths. See [Localization](./localization.md) before adding or moving public docs pages.
+The docs site is bilingual. English is the original version, and Chinese covers the core user and contributor paths. Read [Localization](./localization.md) before adding or moving a public page.
 
 ## Real acceptance
 
@@ -45,7 +45,7 @@ scripts/real-acceptance.sh \
   --artifact-dir /tmp/java-profiler-real-acceptance-$(date +%Y%m%d%H%M%S)
 ```
 
-Passing means the run produced accepted target status, non-empty CPU/allocation/lock profiles, ClickHouse rows, ingestion evidence, bounded retention, browser UI evidence, and no target workload restart increase.
+The run is successful only when it produces an accepted target, non-empty CPU/allocation/lock profiles, ClickHouse rows, ingestion information, bounded retention, browser evidence, and no increase in the target workload's restart count.
 
 ## Screenshot evidence
 

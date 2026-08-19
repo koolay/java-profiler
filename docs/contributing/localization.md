@@ -1,6 +1,6 @@
 # Localization
 
-English is the source language for `java-profiler` documentation. Chinese pages are localized copies for the paths most users and contributors need first.
+English is the original version of the `java-profiler` documentation. Chinese pages cover the paths most users and contributors need first.
 
 ## Required bilingual pages
 

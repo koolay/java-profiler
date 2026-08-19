@@ -1,14 +1,14 @@
 # Profiling Contracts
 
-The stable profiling payload and configuration contracts live in the repository source tree under `contracts/profiling`.
+The stable profiling payload and configuration contracts live under `contracts/profiling` in the repository.
 
-Use these files as the source of truth when changing collector payloads, backend ingestion, or UI interpretation:
+When changing collector payloads, backend ingestion, or UI interpretation, start with these files:
 
 - [`configuration.md`](https://github.com/koolay/java-profiler/blob/main/contracts/profiling/configuration.md)
 - [`payloads.md`](https://github.com/koolay/java-profiler/blob/main/contracts/profiling/payloads.md)
 - [`types.go`](https://github.com/koolay/java-profiler/blob/main/contracts/profiling/types.go)
 
-Changes to these contracts should be reflected in the requirements, operations guides, and real profiling acceptance standard when they affect scope, retention, collection, storage, or user-visible behavior.
+If a contract change affects scope, retention, collection, storage, or visible behavior, update the requirements, operations guides, and real profiling acceptance standard with it.
 
 ## Current UI Query Contracts
 
@@ -22,4 +22,4 @@ The web UI currently consumes product-shaped backend routes under `/api/ui/v1`:
 - `/ingestion`: aggregate profile batch acceptance, retry, rejection, drop, and truncation evidence.
 - `/jvm-events`, `/thread-diagnosis`, and `/deadlocks`: GC, thread, and deadlock diagnosis evidence.
 
-Empty profile states are user-visible contract behavior. The UI distinguishes disabled profiling, expired temporary windows, unmatched targets, ingestion gaps, query errors, and no samples in the selected range. These states help diagnosis, but they do not replace strict acceptance requirements for non-empty CPU, Wall Clock, allocation, I/O, and lock profile data.
+Empty profile states are part of the UI contract. The UI distinguishes disabled profiling, expired temporary windows, unmatched targets, ingestion gaps, query errors, and ranges with no samples. These states help a user troubleshoot a missing result; they do not count as non-empty CPU, Wall Clock, allocation, I/O, or lock profile data during acceptance.

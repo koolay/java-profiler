@@ -1,18 +1,18 @@
 # Performance Analysis Manual
 
-Use this workflow when a Java service is already being profiled and you need to find the stack responsible for CPU, Wall Clock latency, Java I/O wait, GC pauses, allocation, lock, deadlock, or ingestion problems.
+Use this guide when a Java service is already being profiled and you need to connect a performance symptom to a Java stack. It covers CPU, Wall Clock latency, Java I/O wait, GC pauses, allocation, lock, deadlock, and ingestion problems.
 
-The screenshots below come from a real Kubernetes acceptance environment, not mocked UI state.
+The screenshots below come from a real Kubernetes acceptance environment.
 
 ## Start with target status
 
-Target status tells you whether the selected JVM was accepted, rejected, disabled, unsupported, expired, or failed attach. Check this before assuming a service has no performance data.
+Target status tells you whether the selected JVM was accepted, rejected, disabled, unsupported, expired, or could not be attached to. Check it before concluding that a service has no performance data.
 
 ![Real target status evidence](../assets/screenshots/real-target-status.png)
 
 ## Read profile evidence guidance
 
-CPU, Wall Clock, I/O wait, allocation, GC-correlation, and lock views show a Profile evidence status banner when the selected profile has no samples. The banner is not a substitute for real profile data. It explains the next check:
+When a selected profile has no samples, the CPU, Wall Clock, I/O wait, allocation, GC-correlation, and lock views show a Profile evidence status banner. The banner does not create profile data; it tells you what to check next:
 
 - `profiling_disabled`: the target is visible, but profiling metadata disables collection.
 - `temporary_expired`: the selected temporary profiling window has ended.
@@ -20,23 +20,23 @@ CPU, Wall Clock, I/O wait, allocation, GC-correlation, and lock views show a Pro
 - `ingestion_gap`: aggregate ingestion health has rejected, retryable, dropped, or truncated profile batches.
 - `no_samples_in_range`: target and ingestion evidence exist, but no samples match the selected scope and time range.
 
-Use it to decide whether to fix metadata, choose a different target, widen the range, or inspect ingestion. Do not treat an explanatory empty state as strict acceptance evidence.
+Use the message to decide whether to fix metadata, choose another target, widen the range, or inspect ingestion. An explanatory empty state is useful for troubleshooting, but it is not a non-empty profile.
 
-## Investigate Pod OOM or memory climb
+## Investigate a Pod OOM or rising memory use
 
 Use the OOM / memory-pressure workflow when a Java Pod is restarting, was recently `OOMKilled`, heap usage climbs, allocation rate rises, or GC pauses line up with user-visible latency.
 
 - Select the namespace, service, Pod, and incident time range first. Pod scope gives the cleanest status and allocation evidence.
-- Confirm target status. `accepted` means profiling can proceed; `oom_killed_seen`, `container_restarted`, and `profiling_window_after_restart` are Kubernetes crash-context evidence, not retained-heap proof.
+- Confirm target status. `accepted` means profiling can proceed; `oom_killed_seen`, `container_restarted`, and `profiling_window_after_restart` describe Kubernetes crash context, not retained-heap ownership.
 - Check ingestion freshness before interpreting missing samples. A stale or rejected profile batch explains why allocation evidence may be absent.
 - Read GC pause evidence next. GC events show JVM pause activity in the same selected window.
 - Use sampled allocation totals, Top allocating paths, Top self allocating frames, and the allocation flame graph to find object-creation pressure.
-- Treat allocation profiles as sampled allocation sources, not retained heap ownership. Do not require production heap dumps for the default investigation path.
+- Treat allocation profiles as sampled allocation sources, not retained-heap ownership. If the question is which objects remain live, this tool needs a heap dump or another heap-analysis system.
 - Use CPU profiles only after allocation and GC evidence do not explain the incident.
 
 ## Analyze CPU profiles
 
-Use the CPU view when a service has high CPU or latency that may be caused by expensive Java code.
+Use the CPU view when high CPU or latency may be caused by expensive Java code.
 
 - Top Table shows the most expensive Java symbols.
 - Self CPU is time spent directly in that frame.
@@ -46,7 +46,7 @@ Use the CPU view when a service has high CPU or latency that may be caused by ex
 - Search highlights matching frames without hiding the rest of the stack.
 - Focus narrows the graph to the selected stack path.
 - Start in Both mode. Pick the top Java row first, then use the highlighted Flame Graph frames to see where that Java method sits in the sampled stack.
-- High Self CPU means the method's own work is the first optimization target. High Total CPU with low Self CPU means inspect callees before changing the method itself.
+- High Self CPU makes the method's own work the first optimization target. High Total CPU with low Self CPU points you toward its callees.
 - Runtime and native frames can stay visible in the Flame Graph because they explain where samples landed, but the Top Table should keep the default optimization target on application Java.
 - Very narrow Flame Graph blocks may not show text. Hover, click, or keyboard-focus the block to inspect the full frame name, category, CPU values, and percentages.
 
@@ -54,7 +54,7 @@ Use the CPU view when a service has high CPU or latency that may be caused by ex
 
 ## Analyze Wall Clock latency
 
-Use Wall Clock when latency is high but CPU does not explain the full incident. It shows Java stack time that may be runnable, blocked, waiting, sleeping, or doing I/O.
+Use Wall Clock when latency is high but CPU does not explain the whole incident. It shows Java stack time spent runnable, blocked, waiting, sleeping, or doing I/O.
 
 - Compare Wall Clock with CPU before declaring a method CPU-bound.
 - Use the same Top Table and Flame Graph controls as CPU.
@@ -64,7 +64,7 @@ Use Wall Clock when latency is high but CPU does not explain the full incident. 
 
 ## Analyze Java I/O wait
 
-Use I/O wait when a service is blocked on sockets, files, or Java-owned network clients. The view only claims Java ownership when the collected stack preserves JVM/JFR evidence for the blocking path.
+Use I/O wait when a service is blocked on sockets, files, or Java-owned network clients. The view claims Java ownership only when the collected JVM/JFR data preserves the blocking path.
 
 - Start with top Java I/O symbols.
 - Drill into Flame Graph context to separate business code from runtime or native frames.
@@ -74,7 +74,7 @@ Use I/O wait when a service is blocked on sockets, files, or Java-owned network 
 
 ## Correlate GC pauses and allocation pressure
 
-Use GC pauses when request latency or throughput changes line up with JVM pause activity. The GC view shows JVM GC event evidence beside allocation profile context for the same service, Pod, and time range.
+Use GC pauses when request latency or throughput changes line up with JVM pause activity. The GC view places JVM pause events beside allocation context for the same service, Pod, and time range.
 
 - Confirm that GC events exist for the selected time window.
 - Use allocation correlation to find Java paths creating pressure.
@@ -84,12 +84,12 @@ Use GC pauses when request latency or throughput changes line up with JVM pause 
 
 ## Analyze allocation pressure
 
-Use allocation profiles when heap usage, allocation rate, or GC pressure rises. Start with Allocation Summary, then inspect the stack paths that lead to those allocations.
+Use allocation profiles when heap usage, allocation rate, or GC pressure rises. Start with Allocation Summary, then follow the stack paths that create the allocations.
 
 - Allocation Summary shows total sampled allocation, effective scope, returned path/self-frame counts, insight categories, and partial-result limits.
 - Top allocating paths rank leaf allocation paths by total allocated bytes.
 - Top self allocating frames rank frames where allocation is attributed directly to that frame.
-- Allocation profiles show where object creation happens under the selected service and time range.
+- Allocation profiles show where object creation happens for the selected service and time range.
 - Use the flame graph to inspect full sampled stack context before deciding which call path is responsible.
 - The latest allocation acceptance screenshot shows the current wide layout with Allocation Summary, Top allocating paths, Top self allocating frames, and flamegraph context.
 - Empty allocation states distinguish disabled profiling, unmatched targets, ingestion gaps, unsupported runtime, missing stack frames, and ranges with no samples.
@@ -99,23 +99,23 @@ Use allocation profiles when heap usage, allocation rate, or GC pressure rises. 
 
 ## Analyze lock contention
 
-Use lock diagnosis when request latency or thread state suggests blocking. Lock-delay profiles point to synchronized or monitor paths where threads spend time waiting.
+Use lock diagnosis when request latency or thread state suggests contention. Lock-delay profiles point to synchronized or monitor paths where threads spend time waiting.
 
 ## Check deadlocks
 
-Deadlock diagnosis shows cycles reported by the target JVM. A real run may show cycle evidence or a verified empty state for the selected time range.
+Deadlock diagnosis shows cycles reported by the target JVM. A selected time range may contain a cycle or a verified empty state.
 
 ![Real deadlock diagnosis surface](../assets/screenshots/real-deadlocks.png)
 
 ## Check ingestion health
 
-Ingestion health closes the loop. It shows whether profile batches were accepted, rejected, dropped, or truncated by the backend ingestion path.
+Ingestion health shows what happened between the collector and the backend: accepted, rejected, dropped, and truncated profile batches.
 
 ![Real ingestion health evidence](../assets/screenshots/real-ingestion-health.png)
 
 ## When the UI is empty
 
-Check these in order:
+When the UI is empty, check these in order:
 
 1. Target status: is the JVM accepted?
 2. Profile evidence status: does it report disabled metadata, expired temporary profiling, no matching target, ingestion gaps, or no samples in range?

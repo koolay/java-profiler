@@ -1,6 +1,6 @@
 # Profiling Contracts
 
-This document defines the stable payload vocabulary used by the first Java-profiler implementation.
+This file defines the stable payload vocabulary used by the first Java Profiler implementation.
 
 ## Target identity
 
@@ -19,7 +19,7 @@ Every target payload carries a stable identity with:
 - `runtime_version`
 - `service`
 
-`jvm_start_time` is part of the identity because process ids can be reused.
+`jvm_start_time` is part of the identity because a later JVM can reuse the same process id.
 
 ## Enablement vocabulary
 
@@ -31,7 +31,7 @@ Enablement is expressed through Kubernetes annotations or labels.
 - `java-profiler.io/startup-delay`: delay before profiling newly discovered JVMs
 - `java-profiler.io/snapshot-interval`: thread snapshot interval for the collector
 
-Explicit disable wins over broader enablement. Temporary enablement wins over continuous enablement when both are present.
+An explicit disable wins over broader enablement. If both modes are present, temporary enablement wins over continuous enablement.
 
 ## Profile types
 

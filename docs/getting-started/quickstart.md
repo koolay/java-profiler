@@ -1,6 +1,6 @@
 # Quickstart
 
-Use this path when you already have `java-profiler` deployed and want to profile one Java service.
+Use this guide when `java-profiler` is already deployed and you want to investigate one Java service.
 
 ## 1. Enable profiling
 
@@ -13,7 +13,7 @@ metadata:
     java-profiler.io/profile-duration: 15m
 ```
 
-Use `temporary` for incident work. Use `continuous` only for services approved for ongoing collection.
+Use `temporary` for an incident or a short investigation. Use `continuous` only for services that have been approved for ongoing collection.
 
 ## 2. Open the service
 
@@ -23,9 +23,9 @@ In the Web UI, set:
 - `Service`: the service or workload name.
 - `Range`: the time window that includes the profiling run.
 
-Start with [Target status](../operations/java-profiling-runbook.md#validate-an-existing-workload) if the UI looks empty. It explains whether the JVM was accepted, disabled, unsupported, expired, or failed attach.
+If the UI looks empty, start with [Target status](../operations/java-profiling-runbook.md#validate-an-existing-workload). It tells you whether the JVM was accepted, disabled, unsupported, expired, or rejected because attach failed.
 
-If a profile view is empty, read the Profile evidence status banner before widening the query. It combines target status and aggregate ingestion evidence to explain disabled profiling, expired temporary windows, unmatched targets, ingestion gaps, or a time range with no samples.
+If a profile view has no samples, read the Profile evidence status banner before widening the query. It combines target status with aggregate ingestion information and usually points to disabled profiling, an expired temporary window, an unmatched target, an ingestion gap, or a time range with no samples.
 
 ## 3. Analyze the profile
 
@@ -39,7 +39,7 @@ Use:
 - Selected frame details to compare Self CPU and Total CPU.
 - Search and Focus to isolate the stack path that matters.
 
-For allocation pressure, open Allocation profiles. Start with Allocation Summary, then compare Top allocating paths, Top self allocating frames, and flamegraph context. Treat sampled allocation evidence as object creation pressure, not retained heap ownership.
+For allocation pressure, open Allocation profiles. Start with Allocation Summary, then compare Top allocating paths, Top self allocating frames, and the flamegraph context. This is sampled object-creation data, not retained-heap ownership.
 
 For latency that is not explained by CPU, switch to Wall Clock. For socket or file blocking, switch to I/O wait. For pause-time incidents, switch to GC pauses and allocation correlation. For contention, switch to lock diagnosis.
 

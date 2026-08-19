@@ -1,13 +1,13 @@
-# Coroot `java-agent` Research
+# Coroot `java-agent` Research Notes
 
 Date: 2026-05-08
 Source: <https://github.com/coroot/coroot-node-agent/tree/main/java-agent>
 
-## Scope
+## What was examined
 
-This note covers the `java-agent/` subtree in `coroot/coroot-node-agent`.
+This note covers the `java-agent/` subtree in `coroot/coroot-node-agent` and records the parts that are useful when thinking about JVM integration.
 
-## What this subtree does
+## What the subtree does
 
 `java-agent/` is a Java instrumentation agent whose job is to hook JVM TLS I/O and forward payloads into a native bridge.
 
@@ -18,9 +18,9 @@ The mechanism is:
 3. The rewritten methods call JNI methods in `NativeBridge`.
 4. The JNI implementation in `native/coroot_java_tls.c` copies bytes into a thread-local buffer and calls C hooks.
 
-In practice, this subtree is the JVM-side TLS interception layer for Coroot.
+In short, this subtree is Coroot's JVM-side TLS interception layer.
 
-## Directory layout
+## Files and build outputs
 
 - [`java-agent/pom.xml`](https://raw.githubusercontent.com/coroot/coroot-node-agent/main/java-agent/pom.xml)
 - [`java-agent/Dockerfile`](https://raw.githubusercontent.com/coroot/coroot-node-agent/main/java-agent/Dockerfile)
@@ -133,7 +133,7 @@ The injected calls are:
 
 The C helpers currently do not implement visible processing; they only contain a memory barrier and return the input length.
 
-## Key observations
+## Observations
 
 - This subtree is tightly coupled to OpenJDK internals under `sun.security.ssl`.
 - It is likely sensitive to JDK implementation changes because it depends on internal class names and method descriptors.
@@ -141,7 +141,7 @@ The C helpers currently do not implement visible processing; they only contain a
 - The native layer currently looks like a placeholder or minimal interception stub rather than a fully featured parser.
 - Java 8 compatibility is explicit in the Maven compiler settings.
 
-## Practical summary
+## Short version
 
 If you only need the essence:
 

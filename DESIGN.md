@@ -1,27 +1,25 @@
-# Design System - Java Profiler
+# Java Profiler UI Design
 
 ## Product Context
 
-- **What this is:** A Java-focused production profiling workbench for Kubernetes services. It helps engineers inspect real async-profiler evidence from a selected Java process during production performance incidents.
-- **Who it's for:** Senior Java developers, SREs, platform engineers, and incident responders handling P0/P1 CPU, allocation, lock, and JVM performance problems.
-- **Space/industry:** Kubernetes Java performance profiling and incident diagnostics.
-- **Project type:** Data-dense operational web app, not a marketing site or general observability dashboard.
+`java-profiler` is a production profiling workbench for Java services on Kubernetes. It is used by Java developers, SREs, platform engineers, and incident responders who need to connect a CPU, allocation, lock, or JVM symptom to a stack frame.
+
+This is a dense operational tool, not a marketing site or a general observability dashboard. The interface should make the collected evidence easy to inspect and its limits easy to understand.
 
 ## Aesthetic Direction
 
-- **Direction:** Industrial / Utilitarian / Forensic.
-- **Decoration level:** Minimal.
-- **Mood:** Serious, precise, and evidence-first. The UI should feel like a production incident workbench, not a dashboard built for screenshots.
-- **Reference products:** Datadog Continuous Profiler, Dynatrace CPU profiling, Grafana Pyroscope. These are references for profiler interaction patterns only; this project must keep its Java/Kubernetes scope and avoid becoming a general observability suite.
+The visual direction is industrial, utilitarian, and forensic. Keep decoration minimal. The product should feel like a dependable incident workbench rather than a dashboard designed for screenshots.
+
+Datadog Continuous Profiler, Dynatrace CPU profiling, and Grafana Pyroscope are interaction references only. They do not broaden this product's Java and Kubernetes scope.
 
 ## Core Design Principles
 
-1. **Evidence before decoration.** Freshness, drop rate, sampling frequency, Pod/JVM scope, and CPU quota baseline must be visible near the data they qualify.
+1. **Evidence before decoration.** Show freshness, drop rate, sampling frequency, Pod/JVM scope, and CPU quota baseline next to the data they qualify.
 2. **Java semantics stay visible.** Use JVM, HotSpot, JIT, allocation, lock, stack frame, and method-signature language directly. Do not flatten the product into a generic multi-language profiler.
-3. **MVP stays narrow.** The first UI should optimize one expert path: choose a Java Pod, inspect CPU profile, find top methods, select a frame, copy/share the evidence.
+3. **Keep the first workflow narrow.** The initial UI follows one expert path: choose a Java Pod, inspect a CPU profile, find the top methods, select a frame, and copy or share the evidence.
 4. **Numbers must carry units.** Avoid raw sample counts in primary UI. Convert samples into time, cores, percentages with explicit baseline, or rates.
 5. **Noise is optional.** Native/system frames must be hideable. Expert users should be able to return visual focus to Java application frames quickly.
-6. **Collaboration is part of incident response.** Share, copy stack, and permalink actions are core workbench actions, not polish.
+6. **Make collaboration easy.** Share, copy-stack, and permalink actions are part of the incident workflow, not decorative polish.
 
 ## MVP Screen Scope
 
@@ -54,7 +52,7 @@ Deferred features may appear as disabled navigation items or roadmap notes only 
 
 ## Future Evidence Views
 
-These features are part of the product direction, but should not expand the first UI implementation unless the active plan explicitly includes them.
+These features belong to the product direction, but they are outside the first UI workflow unless a later implementation explicitly takes them on.
 
 - **A/B Comparison:** Compare equivalent evidence across two contexts, such as normal Pod versus anomalous Pod, baseline time window versus incident window, or release A versus release B. The first comparison mode should work without release metadata by comparing two time windows.
 - **Wall Clock:** Analyze runnable plus blocked time for Java services where request latency is not explained by CPU.

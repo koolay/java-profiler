@@ -1,6 +1,8 @@
 # Java Profiling Runbook
 
-## Enable Continuous Profiling
+This runbook covers the common lifecycle of a profiling target: enable it, check that the collector accepted it, investigate the result, and turn it off again.
+
+## Enable continuous profiling
 
 Add one of these metadata keys to a Java workload or Pod:
 
@@ -11,9 +13,9 @@ metadata:
     java-profiler.io/startup-delay: 30s
 ```
 
-The collector waits for the startup delay, verifies HotSpot compatibility, checks for async-profiler conflicts, then uploads normalized profiles.
+After the startup delay, the collector checks HotSpot compatibility and existing async-profiler use before it starts uploading normalized profiles.
 
-## Enable Temporary Profiling
+## Enable temporary profiling
 
 ```yaml
 metadata:
@@ -25,11 +27,11 @@ metadata:
     java-profiler.io/snapshot-interval: 10s
 ```
 
-Temporary profiling stops automatically when the duration expires. High-frequency thread snapshots are only intended for temporary windows.
+Temporary profiling stops when the duration expires. Use high-frequency thread snapshots only for a bounded temporary window.
 
-Temporary windows are evaluated from the target Pod/JVM lifecycle. If you add temporary metadata to a long-running Pod, it may immediately report `temporary_expired`. For a clean incident window, update the Pod template and roll the workload, or add a run-specific annotation such as `java-profiler.io/acceptance-run: "<timestamp>"` so Kubernetes creates a fresh Pod.
+The temporary window is measured against the target Pod/JVM lifecycle. Adding temporary metadata to a long-running Pod can therefore produce `temporary_expired` immediately. For a clean incident window, update the Pod template and roll the workload, or add a run-specific annotation such as `java-profiler.io/acceptance-run: "<timestamp>"` so Kubernetes creates a fresh Pod.
 
-## Disable Profiling
+## Disable profiling
 
 ```yaml
 metadata:
@@ -37,13 +39,13 @@ metadata:
     java-profiler.io/profile-disabled: "true"
 ```
 
-Explicit disable wins over continuous and temporary enablement.
+An explicit disable wins over both continuous and temporary enablement.
 
 When re-enabling a workload that was previously disabled, remove the key or set `java-profiler.io/profile-disabled: "false"` on the Pod template. A stale truthy `profile-disabled` annotation keeps the target in `disabled_by_metadata` even when `profile-mode` is `temporary` or `continuous`.
 
-## Validate an Existing Workload
+## Validate an existing workload
 
-For a production-shaped smoke test, keep the window short and save before/after evidence. The real acceptance script can point the profiler Helm release at an existing workload without creating the synthetic BusyApp:
+For a production-shaped smoke test, keep the window short and save the before-and-after state. The real acceptance script can point the profiler Helm release at an existing workload without creating the synthetic BusyApp:
 
 ```bash
 KUBECONFIG=/path/to/kubeconfig \
@@ -56,9 +58,9 @@ scripts/real-acceptance.sh \
   --require-full-profiling
 ```
 
-The script records target Pod state before and after the run and fails if the selected workload's restart count increases. With `--require-full-profiling`, only data created after the acceptance run starts can satisfy the check; historical profile rows from earlier Pods or earlier runs do not count. Use `--skip-workload-rollout-check` only when `--service` is a label-level filter rather than a Deployment name.
+The script records target Pod state before and after the run and fails if the selected workload's restart count increases. With `--require-full-profiling`, only data created after the run starts counts; historical rows from earlier Pods or runs do not. Use `--skip-workload-rollout-check` only when `--service` is a label-level filter rather than a Deployment name.
 
-For strict acceptance after collector/backend/web changes, first build images from the current workspace and deploy those exact tags:
+After collector, backend, or Web changes, build images from the current workspace and deploy those exact tags before running full acceptance:
 
 ```bash
 export BACKEND_IMAGE=java-profiler-backend:qa-$(date +%Y%m%d%H%M%S)
@@ -79,9 +81,9 @@ scripts/real-acceptance.sh \
   --artifact-dir /tmp/java-profiler-real-acceptance-$(date +%Y%m%d%H%M%S)
 ```
 
-If a previous run left async-profiler loaded in the target JVM and the status becomes `profiler_conflict`, roll the target Pod before retrying strict acceptance.
+If a previous run left async-profiler loaded in the target JVM and the status becomes `profiler_conflict`, roll the target Pod before retrying.
 
-## Failure Statuses
+## Statuses and common failures
 
 - `disabled_by_metadata`: workload has no opt-in metadata or has explicit disable
 - `unsupported_jvm`: process is not HotSpot-compatible
@@ -92,7 +94,7 @@ If a previous run left async-profiler loaded in the target JVM and the status be
 - `upload_dropped`: collector buffer overflow dropped old batches
 - `storage_rejected`: backend rejected invalid or conflicting data
 
-If status is accepted but profile data stays empty, check backend ingestion health before changing the workload. Rejected profile batches commonly indicate a collector/backend payload contract mismatch or ClickHouse schema drift.
+If the status is `accepted` but profiles remain empty, check backend ingestion health before changing the workload. Rejected batches often point to a collector/backend payload mismatch or ClickHouse schema drift.
 
 ## Retention
 

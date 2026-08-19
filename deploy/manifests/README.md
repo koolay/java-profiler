@@ -1,8 +1,8 @@
-# Kubernetes Manifests
+# Kubernetes Installation Manifests
 
-The Helm chart under `deploy/helm` is the source of truth for installation.
+The Helm chart in `deploy/helm` is the authoritative installation definition.
 
-Default behavior:
+By default:
 
 - profiling is disabled unless workload metadata opts in
 - collector runs as a node-local DaemonSet
@@ -10,7 +10,7 @@ Default behavior:
 - exporter metrics are exposed for Prometheus scraping
 - ClickHouse retention remains at or below seven days
 
-Required operator inputs:
+Before installing, provide:
 
 - collector and UI auth secret
 - TLS secret or cluster service mesh policy

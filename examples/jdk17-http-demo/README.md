@@ -1,6 +1,6 @@
-# JDK 17 HTTP Demo
+# JDK 17 HTTP Demo Service
 
-Small Java HTTP service for profiling simulations. It uses only JDK APIs and is intended as a Kubernetes target for the node-local Java profiler collector.
+This small HTTP service uses only JDK APIs. It provides predictable CPU, allocation, lock, and thread activity for local tests and for the node-local collector in Kubernetes.
 
 ## Endpoints
 
@@ -12,7 +12,7 @@ GET /work?mode=lock&durationMs=1000
 GET /threads?durationMs=5000
 ```
 
-`/work` creates CPU, allocation, or monitor-lock activity for async-profiler testing. `/threads` creates short-lived sleeping and blocked threads for thread snapshot checks.
+`/work` creates CPU, allocation, or monitor-lock activity. `/threads` creates short-lived sleeping and blocked threads for thread-snapshot checks.
 
 ## Run Locally
 

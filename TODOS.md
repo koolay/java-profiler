@@ -1,11 +1,9 @@
-# TODOs
+# Open Work
 
-## Add baseline comparison for profile analysis
+## Add baseline comparison to profile analysis
 
-- **What:** Add an explicit comparison mode for abnormal profile windows versus normal baseline windows.
-- **Why:** Single-window CPU analysis can identify current hotspots, but it cannot prove whether a method is newly expensive, removed, or significantly worse than normal behavior.
-- **Pros:** Helps incident analysis move from "this is hot now" to "this changed during the incident"; reduces false positives from methods that are always hot.
-- **Cons:** Expands backend API/query scope, adds UI state for two windows, and requires careful retention-bound query handling.
-- **Context:** The first Pyroscope-style CPU UI implementation should focus on tiny frame inspectability, Top Table actionability, selected-frame diagnosis, and single-window workflow. Baseline comparison is intentionally deferred until the single-window workflow is accepted.
-- **Depends on / blocked by:** Requires updated requirements and accepted single-window CPU investigation workflow. Must preserve the 7-day retention boundary and must not add Pyroscope, Parca, or Grafana as required backend dependencies.
+The current UI answers “what is hot in this window?” A comparison view would also answer “what changed compared with a normal window?”
 
+The feature needs two time windows, query and UI state for both windows, and careful handling of the seven-day retention limit. It should follow the accepted single-window CPU workflow rather than replace it.
+
+When implemented, the comparison must remain self-owned and must not add Pyroscope, Parca, or Grafana as a required backend dependency.

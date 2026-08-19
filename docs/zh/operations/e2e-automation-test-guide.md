@@ -1,12 +1,12 @@
 # E2E 自动化测试说明
 
-本文说明如何按照 [Java 服务性能分析用户手册](./performance-analysis-user-manual.md) 执行 `java-profiler` 的端到端自动化测试。目标是验证服务负责人在 UI 中能完成真实诊断流程：先确认目标状态，再查看 CPU、memory、locks、deadlocks、线程证据和 ingestion 证据。
+本文说明如何按照 [Java 服务性能分析用户手册](./performance-analysis-user-manual.md) 执行 `java-profiler` 的端到端自动化测试。测试要模拟服务负责人在 UI 中的真实诊断流程：先确认目标状态，再查看 CPU、memory、locks、deadlocks、线程和 ingestion 信息。
 
 本文只覆盖自动化测试执行和验收证据。部署、权限、ClickHouse、collector DaemonSet、token 和 Web 代理问题按 [部署运维管理员手册](./deployment-operations-admin-manual.md) 处理。
 
-## 测试目标
+## 测试要回答的问题
 
-E2E 测试应证明：
+E2E 测试需要确认：
 
 - Web UI 可以加载并完成服务诊断入口流程。
 - 用户可以选择 namespace、service 和时间范围。

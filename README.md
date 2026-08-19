@@ -2,24 +2,22 @@
 
 [![Docs](https://img.shields.io/badge/docs-online-blue?style=flat-square)](https://koolay.github.io/java-profiler/) [![中文文档](https://img.shields.io/badge/docs-中文文档-2b90d9?style=flat-square)](https://koolay.github.io/java-profiler/zh/) [![GitHub stars](https://img.shields.io/github/stars/koolay/java-profiler?style=flat-square)](https://github.com/koolay/java-profiler)
 
-Java performance profiling for Kubernetes services. Find where a HotSpot JVM is spending CPU, allocating memory, waiting on locks, pausing for GC, or blocking on Java I/O, using real async-profiler/JFR-derived data and a service-focused UI.
+`java-profiler` helps teams find the Java stack behind a performance problem in a Kubernetes service. It collects real async-profiler/JFR-derived data from HotSpot-compatible JVMs and presents CPU, allocation, lock, thread, GC, and I/O evidence in a service-focused UI.
 
-[Docs](https://koolay.github.io/java-profiler/) · [中文文档](https://koolay.github.io/java-profiler/zh/) · [Quickstart](https://koolay.github.io/java-profiler/getting-started/quickstart) · [Analyze a service](https://koolay.github.io/java-profiler/operations/performance-analysis-user-manual) · [Contributing](https://koolay.github.io/java-profiler/contributing/development)
+## What it is for
 
-## Why java-profiler
+Use it when your existing monitoring tells you that a Java service is slow, using too much CPU, approaching an OOM kill, pausing for GC, or waiting on locks—but does not show which Java code is responsible.
 
-Most observability stacks tell you that a Java service is slow, restarting, or climbing toward an OOM kill. `java-profiler` is for the next question: which Java stack is responsible?
+- Enable profiling with Kubernetes annotations or labels; application code does not need to change.
+- Collect CPU, Wall Clock, allocation, lock-delay, Java I/O wait, GC, thread, and deadlock evidence from the target JVM.
+- Query the data from ClickHouse with retention capped at seven days.
+- Keep metric storage, dashboards, alerting, logs, and tracing in the systems that already own those concerns.
 
-- **Kubernetes-native opt-in**: enable profiling with annotations or labels. No application code changes.
-- **Real JVM profile data**: CPU, Wall Clock, allocation, lock-delay, Java I/O wait, and GC evidence come from async-profiler/JFR-derived collection.
-- **Expert Java workbench**: OOM/memory-pressure investigation, Top Table, Flame Graph, Both mode, selected-frame details, allocation summary, target status, deadlocks, profile evidence guidance, and ingestion health in one workflow.
-- **Ownable storage**: profile data lands in ClickHouse with retention bounded to 7 days or less.
-- **Focused scope**: no required Pyroscope, Parca, or Grafana backend.
-- **Built for proof**: real acceptance requires non-empty CPU, Wall Clock, Java I/O wait, GC, allocation, lock, ClickHouse, ingestion, and browser UI evidence.
+The first version is deliberately limited to Java services on Kubernetes, HotSpot-compatible JVMs, a node-local DaemonSet collector, async-profiler, ClickHouse, and a compact diagnosis UI. Pyroscope, Parca, and Grafana are not required backend dependencies.
 
 ## Quickstart
 
-Enable temporary profiling on a workload pod template:
+Add temporary profiling to the target workload's Pod template:
 
 ```yaml
 metadata:
@@ -28,33 +26,31 @@ metadata:
     java-profiler.io/profile-duration: 15m
 ```
 
-Open the Web UI, select the namespace, service, and time range, then start with:
+Open the Web UI, select the namespace, service, and time range, and check `status` first. Then choose the view that matches the symptom:
 
-- `oom` when a Java Pod is restarting, was recently `OOMKilled`, or shows memory/GC pressure.
-- `status` to confirm the JVM was accepted.
-- `cpu` to find expensive Java methods.
-- `wall` when latency is not explained by CPU alone.
-- `io` to isolate Java-owned socket or file blocking paths.
-- `gc` to correlate JVM pause evidence with allocation pressure.
-- `memory` to inspect allocation pressure with Allocation Summary, Top allocating paths, Top self allocating frames, and flamegraph context.
-- `locks` and `deadlocks` to investigate contention.
-- `ingestion` to confirm profile batches were accepted.
+- `cpu` for expensive Java methods;
+- `wall` for runnable, blocked, waiting, sleeping, or I/O time that CPU does not explain;
+- `io` for Java-owned socket or file blocking;
+- `gc` for JVM pause events and their allocation context;
+- `memory` for sampled allocation pressure;
+- `locks` and `deadlocks` for contention and deadlock cycles;
+- `ingestion` to confirm that profile batches reached the backend.
 
 See the [Quickstart](docs/getting-started/quickstart.md) and [Performance Analysis Manual](docs/operations/performance-analysis-user-manual.md).
 
-## What it analyzes
+## What the profiler can show
 
-- CPU hotspots: high-cost Java methods, self time, total time, and sampled stack context.
-- Wall Clock latency: Java stack time spent runnable, blocked, waiting, sleeping, or doing I/O.
-- Java I/O wait: socket or file blocking paths when JVM/JFR evidence preserves Java ownership.
-- GC pauses: JVM GC event evidence correlated with allocation profiles and the incident window.
-- OOM and memory pressure: target status, ingestion freshness, GC pause evidence, sampled allocation totals, top allocating paths, and allocation flamegraph context in one workflow.
-- Allocation hotspots: methods and call paths creating allocation pressure without requiring production heap dumps.
-- Allocation summary: scoped sampled-allocation totals, top allocating paths, top self allocating frames, insight categories, partial-result limits, and clear empty-state reasons.
-- Lock delay: synchronized or monitor paths that block under contention.
-- Thread evidence: snapshots for CPU, lock, sleep, blocked, and waiting states.
-- Deadlock evidence: deadlock cycles reported by the target JVM.
-- Profiling health: accepted, disabled, unsupported, attach failure, profiler conflict, expired temporary windows, missing matching targets, rejected upload, or dropped ingestion data.
+- CPU hotspots with Self CPU, Total CPU, and sampled stack context.
+- Wall Clock latency broken down by runnable, blocked, waiting, sleeping, and I/O paths.
+- Java I/O wait when JVM/JFR data preserves ownership of the blocking path.
+- GC pause events correlated with allocation profiles in the same time window.
+- Sampled allocation totals, top allocating paths, top self-allocating frames, and allocation flamegraph context.
+- Lock delay caused by synchronized or monitor paths under contention.
+- Thread snapshots for CPU, lock, sleep, blocked, and waiting states.
+- Deadlock cycles reported by the target JVM.
+- Target and ingestion status that explain disabled profiling, unsupported JVMs, attach failures, conflicts, expired temporary windows, rejected uploads, and dropped data.
+
+Allocation profiles identify where objects are created. They do not provide retained-heap ownership, dominator trees, or a heap-leak analysis.
 
 ## How it works
 
@@ -74,24 +70,24 @@ Backend API -> ClickHouse
 Service diagnosis UI
 ```
 
-The first version targets Java services running on Kubernetes, HotSpot-compatible JVMs first. Profiling is controlled through Kubernetes metadata, collected node-locally, stored in ClickHouse, and exposed through a compact UI for service owners and platform engineers.
+The collector discovers eligible JVMs on its node, starts bounded profiling sessions, and uploads normalized data. The backend stores query-ready profiles and diagnosis records in ClickHouse. The UI keeps the same service, Pod, JVM, profile type, and time-range context as the investigation moves between views.
 
 ## Screenshots
 
-These screenshots come from a real Kubernetes acceptance environment, not mocked UI state. The allocation screenshot reflects the current wide analysis layout with summary cards, Top allocating paths, Top self allocating frames, and flamegraph context.
+These screenshots come from a real Kubernetes acceptance environment, not mocked UI state.
 
 ![Real allocation profile analysis from the acceptance environment](docs/assets/screenshots/real-allocation-analysis.png)
 
-- [Target status evidence](docs/assets/screenshots/real-target-status.png)
+- [Target status](docs/assets/screenshots/real-target-status.png)
 - [CPU profile analysis](docs/assets/screenshots/real-cpu-analysis.png)
-- [Allocation evidence](docs/assets/screenshots/real-allocation-analysis.png)
-- [Wall Clock latency evidence](docs/assets/screenshots/real-wall-clock.png)
-- [Java I/O wait evidence](docs/assets/screenshots/real-io-wait.png)
+- [Allocation analysis](docs/assets/screenshots/real-allocation-analysis.png)
+- [Wall Clock latency](docs/assets/screenshots/real-wall-clock.png)
+- [Java I/O wait](docs/assets/screenshots/real-io-wait.png)
 - [GC pause and allocation correlation](docs/assets/screenshots/real-gc-pauses.png)
-- [Deadlock diagnosis surface](docs/assets/screenshots/real-deadlocks.png)
-- [Ingestion health evidence](docs/assets/screenshots/real-ingestion-health.png)
+- [Deadlock diagnosis](docs/assets/screenshots/real-deadlocks.png)
+- [Ingestion health](docs/assets/screenshots/real-ingestion-health.png)
 
-Regenerate them from a port-forwarded real UI:
+Regenerate the screenshots from a port-forwarded real UI:
 
 ```bash
 export REAL_ACCEPTANCE_BASE_URL=http://127.0.0.1:18081
@@ -102,7 +98,7 @@ node scripts/capture-doc-screenshots.mjs
 
 ## Develop
 
-Run local checks before changing profiling, ingestion, backend APIs, or UI behavior:
+Run the relevant checks before changing profiling, ingestion, backend APIs, or UI behavior:
 
 ```bash
 go test ./...
@@ -111,7 +107,7 @@ cd examples/jdk17-http-demo && mvn test
 cd ../../web && npm ci && npm test && npm run build
 ```
 
-Build the docs site:
+Build the documentation site with:
 
 ```bash
 cd docs
@@ -119,9 +115,7 @@ npm install
 npm run docs:build
 ```
 
-For changes touching collector profiling, ingestion, ClickHouse storage, backend query APIs, deployment, the demo service, or profile UI, run real Kubernetes acceptance. See [Contributing](docs/contributing/development.md) and the [Real Profiling Acceptance Standard](docs/operations/real-profiling-acceptance-standard.md).
-
-If you are validating an existing non-demo workload, keep the same acceptance workflow but set `JAVA_PROFILER_ACCEPTANCE_LOAD_PATHS` to one or more HTTP paths that actually exist on that service.
+Changes that touch collector profiling, ingestion, ClickHouse, backend query APIs, deployment, the demo service, or the profile UI also need real Kubernetes acceptance. Start with [Contributing](docs/contributing/development.md) and follow the [Real Profiling Acceptance Standard](docs/operations/real-profiling-acceptance-standard.md).
 
 ## Documentation
 
@@ -137,6 +131,6 @@ If you are validating an existing non-demo workload, keep the same acceptance wo
 
 ## Scope
 
-The first version does not include non-Java profiling, OpenJ9 support, heap dump analysis, distributed ClickHouse, tracing, log analysis, service maps, dashboarding, alerting, or Prometheus metric storage.
+The first version does not include non-Java profiling, OpenJ9 support, heap-dump analysis, distributed ClickHouse, tracing, log analysis, service maps, dashboarding, alerting, or Prometheus metric storage.
 
-Metrics may be exposed by collector/backend exporters, but Prometheus-series systems own metric storage, dashboards, alerting, and retention.
+Collectors and backends may expose operational metrics. Prometheus-series services own metric storage, dashboards, alerting, and retention.

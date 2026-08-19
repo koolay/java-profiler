@@ -1,10 +1,10 @@
 # Java 服务性能分析用户手册
 
-本文面向 Java 服务负责人、值班响应人员和应用开发人员，说明如何使用 `java-profiler` 分析 Kubernetes 中 Java 服务的 CPU、Wall Clock 延迟、Java I/O wait、GC pauses、内存分配、锁等待、死锁和线程问题。部署、权限、升级、ClickHouse、Web 代理和平台故障处理见 [部署运维管理员手册](./deployment-operations-admin-manual.md)。如果问题涉及部署、权限、ClickHouse、Web 代理、token 或 collector DaemonSet，请转交平台管理员并引用管理员手册。
+本文面向 Java 服务负责人、值班响应人员和应用开发人员，说明如何使用 `java-profiler` 把 Kubernetes 中的性能现象对应到 Java 调用栈。内容涵盖 CPU、Wall Clock 延迟、Java I/O wait、GC pauses、内存分配、锁等待、死锁和线程问题。部署、权限、升级、ClickHouse、Web 代理和平台故障处理见 [部署运维管理员手册](./deployment-operations-admin-manual.md)。
 
 ## 真实工作流截图
 
-这些截图来自真实 Kubernetes acceptance 环境，不是 mock UI 状态。保留它们是为了让读者快速理解核心诊断路径，也让维护者有一组可回归对比的 UI 证据。
+这些截图来自真实 Kubernetes acceptance 环境，用来展示实际的诊断路径。
 
 重新生成截图时，先把真实 Web UI port-forward 到本机，然后从仓库根目录运行：
 
@@ -21,9 +21,9 @@ node scripts/capture-doc-screenshots.mjs
 
 ![真实 target status 证据](../../assets/screenshots/real-target-status.png)
 
-### Profile evidence guidance
+### Profile evidence 提示
 
-CPU、Wall Clock、I/O wait、allocation、GC correlation 和 lock 视图在当前 profile 没有 samples 时会显示 Profile evidence status 提示。这个提示不是严格验收里的真实 profile 数据，它只说明下一步该查哪里：
+CPU、Wall Clock、I/O wait、allocation、GC correlation 和 lock 视图在当前 profile 没有 samples 时会显示 Profile evidence status 提示。这个提示不会替代真实 profile 数据，只会告诉你下一步该查哪里：
 
 - `profiling_disabled`：目标存在，但 profiling metadata 禁用了采集。
 - `temporary_expired`：临时 profiling 窗口已经过期。
@@ -31,7 +31,7 @@ CPU、Wall Clock、I/O wait、allocation、GC correlation 和 lock 视图在当�
 - `ingestion_gap`：aggregate ingestion health 中有 rejected、retryable、dropped 或 truncated profile batches。
 - `no_samples_in_range`：target 和 ingestion evidence 存在，但当前 scope 和时间范围没有 samples。
 
-用它决定是修 metadata、换目标、扩大时间范围，还是检查 ingestion。不要把可解释空状态当成 strict acceptance 的非空 profile evidence。
+根据提示修 metadata、换目标、扩大时间范围，或检查 ingestion。可解释的空状态对排查有帮助，但不等于 strict acceptance 所需的非空 profile evidence。
 
 ### CPU profile analysis
 
@@ -84,7 +84,7 @@ Ingestion health 用 accepted/rejected/dropped payload 证据闭环 collector �
 
 ![真实 ingestion health 证据](../../assets/screenshots/real-ingestion-health.png)
 
-## 你能用它回答什么
+## 它能回答什么
 
 `java-profiler` 第一版本聚焦 HotSpot 兼容 Java 服务：
 
@@ -97,7 +97,7 @@ Ingestion health 用 accepted/rejected/dropped payload 证据闭环 collector �
 - 哪些线程处于死锁、阻塞、等待或忙碌状态。
 - 目标为什么没有数据：未启用、不兼容、冲突、attach 失败、上传失败或存储失败。
 
-它不是通用观测平台。日志、分布式追踪、Prometheus 指标趋势、告警和服务拓扑仍然从现有观测系统进入。`java-profiler` 提供的是同一服务、同一时间范围内的 Java 栈证据。
+它不是通用观测平台。日志、分布式追踪、Prometheus 指标趋势、告警和服务拓扑仍由现有观测系统负责；`java-profiler` 提供的是同一服务、同一时间范围内的 Java 栈信息。
 
 ## 使用前确认
 

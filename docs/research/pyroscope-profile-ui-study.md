@@ -1,10 +1,10 @@
-# Pyroscope Profile UI Study
+# Profile UI Research Notes
 
-## Context
+## Why this was reviewed
 
-This note captures the product review from the real `jdk17-http-demo` CPU profile screen and records how Grafana Pyroscope presents profile data. The goal is to make the Java profiler UI useful for real performance analysis: a service owner should quickly identify which function is expensive, whether the cost is direct or in callees, and where to drill next.
+This note records a review of the real `jdk17-http-demo` CPU profile screen and the relevant interaction patterns in Grafana Pyroscope. The useful question is simple: can a service owner quickly see which function is expensive, whether the cost is direct or in a callee, and where to investigate next?
 
-This is product guidance for our UI. It does not add Pyroscope, Grafana, Parca, or any other profiling backend as a required dependency.
+The conclusions apply to this project's UI only. They do not add Pyroscope, Grafana, Parca, or another profiling backend as a dependency.
 
 ## Sources
 
@@ -15,11 +15,11 @@ This is product guidance for our UI. It does not add Pyroscope, Grafana, Parca, 
 - Grafana Pyroscope source-code integration documentation: https://grafana.com/docs/pyroscope/latest/view-and-analyze-profile-data/line-by-line/
 - Grafana Pyroscope repository overview: https://github.com/grafana/pyroscope
 
-## Current UI Review
+## Review of the current UI
 
-The latest CPU profile screen is moving in the right direction because it has a top table, a flame graph, and display modes. It is not yet good enough for real performance bottleneck analysis.
+The current CPU screen has the right basic pieces—a top table, a flame graph, and display modes—but it still needs changes before it is useful for real bottleneck analysis.
 
-### Findings
+### What needs attention
 
 1. `so.6` appears as the top hot-code row.
 
@@ -54,7 +54,7 @@ The latest CPU profile screen is moving in the right direction because it has a 
    - High self: optimize this function's own work.
    - High total, low self: inspect callees in the flame graph.
 
-## How Pyroscope Presents Profiles
+## Interaction patterns worth keeping
 
 ### Flame Graph
 
@@ -147,7 +147,7 @@ Implication for this project:
 - Deadlocks should answer "which lock cycle blocks progress?"
 - Status and ingestion should explain whether the profile data is trustworthy before users interpret it.
 
-## Profile-Type UX Model For This Project
+## Profile-specific UX for this project
 
 ### CPU
 
@@ -218,7 +218,7 @@ Implication for this project:
 - Do not reintroduce a demo-only source snippet feature.
 - If source viewing is added later, treat it as an integration requiring build metadata and repository mapping, not as bundled demo source.
 
-## Next UI Target
+## Next UI target
 
 The next CPU view should behave like this:
 
@@ -231,7 +231,7 @@ The next CPU view should behave like this:
 7. "Focus block" drills into a selected block and shows a removable focus state.
 8. Add an aggregated caller/callee view later to approximate Pyroscope sandwich view.
 
-## Acceptance Criteria For The Next Iteration
+## Next-iteration checklist
 
 - `so.6`, `.so`, `[vdso]`, `pthread`, `libjvm`, and JDK/runtime frames do not appear in Hot Code / Top Table by default.
 - `Self CPU` and `Total CPU` are both visible at desktop width in `Both` mode.

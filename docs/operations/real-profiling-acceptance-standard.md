@@ -1,12 +1,14 @@
 # Real Profiling Acceptance Standard
 
+This is the release checklist for changes that can affect real profile collection or analysis. It is intentionally strict: a page that loads and pods that stay healthy do not show that the profiling path works.
+
 This standard is mandatory for changes that affect collector profiling, ingestion, ClickHouse storage, the backend query API, the JDK17 demo service, Kubernetes deployment, or the profile analysis UI.
 
-## Non-Negotiable Goal
+## What a successful run demonstrates
 
-Acceptance must prove that a user can locate a real Java performance bottleneck from real profile data. A run is not acceptable just because pods are running, requests return 200, or the UI does not crash.
+A successful run demonstrates that a user can locate a real Java performance bottleneck from real profile data. Healthy pods, HTTP 200 responses, and a non-crashing UI are necessary checks, but they are not enough.
 
-## Required Environment
+## Environment
 
 - Run against a real Kubernetes cluster with:
 
@@ -37,9 +39,9 @@ scripts/real-acceptance.sh \
   --artifact-dir /tmp/java-profiler-real-acceptance-$(date +%Y%m%d%H%M%S)
 ```
 
-## Required Data Evidence
+## Data to collect
 
-Every full acceptance run must collect and verify all of the following from the current run window:
+Every full run must collect and verify the following in the current run window:
 
 - target status contains at least one `accepted` row for the Java target
 - CPU flamegraph has a non-zero root value
@@ -56,9 +58,9 @@ Every full acceptance run must collect and verify all of the following from the 
 
 Thread snapshots and deadlock events are useful evidence, but they are optional unless the change explicitly targets those features. If absent, record them as gaps, not as proof of failure for unrelated profile changes.
 
-## Required Workload Behavior
+## Workload behavior
 
-The demo workload must be driven during the async-profiler window, not before or after it.
+Drive the demo workload during the async-profiler window. Activity before or after the window cannot prove that the collector captured it.
 
 - CPU load must execute while profiling is active.
 - Wall Clock load must execute while profiling is active and must include blocked or waiting Java threads.
@@ -68,9 +70,9 @@ The demo workload must be driven during the async-profiler window, not before or
 - Lock profiling must create real contention with concurrent lock requests. A single `synchronized` request is not enough because it can complete without blocking another Java thread.
 - If a previous run loaded `libasyncProfiler.so` into the target JVM and the collector was restarted, restart the demo pod before a fresh strict run to avoid stale profiler-conflict state.
 
-## Required UI Evidence
+## Browser workflow
 
-The profile UI must be validated with real backend data, not mocked data, and must support the core performance-analysis workflow:
+Validate the profile UI against real backend data. The browser run must cover the core performance-analysis workflow:
 
 - service/namespace defaults and filters select the Java demo target
 - Status view shows target evidence
@@ -90,7 +92,7 @@ The profile UI must be validated with real backend data, not mocked data, and mu
 
 The UI can include native/JVM frames in the flamegraph, but it must make their meaning clear. Runtime/native frames are evidence about where samples landed; application Java rows are the nearest actionable ownership signal.
 
-## Required Automation
+## Automation requirements
 
 Use `scripts/real-acceptance.sh --require-full-profiling` for strict acceptance. The script must:
 
@@ -118,7 +120,7 @@ shellcheck scripts/real-acceptance.sh scripts/build-real-acceptance-images.sh
 git diff --check
 ```
 
-## Failure Interpretation
+## How to read a failure
 
 Treat these as acceptance blockers:
 
@@ -137,4 +139,4 @@ Treat these as acceptance blockers:
 - UI tests pass with mocked data but fail against real backend data
 - search, focus, Back, Reset, or view-mode interactions do not affect the real UI state
 
-Do not hide these as "environment issues" until the root cause is proven. Fix the product, script, workload, or deployment and rerun until the standard passes.
+Do not label these “environment issues” until the cause is known. Fix the product, script, workload, or deployment and run the check again.
